@@ -39,10 +39,9 @@ defmodule SimpleSyllabusReporter.Application do
       {DNSCluster,
        query: Application.get_env(:simple_syllabus_reporter, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: SimpleSyllabusReporter.PubSub},
+      SimpleSyllabusReporter.AI.AsyncCompletions,
       SimpleSyllabusReporter.Cache,
-      # Start a worker by calling: SimpleSyllabusReporter.Worker.start_link(arg)
-      # {SimpleSyllabusReporter.Worker, arg},
-      # Start to serve requests, typically the last entry
+      SimpleSyllabusReporter.Reports.ReportGenerator,
       SimpleSyllabusReporterWeb.Endpoint
     ]
 

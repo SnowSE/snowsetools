@@ -137,12 +137,34 @@ defmodule SimpleSyllabusReporterWeb.AuthController do
           _ -> refresh_token
         end
 
+      refresh_reused? = new_refresh == refresh_token
+      now = System.system_time(:second)
+
+      Logger.info(
+        "auth_controller.refresh success sub=#{sub} new_exp=#{new_exp} ttl=#{new_exp - now}s refresh_token_rotated=#{!refresh_reused?}"
+      )
+
       conn
       |> put_session("session_expires_at", new_exp)
       |> put_session("refresh_token", new_refresh)
-      |> send_resp(204, "")
+      |> json(%{exp: new_exp})
     else
-      _ ->
+      false ->
+        Logger.warning("auth_controller.refresh missing refresh_token or sub, returning 401")
+        send_resp(conn, 401, "")
+
+      {:error, reason} ->
+        Logger.error(
+          "auth_controller.refresh OIDC error sub=#{inspect(sub)} reason=#{inspect(reason)}"
+        )
+
+        send_resp(conn, 401, "")
+
+      other ->
+        Logger.error(
+          "auth_controller.refresh unexpected failure sub=#{inspect(sub)} result=#{inspect(other)}"
+        )
+
         send_resp(conn, 401, "")
     end
   end

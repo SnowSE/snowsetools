@@ -20,6 +20,11 @@ config :simple_syllabus_reporter, :oidc,
   issuer: env!("OIDC_ISSUER", :string!),
   client_id: env!("OIDC_CLIENT_ID", :string!)
 
+config :simple_syllabus_reporter, :ai,
+  endpoint: env!("AI_ENDPOINT", :string!),
+  api_key: env!("AI_API_KEY", :string!),
+  model: env!("AI_MODEL", :string!)
+
 config :simple_syllabus_reporter, SimpleSyllabusReporterWeb.Endpoint,
   http: [port: env!("PORT", :integer, 4000), ip: {0, 0, 0, 0}]
 

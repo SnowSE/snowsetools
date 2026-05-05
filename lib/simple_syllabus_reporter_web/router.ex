@@ -29,6 +29,8 @@ defmodule SimpleSyllabusReporterWeb.Router do
     pipe_through [:browser, :require_authenticated]
 
     live "/syllabi", Syllabus.SyllabusLive
+    live "/syllabi/report", Syllabus.SyllabusReportLive
+    live "/reports/required-elements", Reports.RequiredElementsLive
   end
 
   scope "/auth", SimpleSyllabusReporterWeb do

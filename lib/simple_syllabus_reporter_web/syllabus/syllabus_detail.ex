@@ -28,6 +28,13 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusDetail do
             {@doc_data["sub_title"]}
           </span>
         </div>
+        <.link
+          navigate={~p"/syllabi/report?code=#{@selected["code"]}"}
+          class="shrink-0 inline-flex items-center gap-1 text-xs text-slate-400 hover:text-indigo-300 transition-colors"
+          title="Generate compliance report"
+        >
+          <span class="hero-clipboard-document-check size-3.5" /> Report
+        </.link>
         <a
           href={simplesyllabus_url(@selected)}
           target="_blank"

@@ -95,6 +95,10 @@
 
 /* This file is for your main application CSS */
 
+button {
+  @apply cursor-pointer;
+}
+
 /* Styles for raw syllabus HTML returned by the SimpleSyllabus API.
    The API returns Angular-rendered HTML with .fr-view content and .component-name headings. */
 .syllabus-content {

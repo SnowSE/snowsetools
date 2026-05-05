@@ -15,6 +15,18 @@ defmodule SimpleSyllabusReporterWeb.AppHeader do
 
       <nav class="flex items-center gap-2">
         <%= if @current_user do %>
+          <.link
+            navigate={~p"/syllabi"}
+            class="rounded-lg px-3 py-1.5 text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-all"
+          >
+            Syllabi
+          </.link>
+          <.link
+            navigate={~p"/reports/required-elements"}
+            class="rounded-lg px-3 py-1.5 text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-all"
+          >
+            Required Elements
+          </.link>
           <span class="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-300">
             <.icon name="hero-user-circle" class="size-4" />
             {@current_user.email}

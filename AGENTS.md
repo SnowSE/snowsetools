@@ -1,6 +1,10 @@
 # Tech Stack
 
-Phoenix LiveView app backed by PostgreSQL.
+Phoenix LiveView app backed by PostgreSQL. do not include useless comments, if the code is not easy to read, use better naming conventions and single-level of abstraction functions.
+
+never silently ignore errors. make sure that errors properly get displayed to the user via either message passing or pubsub. 
+
+avoid empty catch-all clauses that hide errors
 
 ## Database
 
@@ -40,6 +44,7 @@ when checking if changes compile use `mix compile` on the terminal (not in conta
 
 - Use `mix precommit` alias when you are done with all changes and fix any pending issues
 - Use the already included and available `:req` (`Req`) library for HTTP requests, **avoid** `:httpoison`, `:tesla`, and `:httpc`. Req is included by default and is the preferred HTTP client for Phoenix apps
+- organize files and folders by feature name, not file type. for example liveviews about syllabus go in `simple_syllabus_reporter_web/syllabus/syllabus_live.ex` not in a `live` folder
 
 ### JS and CSS guidelines
 

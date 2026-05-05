@@ -23,10 +23,28 @@ defmodule SimpleSyllabusReporterWeb.Layouts do
       export default {
         mounted() {
           this.handleEvent("session_refresh", () => {
+            console.log("[SessionRefresh] Timer fired, calling /auth/refresh");
             fetch("/auth/refresh", { credentials: "same-origin" })
-              .catch(() => { window.location.href = "/auth/login"; })
               .then(resp => {
-                if (resp && !resp.ok) { window.location.href = "/auth/login"; }
+                if (!resp.ok) {
+                  console.error("[SessionRefresh] Refresh failed, status=", resp.status, "- redirecting to login");
+                  window.location.href = "/auth/login";
+                  return;
+                }
+                console.log("[SessionRefresh] Refresh HTTP 200, reading new exp");
+                return resp.json();
+              })
+              .then(data => {
+                if (data && data.exp) {
+                  console.log("[SessionRefresh] Got new exp=", data.exp, "- notifying server");
+                  this.pushEvent("session_refreshed", { exp: data.exp });
+                } else {
+                  console.warn("[SessionRefresh] No exp in response, cannot reschedule");
+                }
+              })
+              .catch(err => {
+                console.error("[SessionRefresh] Fetch error:", err, "- redirecting to login");
+                window.location.href = "/auth/login";
               });
           });
         }

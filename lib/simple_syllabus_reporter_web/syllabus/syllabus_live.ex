@@ -2,7 +2,12 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
   use SimpleSyllabusReporterWeb, :live_view
 
   alias SimpleSyllabusReporter.SimpleSyllabusApi
+  alias SimpleSyllabusReporter.Reports.RequiredElement
+  alias SimpleSyllabusReporter.Reports.GeneratedReport
+  alias SimpleSyllabusReporter.Reports.GeneratedReportItem
+  alias SimpleSyllabusReporter.Reports.ReportGenerator
   alias SimpleSyllabusReporterWeb.Syllabus.SyllabusDetail
+  alias SimpleSyllabusReporterWeb.Syllabus.SyllabusResults
 
   on_mount {SimpleSyllabusReporterWeb.UserAuth, :ensure_authenticated}
 
@@ -20,6 +25,12 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
       |> stream(:syllabi, [])
       |> assign(:syllabi_empty?, true)
       |> assign(:syllabi_docs, %{})
+      |> assign(:elements, [])
+      |> assign(:total_elements, 0)
+      |> assign(:report_counts, %{})
+      |> assign(:generating_per_code, %{})
+      |> assign(:generating_all, false)
+      |> start_async(:fetch_elements, fn -> RequiredElement.list_all() end)
 
     {:ok, socket}
   end
@@ -73,10 +84,29 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
           socket
       end
 
-    {:noreply, socket}
+    {:noreply,
+     push_event(socket, "save_state", %{query: query, code: code, title: title, term: term})}
   end
 
   def handle_params(_params, _uri, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("restore_state", %{"query" => query} = params, socket)
+      when is_binary(query) and byte_size(query) > 0 do
+    to =
+      case params do
+        %{"code" => code, "title" => title, "term" => term} when is_binary(code) ->
+          ~p"/syllabi?q=#{query}&code=#{code}&title=#{title}&term=#{term}"
+
+        _ ->
+          ~p"/syllabi?q=#{query}"
+      end
+
+    {:noreply, push_patch(socket, to: to)}
+  end
+
+  def handle_event("restore_state", _params, socket) do
     {:noreply, socket}
   end
 
@@ -96,12 +126,31 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
   end
 
   def handle_async(:search, {:ok, {:ok, %{items: docs}}}, socket) do
+    codes = Enum.map(docs, & &1["code"])
+
+    if connected?(socket) do
+      Enum.each(codes, fn code ->
+        Phoenix.PubSub.subscribe(
+          SimpleSyllabusReporter.PubSub,
+          ReportGenerator.report_topic(code)
+        )
+        Phoenix.PubSub.subscribe(
+          SimpleSyllabusReporter.PubSub,
+          ReportGenerator.pending_topic(code)
+        )
+      end)
+      ReportGenerator.request_pending(codes)
+    end
+
     socket =
       socket
       |> assign(:loading_search, false)
       |> assign(:syllabi_empty?, docs == [])
       |> assign(:syllabi_docs, Map.new(docs, &{&1["code"], &1}))
       |> stream(:syllabi, docs, reset: true)
+      |> start_async(:fetch_report_counts, fn ->
+        GeneratedReportItem.item_counts_for_syllabi(codes)
+      end)
 
     {:noreply, socket}
   end
@@ -160,6 +209,112 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
     {:noreply, socket}
   end
 
+  def handle_async(:fetch_elements, {:ok, {:ok, elements}}, socket) do
+    {:noreply, socket |> assign(:elements, elements) |> assign(:total_elements, length(elements))}
+  end
+
+  def handle_async(:fetch_elements, _result, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_async(:fetch_report_counts, {:ok, {:ok, counts}}, socket) do
+    socket =
+      socket.assigns.syllabi_docs
+      |> Map.values()
+      |> Enum.reduce(assign(socket, :report_counts, counts), fn doc, acc ->
+        stream_insert(acc, :syllabi, doc)
+      end)
+
+    {:noreply, socket}
+  end
+
+  def handle_async(:fetch_report_counts, _result, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("generate_all_missing", _params, socket) do
+    elements = socket.assigns.elements
+    syllabi_docs = socket.assigns.syllabi_docs
+    report_counts = socket.assigns.report_counts
+    total = socket.assigns.total_elements
+
+    codes_with_missing =
+      syllabi_docs
+      |> Map.keys()
+      |> Enum.filter(fn code ->
+        counts = Map.get(report_counts, code, %{})
+
+        total_run =
+          Map.get(counts, "met", 0) + Map.get(counts, "not_met", 0) +
+            Map.get(counts, "partially_met", 0)
+
+        total_run < total
+      end)
+
+    for code <- codes_with_missing do
+      Task.start(fn ->
+        case SimpleSyllabusApi.get_syllabus_details(code) do
+          {:ok, full_doc} ->
+            existing_ids = existing_element_ids_for_code(code)
+            missing = Enum.reject(elements, fn e -> MapSet.member?(existing_ids, e["id"]) end)
+            Enum.each(missing, fn element -> ReportGenerator.generate_async(full_doc, element) end)
+
+          {:error, _} ->
+            :ok
+        end
+      end)
+    end
+
+    {:noreply, assign(socket, :generating_all, true)}
+  end
+
+  def handle_info({:pending_update, code, element_ids}, socket) do
+    if Map.has_key?(socket.assigns.syllabi_docs, code) do
+      generating_per_code = Map.put(socket.assigns.generating_per_code, code, element_ids)
+
+      generating_all =
+        Enum.any?(generating_per_code, fn {_, ids} -> not MapSet.equal?(ids, MapSet.new()) end)
+
+      {:noreply,
+       socket
+       |> assign(:generating_per_code, generating_per_code)
+       |> assign(:generating_all, generating_all)
+       |> reinsert_syllabus(socket.assigns.syllabi_docs, code)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info({:report_item_result, code, element_id, {:ok, item}}, socket) do
+    status = item["status"]
+
+    report_counts =
+      Map.update(
+        socket.assigns.report_counts,
+        code,
+        %{status => 1},
+        fn counts -> Map.update(counts, status, 1, &(&1 + 1)) end
+      )
+
+    {:noreply,
+     socket
+     |> assign(:report_counts, report_counts)
+     |> reinsert_syllabus(socket.assigns.syllabi_docs, code)}
+  end
+
+  def handle_info({:report_item_result, _code, _element_id, {:error, _reason}}, socket) do
+    {:noreply, socket}
+  end
+
+  defp existing_element_ids_for_code(code) do
+    with {:ok, report} <- GeneratedReport.get_latest_for_syllabus(code),
+         {:ok, items_map} <- GeneratedReportItem.list_for_report_as_map(report["id"]) do
+      MapSet.new(Map.keys(items_map))
+    else
+      _ -> MapSet.new()
+    end
+  end
+
   defp reinsert_syllabus(socket, _docs_by_code, nil), do: socket
 
   defp reinsert_syllabus(socket, docs_by_code, code) do
@@ -172,7 +327,11 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_user={@current_user}>
-      <div class="flex flex-col h-full min-h-0 max-w-5xl mx-auto w-full px-4 pt-8 pb-4">
+      <div
+        id="syllabus-page"
+        phx-hook=".SyllabusState"
+        class="flex flex-col h-full min-h-0 max-w-5xl mx-auto w-full px-4 pt-8 pb-4"
+      >
         <%!-- Search form --%>
         <form id="syllabus-search-form" phx-submit="search" class="flex gap-3 mb-8">
           <input
@@ -180,7 +339,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
             type="text"
             name="query"
             value={@query}
-            placeholder="Instructor name, e.g. Alex Mickelson"
+            placeholder="instructor name, coure code, instructor email, department"
             class="flex-1 bg-slate-800 border border-slate-700 text-slate-100 placeholder-slate-500 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
             autofocus
           />
@@ -210,46 +369,18 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
 
         <div class="flex gap-6 min-h-0 flex-1 overflow-hidden">
           <%!-- Results list --%>
-          <div class={[
-            "flex flex-col min-h-0 flex-1",
-            @selected && "hidden sm:flex sm:w-64 sm:flex-none"
-          ]}>
-            <div
-              id="syllabi-list"
-              phx-update="stream"
-              class="overflow-y-auto flex-1 min-h-0 space-y-1"
-            >
-              <div class={[
-                "hidden text-slate-500 text-sm italic py-4",
-                @syllabi_empty? && @query != "" && !@loading_search && "only:block"
-              ]}>
-                No syllabi found for "{@query}".
-              </div>
-              <div
-                :for={{id, doc} <- @streams.syllabi}
-                id={id}
-                phx-click="select"
-                phx-value-code={doc["code"]}
-                phx-value-title={doc["title"] || doc["course_name"] || "Untitled"}
-                phx-value-term={doc["term_name"] || ""}
-                class={[
-                  "group flex flex-col gap-0.5 px-4 py-3 rounded-lg cursor-pointer border transition-all mb-2",
-                  "bg-slate-800/60 border-slate-700 hover:bg-slate-800 hover:border-indigo-500",
-                  @selected && @selected["code"] == doc["code"] &&
-                    "border-purple-400/70 bg-slate-800 ring-1 ring-purple-400/30"
-                ]}
-              >
-                <span class="text-slate-100 text-sm font-medium leading-snug group-hover:text-white transition-colors">
-                  {doc["title"] || doc["course_name"] || "Untitled"}
-                </span>
-                <div class="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
-                  <span :if={doc["term_name"] || doc["term"]} class="text-xs text-slate-400">
-                    {doc["term_name"] || doc["term"]}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <SyllabusResults.results_list
+            syllabi={@streams.syllabi}
+            syllabi_empty?={@syllabi_empty?}
+            query={@query}
+            loading_search={@loading_search}
+            selected={@selected}
+            total_elements={@total_elements}
+            syllabi_count={map_size(@syllabi_docs)}
+            report_counts={@report_counts}
+            generating_per_code={@generating_per_code}
+            generating_all={@generating_all}
+          />
 
           <%!-- Detail panel --%>
           <%= if @selected do %>
@@ -262,6 +393,35 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
         </div>
       </div>
     </Layouts.app>
+
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".SyllabusState">
+      export default {
+        mounted() {
+          const url = new URL(window.location.href);
+          if (!url.searchParams.has("q")) {
+            try {
+              const stored = localStorage.getItem("syllabi_state");
+              if (stored) {
+                const state = JSON.parse(stored);
+                if (state && state.query) {
+                  this.pushEvent("restore_state", state);
+                }
+              }
+            } catch (e) {
+              console.error("SyllabusState: failed to read localStorage", e);
+            }
+          }
+
+          this.handleEvent("save_state", (data) => {
+            try {
+              localStorage.setItem("syllabi_state", JSON.stringify(data));
+            } catch (e) {
+              console.error("SyllabusState: failed to write localStorage", e);
+            }
+          });
+        }
+      }
+    </script>
     """
   end
 end

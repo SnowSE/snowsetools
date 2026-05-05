@@ -31,22 +31,47 @@ defmodule SimpleSyllabusReporterWeb.UserAuth do
     end
   end
 
+  # Refresh 60 seconds before expiry. Must be shorter than the token lifetime.
+  @refresh_before_seconds 60
+
   defp schedule_session_refresh(socket, %{"session_expires_at" => exp}) when is_integer(exp) do
     now = System.system_time(:second)
-    # Fire 10 minutes before the JWT expires; clamp to 0 so we fire immediately
-    # if we're already within (or past) the 10-minute window but not yet expired.
-    refresh_at_ms = max((exp - 10 * 60 - now) * 1000, 0)
+    refresh_at_ms = max((exp - @refresh_before_seconds - now) * 1000, 0)
 
     if connected?(socket) do
-      Logger.info("Scheduling session refresh in #{refresh_at_ms}ms (exp=#{exp}, now=#{now})")
+      Logger.info(
+        "Scheduling session refresh in #{refresh_at_ms}ms (exp=#{exp}, now=#{now}, ttl=#{exp - now}s)"
+      )
+
       Process.send_after(self(), :session_refresh_soon, refresh_at_ms)
     end
 
-    attach_hook(socket, :session_refresh_hook, :handle_info, fn
+    socket
+    |> attach_hook(:session_refresh_info, :handle_info, fn
       :session_refresh_soon, socket ->
+        Logger.info("session_refresh_soon fired, pushing session_refresh event to client")
         {:halt, push_event(socket, "session_refresh", %{})}
 
       _other, socket ->
+        {:cont, socket}
+    end)
+    |> attach_hook(:session_refresh_event, :handle_event, fn
+      "session_refreshed", %{"exp" => new_exp}, socket when is_integer(new_exp) ->
+        now = System.system_time(:second)
+        refresh_at_ms = max((new_exp - @refresh_before_seconds - now) * 1000, 0)
+
+        Logger.info(
+          "session_refreshed received exp=#{new_exp} now=#{now} ttl=#{new_exp - now}s next_refresh_in=#{refresh_at_ms}ms"
+        )
+
+        Process.send_after(self(), :session_refresh_soon, refresh_at_ms)
+        {:halt, socket}
+
+      "session_refreshed", params, socket ->
+        Logger.warning("session_refreshed received unexpected params=#{inspect(params)}")
+        {:halt, socket}
+
+      _event, _params, socket ->
         {:cont, socket}
     end)
   end
