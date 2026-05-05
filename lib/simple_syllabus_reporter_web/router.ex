@@ -22,6 +22,13 @@ defmodule SimpleSyllabusReporterWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/ui/account-image/:id", AssetController, :account_image
+  end
+
+  scope "/", SimpleSyllabusReporterWeb do
+    pipe_through [:browser, :require_authenticated]
+
+    live "/syllabi", Syllabus.SyllabusLive
   end
 
   scope "/auth", SimpleSyllabusReporterWeb do

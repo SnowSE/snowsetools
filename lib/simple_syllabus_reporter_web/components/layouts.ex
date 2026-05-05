@@ -10,9 +10,9 @@ defmodule SimpleSyllabusReporterWeb.Layouts do
 
   def app(assigns) do
     ~H"""
-    <div class="flex flex-col min-h-screen bg-slate-950 text-slate-100">
+    <div class="flex flex-col h-screen bg-slate-950 text-slate-100">
       <AppHeader.header current_user={@current_user} />
-      <main class="flex-1">
+      <main class="flex-1 flex flex-col min-h-0 overflow-hidden">
         {render_slot(@inner_block)}
       </main>
     </div>

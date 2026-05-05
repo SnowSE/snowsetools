@@ -1,6 +1,7 @@
 defmodule SimpleSyllabusReporterWeb.UserAuth do
   import Phoenix.LiveView
   import Phoenix.Component
+  require Logger
   alias SimpleSyllabusReporter.Data.User
 
   def on_mount(:ensure_authenticated, _params, session, socket) do
@@ -32,10 +33,12 @@ defmodule SimpleSyllabusReporterWeb.UserAuth do
 
   defp schedule_session_refresh(socket, %{"session_expires_at" => exp}) when is_integer(exp) do
     now = System.system_time(:second)
-    # Fire 10 minutes before the JWT expires
-    refresh_at_ms = (exp - 10 * 60 - now) * 1000
+    # Fire 10 minutes before the JWT expires; clamp to 0 so we fire immediately
+    # if we're already within (or past) the 10-minute window but not yet expired.
+    refresh_at_ms = max((exp - 10 * 60 - now) * 1000, 0)
 
-    if connected?(socket) && refresh_at_ms > 0 do
+    if connected?(socket) do
+      Logger.info("Scheduling session refresh in #{refresh_at_ms}ms (exp=#{exp}, now=#{now})")
       Process.send_after(self(), :session_refresh_soon, refresh_at_ms)
     end
 

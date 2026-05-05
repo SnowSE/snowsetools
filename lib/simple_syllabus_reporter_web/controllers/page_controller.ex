@@ -15,6 +15,10 @@ defmodule SimpleSyllabusReporterWeb.PageController do
           end
       end
 
-    render(conn, :home, current_user: current_user)
+    if current_user do
+      redirect(conn, to: "/syllabi")
+    else
+      render(conn, :home, current_user: current_user)
+    end
   end
 end

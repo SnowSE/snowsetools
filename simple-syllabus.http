@@ -1,0 +1,9 @@
+
+
+GET https://snow.simplesyllabus.com/api2/doc-library-search?editor=alex mickelson&term_statuses[]=future
+
+
+###
+
+
+curl 'https://snow.simplesyllabus.com/api2/doc-full-page-get?code=3rpi2fdwv' 

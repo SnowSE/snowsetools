@@ -31,6 +31,8 @@ Set `PHX_SERVER=true` and provide env vars (`DATABASE_URL`, `SECRET_KEY_BASE`, `
 
 you can read current logs with `docker logs simplesyllabusreporter-app-1` be sure to use bash to filter for only the logs you care about.
 
+when checking if changes compile use `mix compile` on the terminal (not in container)
+
 
 --- Phoenix guidelines below ---
 
@@ -50,7 +52,7 @@ you can read current logs with `docker logs simplesyllabusreporter-app-1` be sur
       @source "../../lib/my_app_web";
 
 - **Always use and maintain this import syntax** in the app.css file for projects generated with `phx.new`
-- **Never** use `@apply` when writing raw css
+- **Never** write raw css, prefer to inline tailwindcss classes
 - **Always** manually write your own tailwind-based components instead of using daisyUI for a unique, world-class design
 - Out of the box **only the app.js and app.css bundles are supported**
   - You cannot reference an external vendor'd script `src` or link `href` in the layouts

@@ -45,6 +45,7 @@ config :simple_syllabus_reporter, SimpleSyllabusReporterWeb.Endpoint,
 # Reload browser tabs when matching files change.
 config :simple_syllabus_reporter, SimpleSyllabusReporterWeb.Endpoint,
   live_reload: [
+    url: "ws://localhost:4000/phoenix/live_reload/socket",
     web_console_logger: true,
     patterns: [
       # Static assets, except user uploads
@@ -52,8 +53,9 @@ config :simple_syllabus_reporter, SimpleSyllabusReporterWeb.Endpoint,
       # Gettext translations
       ~r"priv/gettext/.*\.po$"E,
       # Router, Controllers, LiveViews and LiveComponents
-      ~r"lib/simple_syllabus_reporter_web/router\.ex$"E,
-      ~r"lib/simple_syllabus_reporter_web/(controllers|live|components)/.*\.(ex|heex)$"E
+      ~r"lib/simple_syllabus_reporter_web/.*\.(ex|heex)$"E,
+      # Context / service modules
+      ~r"lib/simple_syllabus_reporter/.*\.ex$"E
     ]
   ]
 
