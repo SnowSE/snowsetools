@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: syllabus_user
+      POSTGRES_PASSWORD: syllabus_pass
+      POSTGRES_DB: simple_syllabus_reporter_dev
+    volumes:
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U syllabus_user -d simple_syllabus_reporter_dev",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: dev.Dockerfile
+    ports:
+      - 4000:4000
+    command: |
+      mix phx.server
+    volumes:
+      - .:/app
+    environment:
+      DATABASE_URL: ecto://syllabus_user:syllabus_pass@db/simple_syllabus_reporter_dev
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+      PHX_SERVER: "true"
+      MIX_ENV: dev
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

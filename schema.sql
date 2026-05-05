@@ -1,0 +1,2 @@
+-- Schema for simple_syllabus_reporter
+-- Tables will be added as features are implemented
