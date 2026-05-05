@@ -9,6 +9,32 @@ defmodule SimpleSyllabusReporter.Application do
   def start(_type, _args) do
     children = [
       SimpleSyllabusReporter.Repo,
+      {Oidcc.ProviderConfiguration.Worker,
+       %{
+         issuer:
+           Application.fetch_env!(:simple_syllabus_reporter, :oidc) |> Keyword.fetch!(:issuer),
+         name: SimpleSyllabusReporter.OidcProvider,
+         provider_configuration_opts: %{
+           quirks: %{
+             document_overrides: %{
+               # Disable PAR - oidcc attempts PAR whenever the endpoint is present,
+               # which fails for public (PKCE) clients against Keycloak's token endpoint.
+               "pushed_authorization_request_endpoint" => :undefined,
+               "require_pushed_authorization_requests" => false,
+               # Keycloak doesn't advertise "none" in token_endpoint_auth_methods_supported,
+               # but public clients (PKCE, no secret) require it to authenticate with just client_id.
+               "token_endpoint_auth_methods_supported" => [
+                 "private_key_jwt",
+                 "client_secret_basic",
+                 "client_secret_post",
+                 "tls_client_auth",
+                 "client_secret_jwt",
+                 "none"
+               ]
+             }
+           }
+         }
+       }},
       SimpleSyllabusReporterWeb.Telemetry,
       {DNSCluster,
        query: Application.get_env(:simple_syllabus_reporter, :dns_cluster_query) || :ignore},

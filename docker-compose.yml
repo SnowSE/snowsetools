@@ -28,6 +28,8 @@ services:
       mix phx.server
     volumes:
       - .:/app
+    env_file:
+      - .env
     environment:
       DATABASE_URL: ecto://syllabus_user:syllabus_pass@db/simple_syllabus_reporter_dev
       SECRET_KEY_BASE: ${SECRET_KEY_BASE}

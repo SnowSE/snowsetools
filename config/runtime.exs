@@ -16,6 +16,10 @@ if env!("PHX_SERVER", :boolean, false) do
   config :simple_syllabus_reporter, SimpleSyllabusReporterWeb.Endpoint, server: true
 end
 
+config :simple_syllabus_reporter, :oidc,
+  issuer: env!("OIDC_ISSUER", :string!),
+  client_id: env!("OIDC_CLIENT_ID", :string!)
+
 config :simple_syllabus_reporter, SimpleSyllabusReporterWeb.Endpoint,
   http: [port: env!("PORT", :integer, 4000), ip: {0, 0, 0, 0}]
 

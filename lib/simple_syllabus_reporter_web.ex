@@ -85,11 +85,12 @@ defmodule SimpleSyllabusReporterWeb do
       # HTML escaping functionality
       import Phoenix.HTML
       # Core UI components
-      import SimpleSyllabusReporterWeb.CoreComponents
+      import SimpleSyllabusReporterWeb.FlashComponents
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS
       alias SimpleSyllabusReporterWeb.Layouts
+      alias SimpleSyllabusReporterWeb.AppHeader
 
       # Routes generation with the ~p sigil
       unquote(verified_routes())
