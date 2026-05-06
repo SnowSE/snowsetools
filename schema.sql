@@ -1,5 +1,4 @@
 
-
 CREATE TABLE IF NOT EXISTS users (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   email       TEXT        NOT NULL UNIQUE,
@@ -7,7 +6,6 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Required elements define what content each syllabus must contain for reporting
 CREATE TABLE IF NOT EXISTS required_elements (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   name        TEXT        NOT NULL,
@@ -16,7 +14,6 @@ CREATE TABLE IF NOT EXISTS required_elements (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Default required elements per Snow College syllabus policy
 INSERT INTO required_elements (name, description) VALUES
   ('Assignment Overview',              'A brief description of each major assignment, examination, etc.'),
   ('Course Information',               'Prefix, number, section number, and course title.'),
@@ -34,7 +31,6 @@ CREATE TABLE IF NOT EXISTS required_element_report_instructions (
   updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- One report per syllabus analysis run
 CREATE TABLE IF NOT EXISTS generated_reports (
   id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   syllabus_code   TEXT        NOT NULL,
@@ -46,7 +42,6 @@ CREATE TABLE IF NOT EXISTS generated_reports (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- One row per required-element evaluation within a report
 CREATE TABLE IF NOT EXISTS generated_report_items (
   id                        UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   generated_report_id       UUID        NOT NULL REFERENCES generated_reports(id) ON DELETE CASCADE,
@@ -59,3 +54,17 @@ CREATE TABLE IF NOT EXISTS generated_report_items (
   updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (generated_report_id, required_element_id)
 );
+
+CREATE TABLE IF NOT EXISTS ai_completions (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  topic       TEXT        NOT NULL,
+  event       TEXT        NOT NULL,
+  model       TEXT        NOT NULL DEFAULT '',
+  endpoint    TEXT        NOT NULL DEFAULT '',
+  messages    JSONB       NOT NULL DEFAULT '[]',
+  status      TEXT        NOT NULL CHECK (status IN ('ok', 'error')),
+  result      TEXT        NOT NULL DEFAULT '',
+  inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ai_completions_inserted_at_idx ON ai_completions (inserted_at DESC);

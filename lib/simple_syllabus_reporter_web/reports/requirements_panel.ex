@@ -25,14 +25,13 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequirementsPanel do
         </button>
       </div>
 
-      <%!-- Instruction form --%>
       <%= if @editing_instruction do %>
         <form id={"instruction-form-#{@element["id"]}"} phx-submit="save_req" class="mb-4">
           <div class="space-y-2">
             <textarea
               id={"instruction-content-#{@element["id"]}"}
               name="req[content]"
-              rows="3"
+              rows="20"
               placeholder="e.g. A statement like 'No prerequisites required' counts as fulfilling this element."
               autofocus
               class={[

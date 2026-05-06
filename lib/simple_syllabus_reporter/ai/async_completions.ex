@@ -18,6 +18,8 @@ defmodule SimpleSyllabusReporter.AI.AsyncCompletions do
   use GenServer
   require Logger
 
+  alias SimpleSyllabusReporter.AI.CompletionLog
+
   @pubsub SimpleSyllabusReporter.PubSub
   @max_concurrent 1
   @status_topic "async_completions:status"
@@ -41,7 +43,7 @@ defmodule SimpleSyllabusReporter.AI.AsyncCompletions do
 
   @impl true
   def init(_opts) do
-    {:ok, %{queue: :queue.new(), in_flight: 0, max_concurrent: @max_concurrent}}
+    {:ok, %{queue: :queue.new(), in_flight: 0, max_concurrent: @max_concurrent, monitors: %{}}}
   end
 
   @impl true
@@ -53,8 +55,13 @@ defmodule SimpleSyllabusReporter.AI.AsyncCompletions do
   def handle_cast({:enqueue, topic, event, messages, opts}, state) do
     new_state =
       if state.in_flight < state.max_concurrent do
-        spawn_completion(self(), topic, event, messages, opts)
-        %{state | in_flight: state.in_flight + 1}
+        ref = spawn_completion(topic, event, messages, opts)
+
+        %{
+          state
+          | in_flight: state.in_flight + 1,
+            monitors: Map.put(state.monitors, ref, {topic, event})
+        }
       else
         %{state | queue: :queue.in({topic, event, messages, opts}, state.queue)}
       end
@@ -64,17 +71,29 @@ defmodule SimpleSyllabusReporter.AI.AsyncCompletions do
   end
 
   @impl true
-  def handle_info(:completion_done, state) do
-    new_state =
-      case :queue.out(state.queue) do
-        {{:value, {topic, event, messages, opts}}, queue} ->
-          spawn_completion(self(), topic, event, messages, opts)
-          %{state | queue: queue}
+  def handle_info({:DOWN, ref, :process, _pid, :normal}, state) do
+    {_info, monitors} = Map.pop(state.monitors, ref)
+    new_state = drain_queue(%{state | monitors: monitors})
+    broadcast_status(new_state)
+    {:noreply, new_state}
+  end
 
-        {:empty, _} ->
-          %{state | in_flight: state.in_flight - 1}
-      end
+  @impl true
+  def handle_info({:DOWN, ref, :process, _pid, reason}, state) do
+    {info, monitors} = Map.pop(state.monitors, ref, nil)
 
+    if info do
+      {topic, event} = info
+      error = worker_error(reason)
+
+      Logger.error(
+        "Completion worker crashed: topic=#{topic} event=#{inspect(event)} reason=#{inspect(reason)}"
+      )
+
+      Phoenix.PubSub.broadcast(@pubsub, topic, {event, {:error, error}})
+    end
+
+    new_state = drain_queue(%{state | monitors: monitors})
     broadcast_status(new_state)
     {:noreply, new_state}
   end
@@ -87,21 +106,33 @@ defmodule SimpleSyllabusReporter.AI.AsyncCompletions do
     )
   end
 
-  defp spawn_completion(server, topic, event, messages, opts) do
-    spawn(fn ->
-      result =
-        try do
-          complete_sync(messages, opts)
-        rescue
-          e -> {:error, {:exception, Exception.message(e)}}
-        catch
-          :exit, reason -> {:error, {:exit, reason}}
-          thrown -> {:error, {:thrown, thrown}}
-        end
+  defp worker_error({exception, _stacktrace}) when is_exception(exception) do
+    {:exception, Exception.message(exception)}
+  end
 
-      Phoenix.PubSub.broadcast(@pubsub, topic, {event, result})
-      send(server, :completion_done)
-    end)
+  defp worker_error(reason), do: {:worker_crashed, reason}
+
+  defp drain_queue(state) do
+    case :queue.out(state.queue) do
+      {{:value, {topic, event, messages, opts}}, queue} ->
+        ref = spawn_completion(topic, event, messages, opts)
+        %{state | queue: queue, monitors: Map.put(state.monitors, ref, {topic, event})}
+
+      {:empty, _} ->
+        %{state | in_flight: state.in_flight - 1}
+    end
+  end
+
+  defp spawn_completion(topic, event, messages, opts) do
+    {_pid, ref} =
+      spawn_monitor(fn ->
+        result = complete_sync(messages, opts)
+        config = Application.fetch_env!(:simple_syllabus_reporter, :ai)
+        CompletionLog.record(topic, event, config[:model], config[:endpoint], messages, result)
+        Phoenix.PubSub.broadcast(@pubsub, topic, {event, result})
+      end)
+
+    ref
   end
 
   @spec complete_sync([message()], [option()]) :: result()

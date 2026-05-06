@@ -11,8 +11,10 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.RequirementsButtonGroup do
     ~H"""
     <div class="flex gap-1 flex-wrap shrink-0 pb-1">
       <%= if @loading do %>
-        <div id="req-loading" class="text-slate-500 text-xs py-1 px-2">
-          <span class="hero-arrow-path size-3 animate-spin inline-block" />
+        <div id="req-loading" class="flex gap-1 flex-wrap">
+          <%= for w <- ["w-20", "w-28", "w-24", "w-16", "w-24", "w-20", "w-28", "w-16"] do %>
+            <div class={["h-7 rounded-lg bg-slate-800 animate-pulse", w]} />
+          <% end %>
         </div>
       <% else %>
         <%= for element <- @elements do %>

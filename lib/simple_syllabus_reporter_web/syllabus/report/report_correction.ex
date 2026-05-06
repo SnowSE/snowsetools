@@ -39,7 +39,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportCorrection do
           rows="18"
           class="w-full bg-slate-950 text-slate-200 text-xs rounded-lg px-3 py-2.5 border border-slate-700 focus:outline-none focus:border-indigo-500 resize-none leading-relaxed font-mono"
         >{build_evaluation_text(@status, @finding, @evidence, @considerations)}</textarea>
-        <div class="flex gap-2">
+        <div class="flex gap-2 justify-end">
           <button
             id={"save-correction-btn-#{@element_id}"}
             type="submit"
@@ -58,15 +58,17 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportCorrection do
         </div>
       </form>
     <% else %>
-      <button
-        id={"correct-btn-#{@element_id}"}
-        type="button"
-        phx-click="open_correction"
-        phx-value-id={@element_id}
-        class="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-400 transition-colors cursor-pointer"
-      >
-        <span class="hero-pencil-square size-3" /> Correct this report
-      </button>
+      <div class="flex justify-end px-4">
+        <button
+          id={"correct-btn-#{@element_id}"}
+          type="button"
+          phx-click="open_correction"
+          phx-value-id={@element_id}
+          class="inline-flex items-center gap-1 text-xs text-slate-300 bg-slate-900 py-1 px-2 rounded hover:text-slate-400 transition-colors cursor-pointer"
+        >
+          <span class="hero-pencil-square size-3" /> Correct this report
+        </button>
+      </div>
     <% end %>
     """
   end
@@ -82,7 +84,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportCorrection do
           content
 
         syllabus_text ->
-          "<syllabus_content>\n#{syllabus_text}\n</syllabus_content>\n\n---\n\n<evaluation>\n#{content}\n</evaluation>"
+          "<evaluation>\n#{content}\n</evaluation>\n<syllabus_content>\n#{syllabus_text}\n</syllabus_content>"
       end
 
     case ReportInstruction.create(element_id, %{"content" => full_content}) do

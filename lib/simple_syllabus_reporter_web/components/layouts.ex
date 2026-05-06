@@ -6,18 +6,19 @@ defmodule SimpleSyllabusReporterWeb.Layouts do
   attr :flash, :map, required: true
   attr :current_scope, :map, default: nil
   attr :current_user, :map, default: nil
+  attr :current_path, :string, default: nil
   attr :socket, :any, default: nil
   slot :inner_block, required: true
 
   def app(assigns) do
     ~H"""
     <div class="flex flex-col h-screen bg-slate-950 text-slate-100">
-      <AppHeader.header current_user={@current_user}>
+      <AppHeader.header current_user={@current_user} current_path={assigns[:current_path]}>
         <:center :if={@socket}>
           {live_render(@socket, SimpleSyllabusReporterWeb.AI.QueueStatusLive, id: "queue-status")}
         </:center>
       </AppHeader.header>
-      <main class="flex-1 flex flex-col min-h-0 overflow-hidden">
+      <main class="flex-1 overflow-y-auto">
         {render_slot(@inner_block)}
       </main>
     </div>

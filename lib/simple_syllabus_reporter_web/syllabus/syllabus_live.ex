@@ -4,7 +4,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
   alias SimpleSyllabusReporterWeb.Syllabus.SearchHandlers
   alias SimpleSyllabusReporterWeb.Syllabus.ReportHandlers
   alias SimpleSyllabusReporterWeb.Syllabus.SyllabusDetail
-  alias SimpleSyllabusReporterWeb.Syllabus.SyllabusResultsList
+  alias SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList
 
   on_mount {SimpleSyllabusReporterWeb.UserAuth, :ensure_authenticated}
 
@@ -72,7 +72,12 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_user={@current_user} socket={@socket}>
+    <Layouts.app
+      flash={@flash}
+      current_user={@current_user}
+      socket={@socket}
+      current_path={@current_path}
+    >
       <div
         id="syllabus-page"
         phx-hook=".SyllabusState"
@@ -112,8 +117,8 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
         <% end %>
 
         <div class="flex gap-6 min-h-0 flex-1 overflow-hidden">
-          <SyllabusResultsList.results_list
-            syllabi={@streams.syllabi}
+          <SyllabusSearchResultsList.results_list
+            syllabi_docs={@syllabi_docs}
             syllabi_empty?={@syllabi_empty?}
             query={@query}
             loading_search={@loading_search}

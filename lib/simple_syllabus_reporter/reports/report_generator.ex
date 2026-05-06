@@ -215,19 +215,24 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
 
         _ ->
           lines = Enum.map_join(instructions, "\n", fn i -> "- #{i["content"]}" end)
-          "\n<evaluation_instructions>\n#{lines}\n</evaluation_instructions>"
+
+          """
+
+          <mandatory_evaluation_rules>
+          The following rules MUST be applied when evaluating this element. They take precedence over your general judgment. If any rule conflicts with a standard finding, follow the rule.
+          #{lines}
+          </mandatory_evaluation_rules>
+          """
       end
 
     system = """
     You are an academic compliance reviewer evaluating whether a college course syllabus satisfies a specific required element policy.
-    Analyze the provided syllabus content carefully. Return a structured JSON response with:
+    #{instruction_block}
+    Analyze the provided syllabus content carefully and respond with:
     - status: "met", "not_met", or "partially_met"
     - description: a clear and short explanation of your finding
     - evidence: a verbatim excerpt from the syllabus that supports your finding (empty string if none found)
     - additional_considerations: any caveats, edge-cases, or notes for the reviewer, shorter is better (empty string if none)
-
-    Evaluation instructions have been provided by experts and must by prioritized in your analysis. The examples are from a different course, but the report conclusions should be generalized.
-    #{instruction_block}
     """
 
     user = """

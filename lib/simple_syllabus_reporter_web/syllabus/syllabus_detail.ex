@@ -88,11 +88,26 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusDetail do
       />
 
       <%= if @loading_detail do %>
-        <div
-          id="detail-loading"
-          class="flex flex-1 items-center justify-center py-16 text-slate-400 text-sm gap-2"
-        >
-          <span class="hero-arrow-path size-4 animate-spin" /> Loading…
+        <div id="detail-loading" class="flex flex-col flex-1 min-h-0 gap-3">
+          <%!-- Skeleton button group --%>
+          <div class="flex gap-1 flex-wrap shrink-0 pb-1">
+            <%= for w <- ["w-20", "w-28", "w-24", "w-16", "w-24", "w-20"] do %>
+              <div class={["h-7 rounded-lg bg-slate-800 animate-pulse", w]} />
+            <% end %>
+          </div>
+          <%!-- Skeleton report items --%>
+          <div class="flex flex-col gap-4 overflow-y-auto flex-1 min-h-0">
+            <%= for _ <- 1..4 do %>
+              <div class="flex flex-col gap-2 rounded-xl bg-slate-900/60 px-4 py-4 animate-pulse">
+                <div class="flex items-center justify-between gap-3">
+                  <div class="h-3.5 w-40 rounded bg-slate-700" />
+                  <div class="h-6 w-20 rounded-lg bg-slate-800" />
+                </div>
+                <div class="h-3 w-full rounded bg-slate-800/80" />
+                <div class="h-3 w-3/4 rounded bg-slate-800/80" />
+              </div>
+            <% end %>
+          </div>
         </div>
       <% else %>
         <%= if @detail_error do %>

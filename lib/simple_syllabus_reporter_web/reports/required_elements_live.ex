@@ -201,7 +201,12 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_user={@current_user} socket={@socket}>
+    <Layouts.app
+      flash={@flash}
+      current_user={@current_user}
+      socket={@socket}
+      current_path={@current_path}
+    >
       <div class="w-6xl mx-auto px-4 py-8">
         <div class="flex items-center justify-between mb-6">
           <div>

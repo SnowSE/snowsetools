@@ -2,6 +2,7 @@ defmodule SimpleSyllabusReporterWeb.AppHeader do
   use SimpleSyllabusReporterWeb, :html
 
   attr :current_user, :map, default: nil
+  attr :current_path, :string, default: nil
   slot :center
 
   def header(assigns) do
@@ -22,15 +23,21 @@ defmodule SimpleSyllabusReporterWeb.AppHeader do
         <%= if @current_user do %>
           <.link
             navigate={~p"/syllabi"}
-            class="rounded-lg px-3 py-1.5 text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-all"
+            class={nav_link_class(@current_path, ~p"/syllabi")}
           >
             Syllabi
           </.link>
           <.link
             navigate={~p"/reports/required-elements"}
-            class="rounded-lg px-3 py-1.5 text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-all"
+            class={nav_link_class(@current_path, ~p"/reports/required-elements")}
           >
             Required Elements
+          </.link>
+          <.link
+            navigate={~p"/ai/completions"}
+            class={nav_link_class(@current_path, ~p"/ai/completions")}
+          >
+            AI History
           </.link>
           <span class="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-300">
             <.icon name="hero-user-circle" class="size-4" />
@@ -53,5 +60,17 @@ defmodule SimpleSyllabusReporterWeb.AppHeader do
       </nav>
     </header>
     """
+  end
+
+  defp nav_link_class(current_path, path) do
+    active = is_binary(current_path) and String.starts_with?(current_path, path)
+
+    [
+      "rounded-lg px-3 py-1.5 text-sm transition-all",
+      if(active,
+        do: "bg-purple-900/50 text-purple-300 font-medium",
+        else: "text-slate-400 hover:bg-slate-800 hover:text-white"
+      )
+    ]
   end
 end

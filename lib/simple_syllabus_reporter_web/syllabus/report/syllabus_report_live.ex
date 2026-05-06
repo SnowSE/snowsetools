@@ -155,7 +155,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} socket={@socket}>
+    <Layouts.app flash={@flash} socket={@socket} current_path={@current_path}>
       <div class="flex flex-col h-full min-h-0 gap-2 p-4 max-w-7xl mx-auto w-full">
         <div class="flex items-center gap-3">
           <.link

@@ -18,6 +18,10 @@ defmodule SimpleSyllabusReporterWeb.UserAuth do
           socket
           |> assign(:current_user, user)
           |> schedule_session_refresh(session)
+          |> attach_hook(:track_current_path, :handle_params, fn _params, url, socket ->
+            %{path: path} = URI.parse(url)
+            {:cont, assign(socket, :current_path, path)}
+          end)
 
         {:cont, socket}
 

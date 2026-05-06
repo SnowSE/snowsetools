@@ -147,13 +147,22 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportHandlers do
         socket
       ) do
     status = item["status"]
+    old_status = get_in(socket.assigns.report_items, [element_id, "status"])
 
     report_counts =
       Map.update(
         socket.assigns.report_counts,
         code,
         %{status => 1},
-        fn counts -> Map.update(counts, status, 1, &(&1 + 1)) end
+        fn counts ->
+          counts
+          |> then(fn c ->
+            if old_status,
+              do: Map.update(c, old_status, 0, &max(0, &1 - 1)),
+              else: c
+          end)
+          |> Map.update(status, 1, &(&1 + 1))
+        end
       )
 
     socket =

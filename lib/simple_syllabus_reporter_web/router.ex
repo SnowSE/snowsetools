@@ -31,6 +31,7 @@ defmodule SimpleSyllabusReporterWeb.Router do
     live "/syllabi", Syllabus.SyllabusLive
     live "/syllabi/report", Syllabus.SyllabusReportLive
     live "/reports/required-elements", Reports.RequiredElementsLive
+    live "/ai/completions", AI.CompletionsHistoryLive
   end
 
   scope "/auth", SimpleSyllabusReporterWeb do
