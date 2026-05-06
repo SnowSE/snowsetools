@@ -18,8 +18,8 @@ COPY config config
 COPY lib lib
 COPY priv priv
 
-RUN mix assets.deploy
 RUN mix compile
+RUN mix assets.deploy
 RUN mix release
 
 # Runtime stage
