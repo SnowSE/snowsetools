@@ -43,8 +43,6 @@ if config_env() == :prod do
   secret_key_base = env!("SECRET_KEY_BASE", :string!)
   host = env!("PHX_HOST", :string, "example.com")
 
-  config :simple_syllabus_reporter, :dns_cluster_query, env!("DNS_CLUSTER_QUERY", :string?)
-
   config :simple_syllabus_reporter, SimpleSyllabusReporterWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     http: [ip: {0, 0, 0, 0, 0, 0, 0, 0}],
