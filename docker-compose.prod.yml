@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    env_file:
+      - .env
     environment:
       PHX_SERVER: "true"
       PHX_HOST: ${PHX_HOST}
