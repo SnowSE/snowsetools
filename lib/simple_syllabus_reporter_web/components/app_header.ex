@@ -5,7 +5,7 @@ defmodule SimpleSyllabusReporterWeb.AppHeader do
 
   def header(assigns) do
     ~H"""
-    <header class="shrink-0 flex items-center justify-between px-5 h-14 border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm">
+    <header class="shrink-0 flex items-center justify-between px-3 h-10 border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm">
       <.link
         navigate={~p"/"}
         class="text-sm font-semibold text-slate-200 hover:text-white transition-colors"

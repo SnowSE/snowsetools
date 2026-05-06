@@ -6,8 +6,9 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
   alias SimpleSyllabusReporter.Reports.GeneratedReport
   alias SimpleSyllabusReporter.Reports.GeneratedReportItem
   alias SimpleSyllabusReporter.Reports.ReportGenerator
+  alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
   alias SimpleSyllabusReporterWeb.Syllabus.SyllabusDetail
-  alias SimpleSyllabusReporterWeb.Syllabus.SyllabusResults
+  alias SimpleSyllabusReporterWeb.Syllabus.SyllabusResultsList
 
   on_mount {SimpleSyllabusReporterWeb.UserAuth, :ensure_authenticated}
 
@@ -30,6 +31,11 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
       |> assign(:report_counts, %{})
       |> assign(:generating_per_code, %{})
       |> assign(:generating_all, false)
+      |> assign(:selected_element_id, nil)
+      |> assign(:report_items, %{})
+      |> assign(:generating, MapSet.new())
+      |> assign(:generation_errors, %{})
+      |> assign(:loading_elements, true)
       |> start_async(:fetch_elements, fn -> RequiredElement.list_all() end)
 
     {:ok, socket}
@@ -73,12 +79,21 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
             "title" => (socket.assigns.selected || %{})["title"] || title || code,
             "term" => term
           })
+          |> assign(:selected_element_id, nil)
+          |> assign(:report_items, %{})
+          |> assign(:generating, MapSet.new())
+          |> assign(:generation_errors, %{})
           |> start_async(:fetch_detail, fn -> SimpleSyllabusApi.get_syllabus_details(code) end)
+          |> start_async(:fetch_existing_items, fn -> existing_items_for_code(code) end)
 
         is_nil(code) && code_changed? ->
           socket
           |> reinsert_syllabus(socket.assigns.syllabi_docs, prev_code)
           |> assign(:selected, nil)
+          |> assign(:selected_element_id, nil)
+          |> assign(:report_items, %{})
+          |> assign(:generating, MapSet.new())
+          |> assign(:generation_errors, %{})
 
         true ->
           socket
@@ -125,21 +140,63 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
     {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{socket.assigns.query}")}
   end
 
+  def handle_event("select_element", %{"id" => id}, socket) do
+    {:noreply, assign(socket, :selected_element_id, id)}
+  end
+
+  def handle_event("generate_report", %{"id" => element_id}, socket) do
+    element = Enum.find(socket.assigns.elements, fn e -> e["id"] == element_id end)
+    ReportGenerator.generate_async(socket.assigns.selected, element)
+
+    {:noreply,
+     socket
+     |> assign(:generating, MapSet.put(socket.assigns.generating, element_id))
+     |> assign(:generation_errors, Map.delete(socket.assigns.generation_errors, element_id))}
+  end
+
+  def handle_event("generate_all_missing", _params, socket) do
+    elements = socket.assigns.elements
+    syllabi_docs = socket.assigns.syllabi_docs
+    report_counts = socket.assigns.report_counts
+    total = socket.assigns.total_elements
+
+    codes_with_missing =
+      syllabi_docs
+      |> Map.keys()
+      |> Enum.filter(fn code ->
+        counts = Map.get(report_counts, code, %{})
+
+        total_run =
+          Map.get(counts, "met", 0) + Map.get(counts, "not_met", 0) +
+            Map.get(counts, "partially_met", 0)
+
+        total_run < total
+      end)
+
+    for code <- codes_with_missing do
+      Task.start(fn ->
+        case SimpleSyllabusApi.get_syllabus_details(code) do
+          {:ok, full_doc} ->
+            existing_ids = existing_element_ids_for_code(code)
+            missing = Enum.reject(elements, fn e -> MapSet.member?(existing_ids, e["id"]) end)
+
+            Enum.each(missing, fn element -> ReportGenerator.generate_async(full_doc, element) end)
+
+          {:error, _} ->
+            :ok
+        end
+      end)
+    end
+
+    {:noreply, assign(socket, :generating_all, true)}
+  end
+
   def handle_async(:search, {:ok, {:ok, %{items: docs}}}, socket) do
     codes = Enum.map(docs, & &1["code"])
 
     if connected?(socket) do
-      Enum.each(codes, fn code ->
-        Phoenix.PubSub.subscribe(
-          SimpleSyllabusReporter.PubSub,
-          ReportGenerator.report_topic(code)
-        )
-        Phoenix.PubSub.subscribe(
-          SimpleSyllabusReporter.PubSub,
-          ReportGenerator.pending_topic(code)
-        )
-      end)
-      ReportGenerator.request_pending(codes)
+      Enum.each(codes, fn code -> ReportGenerationStatus.subscribe(code) end)
+      ReportGenerationStatus.request_pending(codes)
     end
 
     socket =
@@ -210,10 +267,22 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
   end
 
   def handle_async(:fetch_elements, {:ok, {:ok, elements}}, socket) do
-    {:noreply, socket |> assign(:elements, elements) |> assign(:total_elements, length(elements))}
+    {:noreply,
+     socket
+     |> assign(:elements, elements)
+     |> assign(:total_elements, length(elements))
+     |> assign(:loading_elements, false)}
   end
 
   def handle_async(:fetch_elements, _result, socket) do
+    {:noreply, assign(socket, :loading_elements, false)}
+  end
+
+  def handle_async(:fetch_existing_items, {:ok, {:ok, items_map}}, socket) do
+    {:noreply, assign(socket, :report_items, items_map)}
+  end
+
+  def handle_async(:fetch_existing_items, _result, socket) do
     {:noreply, socket}
   end
 
@@ -232,48 +301,22 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
     {:noreply, socket}
   end
 
-  def handle_event("generate_all_missing", _params, socket) do
-    elements = socket.assigns.elements
-    syllabi_docs = socket.assigns.syllabi_docs
-    report_counts = socket.assigns.report_counts
-    total = socket.assigns.total_elements
-
-    codes_with_missing =
-      syllabi_docs
-      |> Map.keys()
-      |> Enum.filter(fn code ->
-        counts = Map.get(report_counts, code, %{})
-
-        total_run =
-          Map.get(counts, "met", 0) + Map.get(counts, "not_met", 0) +
-            Map.get(counts, "partially_met", 0)
-
-        total_run < total
-      end)
-
-    for code <- codes_with_missing do
-      Task.start(fn ->
-        case SimpleSyllabusApi.get_syllabus_details(code) do
-          {:ok, full_doc} ->
-            existing_ids = existing_element_ids_for_code(code)
-            missing = Enum.reject(elements, fn e -> MapSet.member?(existing_ids, e["id"]) end)
-            Enum.each(missing, fn element -> ReportGenerator.generate_async(full_doc, element) end)
-
-          {:error, _} ->
-            :ok
-        end
-      end)
-    end
-
-    {:noreply, assign(socket, :generating_all, true)}
-  end
-
-  def handle_info({:pending_update, code, element_ids}, socket) do
+  def handle_info(
+        %ReportGenerationStatus.PendingUpdate{code: code, element_ids: element_ids},
+        socket
+      ) do
     if Map.has_key?(socket.assigns.syllabi_docs, code) do
       generating_per_code = Map.put(socket.assigns.generating_per_code, code, element_ids)
 
       generating_all =
         Enum.any?(generating_per_code, fn {_, ids} -> not MapSet.equal?(ids, MapSet.new()) end)
+
+      socket =
+        if socket.assigns.selected && socket.assigns.selected["code"] == code do
+          assign(socket, :generating, element_ids)
+        else
+          socket
+        end
 
       {:noreply,
        socket
@@ -285,7 +328,14 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
     end
   end
 
-  def handle_info({:report_item_result, code, element_id, {:ok, item}}, socket) do
+  def handle_info(
+        %ReportGenerationStatus.ItemResult{
+          code: code,
+          element_id: element_id,
+          result: {:ok, item}
+        },
+        socket
+      ) do
     status = item["status"]
 
     report_counts =
@@ -296,13 +346,22 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
         fn counts -> Map.update(counts, status, 1, &(&1 + 1)) end
       )
 
+    socket =
+      if socket.assigns.selected && socket.assigns.selected["code"] == code do
+        socket
+        |> assign(:report_items, Map.put(socket.assigns.report_items, element_id, item))
+        |> assign(:generating, MapSet.delete(socket.assigns.generating, element_id))
+      else
+        socket
+      end
+
     {:noreply,
      socket
      |> assign(:report_counts, report_counts)
      |> reinsert_syllabus(socket.assigns.syllabi_docs, code)}
   end
 
-  def handle_info({:report_item_result, _code, _element_id, {:error, _reason}}, socket) do
+  def handle_info(%ReportGenerationStatus.ItemResult{result: {:error, _reason}}, socket) do
     {:noreply, socket}
   end
 
@@ -324,16 +383,23 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
     end
   end
 
+  defp existing_items_for_code(code) do
+    case GeneratedReport.get_latest_for_syllabus(code) do
+      {:ok, report} -> GeneratedReportItem.list_for_report_as_map(report["id"])
+      {:error, :not_found} -> {:ok, %{}}
+      {:error, _} = err -> err
+    end
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_user={@current_user}>
       <div
         id="syllabus-page"
         phx-hook=".SyllabusState"
-        class="flex flex-col h-full min-h-0 max-w-5xl mx-auto w-full px-4 pt-8 pb-4"
+        class="flex flex-col h-full min-h-0 max-w-5xl mx-auto w-full p-4"
       >
-        <%!-- Search form --%>
-        <form id="syllabus-search-form" phx-submit="search" class="flex gap-3 mb-8">
+        <form id="syllabus-search-form" phx-submit="search" class="flex gap-3 pb-3">
           <input
             id="search-query-input"
             type="text"
@@ -357,7 +423,6 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
           </button>
         </form>
 
-        <%!-- Search error --%>
         <%= if @search_error do %>
           <div
             id="search-error"
@@ -368,8 +433,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
         <% end %>
 
         <div class="flex gap-6 min-h-0 flex-1 overflow-hidden">
-          <%!-- Results list --%>
-          <SyllabusResults.results_list
+          <SyllabusResultsList.results_list
             syllabi={@streams.syllabi}
             syllabi_empty?={@syllabi_empty?}
             query={@query}
@@ -382,12 +446,17 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
             generating_all={@generating_all}
           />
 
-          <%!-- Detail panel --%>
           <%= if @selected do %>
             <SyllabusDetail.detail_panel
               selected={@selected}
               loading_detail={@loading_detail}
               detail_error={@detail_error}
+              elements={@elements}
+              loading_elements={@loading_elements}
+              selected_element_id={@selected_element_id}
+              report_items={@report_items}
+              generating={@generating}
+              generation_errors={@generation_errors}
             />
           <% end %>
         </div>

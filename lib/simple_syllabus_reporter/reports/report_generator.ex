@@ -6,6 +6,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   alias SimpleSyllabusReporter.Reports.GeneratedReport
   alias SimpleSyllabusReporter.Reports.GeneratedReportItem
   alias SimpleSyllabusReporter.Reports.ReportInstruction
+  alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
 
   @pubsub SimpleSyllabusReporter.PubSub
   @ai_topic "report_generator:ai"
@@ -23,7 +24,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   }
 
   def start_link(_opts) do
-    GenServer.start_link(__MODULE__, %{pending: MapSet.new()}, name: __MODULE__)
+    GenServer.start_link(__MODULE__, %{pending: MapSet.new(), report_ids: %{}}, name: __MODULE__)
   end
 
   @doc "PubSub topic for a given syllabus code."
@@ -67,21 +68,41 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
     if MapSet.member?(state.pending, key) do
       {:noreply, state}
     else
-      server = self()
+      case ensure_report_id(code, syllabus_doc, state.report_ids) do
+        {:ok, report_id, new_report_ids} ->
+          server = self()
 
-      Task.start(fn ->
-        case prepare_generation(syllabus_doc, element) do
-          {:ok, {report_id, messages}} ->
-            send(server, {:generation_prepared, code, element_id, report_id, messages})
+          Task.start(fn ->
+            result =
+              try do
+                build_messages_for(syllabus_doc, element)
+              rescue
+                e -> {:error, {:exception, Exception.message(e)}}
+              catch
+                kind, reason -> {:error, {kind, reason}}
+              end
 
-          {:error, reason} ->
-            send(server, {:generation_failed, code, element_id, reason})
-        end
-      end)
+            case result do
+              {:ok, messages} ->
+                send(server, {:generation_prepared, code, element_id, report_id, messages})
 
-      new_pending = MapSet.put(state.pending, key)
-      broadcast_pending_update(code, new_pending)
-      {:noreply, %{state | pending: new_pending}}
+              {:error, reason} ->
+                send(server, {:generation_failed, code, element_id, reason})
+            end
+          end)
+
+          new_pending = MapSet.put(state.pending, key)
+          broadcast_pending_update(code, new_pending)
+          {:noreply, %{state | pending: new_pending, report_ids: new_report_ids}}
+
+        {:error, reason} ->
+          Logger.error(
+            "ReportGenerator could not resolve report code=#{code} reason=#{inspect(reason)}"
+          )
+
+          broadcast_result(code, element_id, {:error, reason})
+          {:noreply, state}
+      end
     end
   end
 
@@ -106,9 +127,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
     )
 
     broadcast_result(code, element_id, {:error, reason})
-    new_pending = MapSet.delete(state.pending, {code, element_id})
-    broadcast_pending_update(code, new_pending)
-    {:noreply, %{state | pending: new_pending}}
+    {:noreply, drop_pending(state, code, element_id)}
   end
 
   def handle_info({{code, element_id, report_id}, {:ok, ai_result}}, state) do
@@ -126,26 +145,18 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
       end
 
     broadcast_result(code, element_id, result)
-    new_pending = MapSet.delete(state.pending, {code, element_id})
-    broadcast_pending_update(code, new_pending)
-    {:noreply, %{state | pending: new_pending}}
+    {:noreply, drop_pending(state, code, element_id)}
   end
 
   def handle_info({{code, element_id, _report_id}, {:error, reason}}, state) do
     Logger.error("ReportGenerator AI failed element_id=#{element_id} reason=#{inspect(reason)}")
 
     broadcast_result(code, element_id, {:error, reason})
-    new_pending = MapSet.delete(state.pending, {code, element_id})
-    broadcast_pending_update(code, new_pending)
-    {:noreply, %{state | pending: new_pending}}
+    {:noreply, drop_pending(state, code, element_id)}
   end
 
   defp broadcast_result(code, element_id, result) do
-    Phoenix.PubSub.broadcast(
-      @pubsub,
-      report_topic(code),
-      {:report_item_result, code, element_id, result}
-    )
+    ReportGenerationStatus.publish_item_result(code, element_id, result)
   end
 
   defp broadcast_pending_update(code, pending) do
@@ -155,20 +166,44 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
       |> Enum.map(fn {_, id} -> id end)
       |> MapSet.new()
 
-    Phoenix.PubSub.broadcast(@pubsub, pending_topic(code), {:pending_update, code, element_ids})
+    ReportGenerationStatus.publish_pending_update(code, element_ids)
   end
 
-  defp prepare_generation(syllabus_doc, required_element) do
-    with {:ok, instructions} <- ReportInstruction.list_for_element(required_element["id"]),
-         {:ok, report} <-
-           GeneratedReport.get_or_create_for_syllabus(
-             syllabus_doc["code"],
-             syllabus_doc["title"] || syllabus_doc["code"],
-             primary_instructor_name(syllabus_doc)
-           ) do
+  defp ensure_report_id(code, syllabus_doc, report_ids) do
+    case Map.get(report_ids, code) do
+      nil ->
+        case GeneratedReport.get_or_create_for_syllabus(
+               syllabus_doc["code"],
+               syllabus_doc["title"] || syllabus_doc["code"],
+               primary_instructor_name(syllabus_doc)
+             ) do
+          {:ok, report} -> {:ok, report["id"], Map.put(report_ids, code, report["id"])}
+          {:error, _} = err -> err
+        end
+
+      report_id ->
+        {:ok, report_id, report_ids}
+    end
+  end
+
+  defp drop_pending(state, code, element_id) do
+    new_pending = MapSet.delete(state.pending, {code, element_id})
+    broadcast_pending_update(code, new_pending)
+
+    new_report_ids =
+      if Enum.any?(new_pending, fn {c, _} -> c == code end) do
+        state.report_ids
+      else
+        Map.delete(state.report_ids, code)
+      end
+
+    %{state | pending: new_pending, report_ids: new_report_ids}
+  end
+
+  defp build_messages_for(syllabus_doc, required_element) do
+    with {:ok, instructions} <- ReportInstruction.list_for_element(required_element["id"]) do
       syllabus_text = extract_syllabus_text(syllabus_doc)
-      messages = build_messages(required_element, instructions, syllabus_text)
-      {:ok, {report["id"], messages}}
+      {:ok, build_messages(required_element, instructions, syllabus_text)}
     end
   end
 

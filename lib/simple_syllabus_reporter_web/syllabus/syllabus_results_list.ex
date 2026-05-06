@@ -1,4 +1,4 @@
-defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusResults do
+defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusResultsList do
   use SimpleSyllabusReporterWeb, :html
 
   attr :syllabi, :list, required: true

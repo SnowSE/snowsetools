@@ -3,9 +3,18 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusDetail do
 
   import Phoenix.HTML, only: [raw: 1]
 
+  alias SimpleSyllabusReporterWeb.Syllabus.RequirementsButtonGroup
+  alias SimpleSyllabusReporterWeb.Syllabus.ReportDetail
+
   attr :selected, :map, required: true
   attr :loading_detail, :boolean, required: true
   attr :detail_error, :any, default: nil
+  attr :elements, :list, required: true
+  attr :loading_elements, :boolean, default: true
+  attr :selected_element_id, :string, default: nil
+  attr :report_items, :map, required: true
+  attr :generating, :any, required: true
+  attr :generation_errors, :map, required: true
 
   def detail_panel(assigns) do
     assigns =
@@ -14,9 +23,9 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusDetail do
     ~H"""
     <div
       id="detail-panel"
-      class="flex flex-col flex-1 min-h-0  overflow-hidden "
+      class="flex flex-col flex-1 min-h-0 overflow-hidden gap-2"
     >
-      <div class="flex items-center gap-3  min-w-0">
+      <div class="flex items-center gap-3 min-w-0 shrink-0">
         <div class="flex-1 flex items-baseline gap-2 min-w-0">
           <h2 class="text-slate-100 font-semibold text-sm truncate shrink-0 max-w-xs">
             {@selected["title"] || @selected["code"] || "Syllabus Details"}
@@ -28,13 +37,6 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusDetail do
             {@doc_data["sub_title"]}
           </span>
         </div>
-        <.link
-          navigate={~p"/syllabi/report?code=#{@selected["code"]}"}
-          class="shrink-0 inline-flex items-center gap-1 text-xs text-slate-400 hover:text-indigo-300 transition-colors"
-          title="Generate compliance report"
-        >
-          <span class="hero-clipboard-document-check size-3.5" /> Report
-        </.link>
         <a
           href={simplesyllabus_url(@selected)}
           target="_blank"
@@ -55,6 +57,14 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusDetail do
         </button>
       </div>
 
+      <RequirementsButtonGroup.requirements_button_group
+        elements={@elements}
+        report_items={@report_items}
+        generating={@generating}
+        selected_element_id={@selected_element_id}
+        loading={@loading_elements}
+      />
+
       <%= if @loading_detail do %>
         <div
           id="detail-loading"
@@ -70,13 +80,22 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusDetail do
         <% else %>
           <div
             id="detail-content"
-            class="pt-2  text-sm text-slate-300 flex-1 overflow-y-auto min-h-0 bg-slate-800/60 rounded-xl p-2"
+            class="flex flex-col flex-1 overflow-y-auto min-h-0 gap-3"
           >
-            <%!-- Instructors --%>
-            <% instructors = instructor_accounts(@doc_data["editors"] || []) %>
-            <%= if instructors != [] do %>
-              <div class="">
-                <div class="flex flex-wrap gap-2">
+            <ReportDetail.report_detail
+              selected_element_id={@selected_element_id}
+              elements={@elements}
+              report_items={@report_items}
+              generating={@generating}
+              generation_errors={@generation_errors}
+              syllabus={@selected}
+              class=""
+            />
+
+            <div class="text-sm text-slate-300 bg-slate-900/70 rounded-xl p-2 shrink-0">
+              <% instructors = instructor_accounts(@doc_data["editors"] || []) %>
+              <%= if instructors != [] do %>
+                <div class="flex flex-wrap gap-2 mb-2">
                   <%= for account <- instructors do %>
                     <span class="inline-flex items-center gap-1.5 bg-slate-700/50 border border-slate-600 text-slate-300 text-xs px-2.5 py-1.5 rounded-lg">
                       <span class="hero-user size-3 opacity-60" />
@@ -84,20 +103,17 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusDetail do
                     </span>
                   <% end %>
                 </div>
-              </div>
-            <% end %>
+              <% end %>
 
-            <%!-- Syllabus sections --%>
-            <% components = Enum.sort_by(@doc_data["components"] || [], & &1["sort_order"]) %>
-            <%= if components != [] do %>
-              <div class="">
+              <% components = Enum.sort_by(@doc_data["components"] || [], & &1["sort_order"]) %>
+              <%= if components != [] do %>
                 <%= for component <- components do %>
                   <div class="syllabus-content">
                     {raw(component["html"])}
                   </div>
                 <% end %>
-              </div>
-            <% end %>
+              <% end %>
+            </div>
           </div>
         <% end %>
       <% end %>
