@@ -35,15 +35,14 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ProfessorSyllabusListItems do
         total_run: total_run,
         total_possible: total_possible,
         any_generating?: any_generating?,
-        has_missing?: total_possible < length(assigns.syllabi) * assigns.total_elements,
+        has_missing?: total_run < total_possible,
         syllabus_codes: Jason.encode!(Enum.map(assigns.syllabi, & &1["code"]))
       )
 
     ~H"""
     <div class="flex flex-col">
-      <button
+      <div
         id={@header_id}
-        type="button"
         data-prof-slug={@prof_slug}
         class="flex items-center gap-2 px-1 pt-3 pb-1 w-full text-left group/prof cursor-pointer"
       >
@@ -76,22 +75,28 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ProfessorSyllabusListItems do
                 style={"width: #{@total_not_met / @total_possible * 100}%"}
               />
             </div>
-            <%= if @has_missing? && !@any_generating? && !@generating_all do %>
-              <button
-                id={"gen-prof-#{@prof_slug}"}
-                type="button"
-                phx-click="generate_missing_for_professor"
-                phx-value-codes={@syllabus_codes}
-                class="hero-play size-3 text-slate-600 hover:text-indigo-400 transition-colors"
-                title="Generate missing reports for #{@professor}"
-              />
-            <% end %>
           </div>
         <% end %>
-      </button>
+      </div>
 
       <div id={@list_id} class="hidden">
         <div class="flex flex-col gap-2 pb-0.5 pe-2 ps-4 py-1">
+          <%= if @has_missing? && !@any_generating? && !@generating_all do %>
+            <button
+              id={"gen-prof-#{@prof_slug}"}
+              type="button"
+              phx-click="generate_missing_for_professor"
+              phx-value-codes={@syllabus_codes}
+              class={["ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-lg self-end",
+                     "text-xs font-medium text-indigo-400 bg-indigo-950/30",
+                     "hover:text-indigo-300 hover:bg-indigo-950/50 active:bg-indigo-950/70",
+                     "transition-all duration-150"
+              ]}
+              title={"Generate missing reports for #{@professor}"}
+            >
+              <span class="hero-play size-3" /> Generate missing
+            </button>
+          <% end %>
           <%= for doc <- Enum.sort_by(@syllabi, &(&1["title"] || &1["course_name"] || "")) do %>
             <% selected? = @selected && @selected["code"] == doc["code"] %>
             <div

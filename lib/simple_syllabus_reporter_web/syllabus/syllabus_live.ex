@@ -94,7 +94,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
       <div
         id="syllabus-page"
         phx-hook=".SyllabusState"
-        class="flex flex-col h-full min-h-0 max-w-5xl mx-auto w-full p-4"
+        class="flex flex-col h-full min-h-0 max-w-[2000px] mx-auto w-full p-4"
       >
         <SyllabusSearchForm.search_form
           query={@query}
