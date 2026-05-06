@@ -19,23 +19,18 @@ defmodule SimpleSyllabusReporterWeb.AI.QueueStatusLive do
 
   def render(assigns) do
     ~H"""
-    <div
-      id="queue-status-widget"
-      class="fixed top-0 left-1/2 -translate-x-1/2 h-14 flex items-center pointer-events-none z-50"
-    >
+    <div id="queue-status-widget" class="flex items-center gap-2 px-3 py-1 text-xs text-slate-300">
       <%= if @in_flight > 0 || @queued > 0 do %>
-        <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/90 border border-slate-700/60 backdrop-blur-sm shadow-lg text-xs text-slate-300">
-          <span class="size-1.5 rounded-full bg-indigo-400 animate-pulse shrink-0" />
-          <%= if @in_flight > 0 do %>
-            <span>{@in_flight} generating</span>
-          <% end %>
-          <%= if @in_flight > 0 && @queued > 0 do %>
-            <span class="text-slate-600">·</span>
-          <% end %>
-          <%= if @queued > 0 do %>
-            <span class="text-slate-400">{@queued} queued</span>
-          <% end %>
-        </div>
+        <span class="size-1.5 rounded-full bg-indigo-400 animate-pulse shrink-0" />
+        <%= if @in_flight > 0 do %>
+          <span>{@in_flight} generating</span>
+        <% end %>
+        <%= if @in_flight > 0 && @queued > 0 do %>
+          <span class="text-slate-600">·</span>
+        <% end %>
+        <%= if @queued > 0 do %>
+          <span class="text-slate-400">{@queued} queued</span>
+        <% end %>
       <% end %>
     </div>
     """

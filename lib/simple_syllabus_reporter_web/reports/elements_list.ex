@@ -6,7 +6,7 @@ defmodule SimpleSyllabusReporterWeb.Reports.ElementsList do
 
   def elements_list(assigns) do
     ~H"""
-    <div class="w-64 shrink-0 space-y-2 sticky top-8">
+    <div class="w-64 shrink-0 overflow-y-auto h-full space-y-2 pr-1">
       <div
         :if={@elements == []}
         id="elements-empty"

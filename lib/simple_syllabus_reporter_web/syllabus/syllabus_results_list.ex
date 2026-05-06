@@ -13,28 +13,26 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusResultsList do
   attr :generating_all, :boolean, required: true
 
   def results_list(assigns) do
+    total_generated =
+      assigns.report_counts
+      |> Map.values()
+      |> Enum.flat_map(&Map.values/1)
+      |> Enum.sum()
+
+    total_possible = assigns.syllabi_count * assigns.total_elements
+
+    assigns =
+      assign(assigns,
+        total_generated: total_generated,
+        total_possible: total_possible
+      )
+
     ~H"""
     <div class={[
       "flex flex-col min-h-0 flex-1",
       @selected && "hidden sm:flex sm:w-64 sm:flex-none"
     ]}>
-      <%!-- Generate All Missing button --%>
       <%= if not @syllabi_empty? && @total_elements > 0 && !@loading_search do %>
-        <% total_generated =
-          @report_counts
-          |> Map.values()
-          |> Enum.flat_map(&Map.values/1)
-          |> Enum.sum() %>
-        <% total_possible = @syllabi_count * @total_elements %>
-        <div id="report-summary" class="mb-2 shrink-0 flex items-center justify-between px-1">
-          <span class="text-xs text-slate-400">
-            <span class="font-semibold text-slate-200">{total_generated}</span>
-            / {total_possible} reports generated
-          </span>
-          <%= if total_generated == total_possible && total_possible > 0 do %>
-            <span class="text-xs text-green-400 font-medium">All complete</span>
-          <% end %>
-        </div>
         <div class="mb-3 shrink-0">
           <button
             id="generate-all-btn"
@@ -42,7 +40,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusResultsList do
             phx-click="generate_all_missing"
             disabled={@generating_all}
             class={[
-              "w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all",
+              "w-full flex flex-col gap-1 px-4 py-2 rounded-lg text-sm font-medium border transition-all",
               if(@generating_all,
                 do: "bg-slate-800/60 border-slate-700 text-slate-500 cursor-not-allowed",
                 else:
@@ -50,11 +48,22 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusResultsList do
               )
             ]}
           >
-            <%= if @generating_all do %>
-              <span class="hero-arrow-path size-4 animate-spin" /> Generating missing reports…
-            <% else %>
-              <span class="hero-sparkles size-4" /> Generate all missing reports
-            <% end %>
+            <div class="flex items-center justify-center gap-2">
+              <%= if @generating_all do %>
+                <span class="hero-arrow-path size-4 animate-spin" /> Generating missing reports…
+              <% else %>
+                <span class="hero-sparkles size-4" /> Generate all missing reports
+              <% end %>
+            </div>
+            <div id="report-summary" class="w-full mt-1.5 flex items-center justify-between">
+              <span class="text-xs text-slate-400">
+                <span class="font-semibold text-slate-200">{@total_generated}</span>
+                / {@total_possible} reports generated
+              </span>
+              <%= if @total_generated == @total_possible && @total_possible > 0 do %>
+                <span class="text-xs text-green-400 font-medium">All complete</span>
+              <% end %>
+            </div>
           </button>
         </div>
       <% end %>
@@ -79,13 +88,19 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusResultsList do
           phx-value-title={doc["title"] || doc["course_name"] || "Untitled"}
           phx-value-term={doc["term_name"] || ""}
           class={[
-            "group flex flex-col gap-0.5 px-4 py-3 rounded-lg cursor-pointer border transition-all mb-2",
-            "bg-slate-800/60 border-slate-700 hover:bg-slate-800 hover:border-indigo-500",
-            @selected && @selected["code"] == doc["code"] &&
-              "border-purple-400/70 bg-slate-800 ring-1 ring-purple-400/30"
+            "group flex flex-col gap-0.5 px-4 py-3 rounded-lg cursor-pointer border transition-all mb-2 relative",
+            if(@selected && @selected["code"] == doc["code"],
+              do: "bg-indigo-950/30 border-indigo-500/40 ",
+              else: "bg-slate-800/60 border-slate-700 hover:bg-slate-900 hover:border-indigo-500/50"
+            )
           ]}
         >
-          <span class="text-slate-100 text-sm font-medium leading-snug group-hover:text-white transition-colors">
+          <% selected? = @selected && @selected["code"] == doc["code"] %>
+
+          <span class={[
+            "text-sm font-medium leading-snug transition-colors",
+            if(selected?, do: "text-indigo-100", else: "text-slate-100 group-hover:text-indigo-100")
+          ]}>
             {doc["title"] || doc["course_name"] || "Untitled"}
           </span>
           <div class="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">

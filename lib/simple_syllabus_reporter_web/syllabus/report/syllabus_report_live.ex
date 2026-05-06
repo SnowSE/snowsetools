@@ -7,6 +7,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
   alias SimpleSyllabusReporter.Reports.GeneratedReportItem
   alias SimpleSyllabusReporter.Reports.ReportGenerator
   alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
+  alias SimpleSyllabusReporterWeb.Syllabus.ReportCorrection
   alias SimpleSyllabusReporterWeb.Syllabus.ReportDetail
   alias SimpleSyllabusReporterWeb.Syllabus.RequirementsButtonGroup
 
@@ -26,6 +27,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
      |> assign(:report_items, %{})
      |> assign(:generating, MapSet.new())
      |> assign(:generation_errors, %{})
+     |> assign(:correcting_element_id, nil)
      |> start_async(:fetch_elements, fn -> RequiredElement.list_all() end)}
   end
 
@@ -55,6 +57,18 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
 
   def handle_event("select_element", %{"id" => id}, socket) do
     {:noreply, assign(socket, :selected_element_id, id)}
+  end
+
+  def handle_event("open_correction", %{"id" => element_id}, socket) do
+    {:noreply, assign(socket, :correcting_element_id, element_id)}
+  end
+
+  def handle_event("cancel_correction", _params, socket) do
+    {:noreply, assign(socket, :correcting_element_id, nil)}
+  end
+
+  def handle_event("save_correction", params, socket) do
+    ReportCorrection.handle_save_correction(params, socket, socket.assigns.syllabus)
   end
 
   def handle_event("generate_report", %{"id" => element_id}, socket) do
@@ -141,7 +155,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} socket={@socket}>
       <div class="flex flex-col h-full min-h-0 gap-2 p-4 max-w-7xl mx-auto w-full">
         <div class="flex items-center gap-3">
           <.link
@@ -199,6 +213,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
             generating={@generating}
             generation_errors={@generation_errors}
             syllabus={@syllabus}
+            correcting_element_id={@correcting_element_id}
           />
         </div>
       </div>

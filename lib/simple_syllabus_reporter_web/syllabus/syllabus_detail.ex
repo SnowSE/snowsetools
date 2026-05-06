@@ -15,6 +15,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusDetail do
   attr :report_items, :map, required: true
   attr :generating, :any, required: true
   attr :generation_errors, :map, required: true
+  attr :correcting_element_id, :string, default: nil
 
   def detail_panel(assigns) do
     assigns =
@@ -46,6 +47,27 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusDetail do
         >
           <span class="hero-arrow-top-right-on-square size-3.5" /> View
         </a>
+        <% missing_count = Enum.count(@elements, fn e -> not Map.has_key?(@report_items, e["id"]) end) %>
+        <button
+          id="generate-missing-selected-btn"
+          type="button"
+          phx-click="generate_missing_for_selected"
+          disabled={
+            @loading_elements or @loading_detail or missing_count == 0 or MapSet.size(@generating) > 0
+          }
+          class={[
+            "shrink-0 inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer",
+            missing_count > 0 && "bg-indigo-950/50 py-1 px-2 rounded"
+          ]}
+          title="Generate missing reports for this syllabus"
+        >
+          <span class="hero-sparkles size-3.5" />
+          <%= if missing_count > 0 do %>
+            Generate {missing_count} missing
+          <% else %>
+            All generated
+          <% end %>
+        </button>
         <button
           id="close-detail-btn"
           type="button"
@@ -89,6 +111,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusDetail do
               generating={@generating}
               generation_errors={@generation_errors}
               syllabus={@selected}
+              correcting_element_id={@correcting_element_id}
               class=""
             />
 

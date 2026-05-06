@@ -15,7 +15,7 @@ defmodule SimpleSyllabusReporterWeb.Reports.ElementDetail do
 
   def element_detail(assigns) do
     ~H"""
-    <div class="w-0 flex-1">
+    <div class="w-0 flex-1 overflow-y-auto h-full">
       <%= cond do %>
         <% @editing != nil -> %>
           <.element_form editing={@editing} form_errors={@form_errors} />

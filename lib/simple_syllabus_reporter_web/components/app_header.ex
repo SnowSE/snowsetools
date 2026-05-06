@@ -2,18 +2,23 @@ defmodule SimpleSyllabusReporterWeb.AppHeader do
   use SimpleSyllabusReporterWeb, :html
 
   attr :current_user, :map, default: nil
+  slot :center
 
   def header(assigns) do
     ~H"""
-    <header class="shrink-0 flex items-center justify-between px-3 h-10 border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm">
-      <.link
-        navigate={~p"/"}
-        class="text-sm font-semibold text-slate-200 hover:text-white transition-colors"
-      >
-        Simple Syllabus Reporter
-      </.link>
+    <header class="shrink-0 flex justify-between px-3 h-10 border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm">
+      <div class="flex items-center">
+        <.link
+          navigate={~p"/"}
+          class="text-sm font-semibold text-slate-200 hover:text-white transition-colors"
+        >
+          Simple Syllabus Reporter
+        </.link>
+      </div>
 
-      <nav class="flex items-center gap-2">
+      {render_slot(@center)}
+
+      <nav class="flex items-center gap-2 justify-end">
         <%= if @current_user do %>
           <.link
             navigate={~p"/syllabi"}

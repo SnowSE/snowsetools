@@ -201,15 +201,11 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_user={@current_user}>
+    <Layouts.app flash={@flash} current_user={@current_user} socket={@socket}>
       <div class="w-6xl mx-auto px-4 py-8">
-        <%!-- Header --%>
         <div class="flex items-center justify-between mb-6">
           <div>
             <h1 class="text-xl font-semibold text-slate-100">Required Elements</h1>
-            <p class="mt-0.5 text-sm text-slate-400">
-              Define which components every syllabus must contain for reporting.
-            </p>
           </div>
           <button
             id="new-element-btn"
@@ -221,9 +217,8 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
           </button>
         </div>
 
-        <%!-- Master-detail layout --%>
         <% selected = Enum.find(@elements, &(&1["id"] == @expanded_id)) %>
-        <div class="flex gap-5 items-start">
+        <div class="flex gap-5 items-start h-[calc(100vh-10rem)] min-h-0">
           <.elements_list elements={@elements} expanded_id={@expanded_id} />
           <.element_detail
             selected={selected}

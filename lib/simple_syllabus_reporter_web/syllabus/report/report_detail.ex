@@ -1,6 +1,8 @@
 defmodule SimpleSyllabusReporterWeb.Syllabus.ReportDetail do
   use SimpleSyllabusReporterWeb, :html
 
+  alias SimpleSyllabusReporterWeb.Syllabus.ReportCorrection
+
   attr :selected_element_id, :string, default: nil
   attr :elements, :list, required: true
   attr :report_items, :map, required: true
@@ -8,6 +10,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportDetail do
   attr :generation_errors, :map, required: true
   attr :syllabus, :map, default: nil
   attr :class, :string, default: "flex-1 min-w-0 overflow-y-auto"
+  attr :correcting_element_id, :string, default: nil
 
   def report_detail(assigns) do
     ~H"""
@@ -108,6 +111,16 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportDetail do
                   </div>
                 <% end %>
               </div>
+
+              <ReportCorrection.correction_panel
+                element_id={element["id"]}
+                finding={item["description"]}
+                evidence={item["evidence"] || ""}
+                considerations={item["additional_considerations"] || ""}
+                status={item["status"]}
+                syllabus={@syllabus}
+                open={@correcting_element_id == element["id"]}
+              />
             <% end %>
 
             <%= if generating? && is_nil(item) do %>
