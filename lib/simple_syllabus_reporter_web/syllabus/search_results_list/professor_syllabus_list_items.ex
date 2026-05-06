@@ -108,9 +108,9 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ProfessorSyllabusListItems do
               class={[
                 "group flex flex-col gap-0.5 p-2 rounded-lg cursor-pointer border transition-all relative",
                 if(selected?,
-                  do: "bg-indigo-950/30 border-indigo-500/40",
+                  do: "bg-indigo-950/40 border-indigo-500/40",
                   else:
-                    "bg-slate-800/60 border-slate-700 hover:bg-slate-900 hover:border-indigo-500/50"
+                    "bg-slate-800/40 border-slate-800 hover:bg-slate-900 hover:border-indigo-500/50"
                 )
               ]}
             >
