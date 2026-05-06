@@ -51,6 +51,46 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportHandlers do
      |> assign(:generation_errors, Map.delete(socket.assigns.generation_errors, element_id))}
   end
 
+  def handle_event("generate_missing_for_professor", %{"codes" => codes_json}, socket) do
+    elements = socket.assigns.elements
+    report_counts = socket.assigns.report_counts
+    total = socket.assigns.total_elements
+
+    codes =
+      case Jason.decode(codes_json) do
+        {:ok, list} -> list
+        _ -> []
+      end
+
+    codes_with_missing =
+      Enum.filter(codes, fn code ->
+        counts = Map.get(report_counts, code, %{})
+
+        run =
+          Map.get(counts, "met", 0) + Map.get(counts, "not_met", 0) +
+            Map.get(counts, "partially_met", 0)
+
+        run < total
+      end)
+
+    for code <- codes_with_missing do
+      Task.start(fn ->
+        case SimpleSyllabusApi.get_syllabus_details(code) do
+          {:ok, full_doc} ->
+            existing_ids = existing_element_ids_for_code(code)
+            missing = Enum.reject(elements, fn e -> MapSet.member?(existing_ids, e["id"]) end)
+
+            Enum.each(missing, fn element -> ReportGenerator.generate_async(full_doc, element) end)
+
+          {:error, _} ->
+            :ok
+        end
+      end)
+    end
+
+    {:noreply, socket}
+  end
+
   def handle_event("generate_all_missing", _params, socket) do
     elements = socket.assigns.elements
     syllabi_docs = socket.assigns.syllabi_docs

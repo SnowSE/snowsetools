@@ -7,6 +7,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ProfessorSyllabusListItems do
   attr :total_elements, :integer, required: true
   attr :report_counts, :map, required: true
   attr :generating_per_code, :map, required: true
+  attr :generating_all, :boolean, default: false
 
   def professor_syllabi_items(assigns) do
     prof_slug = professor_slug(assigns.professor)
@@ -33,7 +34,9 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ProfessorSyllabusListItems do
         total_not_met: total_not_met,
         total_run: total_run,
         total_possible: total_possible,
-        any_generating?: any_generating?
+        any_generating?: any_generating?,
+        has_missing?: total_possible < length(assigns.syllabi) * assigns.total_elements,
+        syllabus_codes: Jason.encode!(Enum.map(assigns.syllabi, & &1["code"]))
       )
 
     ~H"""
@@ -73,6 +76,16 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ProfessorSyllabusListItems do
                 style={"width: #{@total_not_met / @total_possible * 100}%"}
               />
             </div>
+            <%= if @has_missing? && !@any_generating? && !@generating_all do %>
+              <button
+                id={"gen-prof-#{@prof_slug}"}
+                type="button"
+                phx-click="generate_missing_for_professor"
+                phx-value-codes={@syllabus_codes}
+                class="hero-play size-3 text-slate-600 hover:text-indigo-400 transition-colors"
+                title="Generate missing reports for #{@professor}"
+              />
+            <% end %>
           </div>
         <% end %>
       </button>

@@ -88,6 +88,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList do
             total_elements={@total_elements}
             report_counts={@report_counts}
             generating_per_code={@generating_per_code}
+            generating_all={@generating_all}
           />
         <% end %>
       </div>

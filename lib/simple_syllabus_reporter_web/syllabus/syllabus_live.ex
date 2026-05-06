@@ -58,6 +58,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
     generate_report
     generate_missing_for_selected
     generate_all_missing
+    generate_missing_for_professor
   ]
 
   def handle_event(event, params, socket) when event in @search_events do
