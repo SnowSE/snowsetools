@@ -4,6 +4,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
   alias SimpleSyllabusReporterWeb.Syllabus.SearchHandlers
   alias SimpleSyllabusReporterWeb.Syllabus.ReportHandlers
   alias SimpleSyllabusReporterWeb.Syllabus.SyllabusDetail
+  alias SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchForm
   alias SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList
 
   on_mount {SimpleSyllabusReporterWeb.UserAuth, :ensure_authenticated}
@@ -23,7 +24,18 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
       |> assign(:syllabi_empty?, true)
       |> assign(:syllabi_docs, %{})
       |> assign(:report_counts, %{})
+      |> assign(:departments, [])
+      |> assign(:org_id, nil)
       |> ReportHandlers.mount_assigns()
+
+    socket =
+      if connected?(socket) do
+        start_async(socket, :fetch_departments, fn ->
+          SimpleSyllabusReporter.SimpleSyllabusApi.get_departments()
+        end)
+      else
+        socket
+      end
 
     {:ok, socket}
   end
@@ -57,7 +69,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
   end
 
   def handle_async(task, result, socket)
-      when task in [:search, :fetch_detail, :fetch_report_counts] do
+      when task in [:search, :fetch_detail, :fetch_report_counts, :fetch_departments] do
     SearchHandlers.handle_async(task, result, socket)
   end
 
@@ -83,29 +95,11 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
         phx-hook=".SyllabusState"
         class="flex flex-col h-full min-h-0 max-w-5xl mx-auto w-full p-4"
       >
-        <form id="syllabus-search-form" phx-submit="search" class="flex gap-3 pb-3">
-          <input
-            id="search-query-input"
-            type="text"
-            name="query"
-            value={@query}
-            placeholder="instructor name, coure code, instructor email, department"
-            class="flex-1 bg-slate-800 border border-slate-700 text-slate-100 placeholder-slate-500 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-            autofocus
-          />
-          <button
-            type="submit"
-            id="search-submit-btn"
-            disabled={@loading_search}
-            class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
-          >
-            <%= if @loading_search do %>
-              Searching…
-            <% else %>
-              Search
-            <% end %>
-          </button>
-        </form>
+        <SyllabusSearchForm.search_form
+          query={@query}
+          loading_search={@loading_search}
+          departments={@departments}
+        />
 
         <%= if @search_error do %>
           <div

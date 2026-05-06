@@ -32,6 +32,8 @@ defmodule SimpleSyllabusReporterWeb.Router do
     live "/syllabi/report", Syllabus.SyllabusReportLive
     live "/reports/required-elements", Reports.RequiredElementsLive
     live "/ai/completions", AI.CompletionsHistoryLive
+
+    post "/cache/clear", CacheController, :clear
   end
 
   scope "/auth", SimpleSyllabusReporterWeb do

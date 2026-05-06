@@ -220,6 +220,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
 
           <mandatory_evaluation_rules>
           The following rules MUST be applied when evaluating this element. They take precedence over your general judgment. If any rule conflicts with a standard finding, follow the rule.
+          When a rule includes an example referencing a specific course, that example illustrates the pattern — the rule applies equally to ALL courses, including the one you are evaluating now. Never treat a course-specific example as evidence that the rule is limited to that course.
           #{lines}
           </mandatory_evaluation_rules>
           """

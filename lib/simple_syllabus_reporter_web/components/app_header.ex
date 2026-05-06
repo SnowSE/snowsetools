@@ -39,6 +39,16 @@ defmodule SimpleSyllabusReporterWeb.AppHeader do
           >
             AI History
           </.link>
+          <form action={~p"/cache/clear"} method="post" class="flex items-center">
+            <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+            <button
+              type="submit"
+              class="rounded-lg px-3 py-1.5 text-sm text-slate-400 hover:bg-slate-800 hover:text-amber-300 transition-all"
+              title="Clear all cached data"
+            >
+              <.icon name="hero-arrow-path" class="size-4" />
+            </button>
+          </form>
           <span class="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-300">
             <.icon name="hero-user-circle" class="size-4" />
             {@current_user.email}
@@ -66,9 +76,9 @@ defmodule SimpleSyllabusReporterWeb.AppHeader do
     active = is_binary(current_path) and String.starts_with?(current_path, path)
 
     [
-      "rounded-lg px-3 py-1.5 text-sm transition-all",
+      " px-3 py-1.5 transition-all",
       if(active,
-        do: "bg-purple-900/50 text-purple-300 font-medium",
+        do: "text-purple-300 border-purple-500 border-b-2",
         else: "text-slate-400 hover:bg-slate-800 hover:text-white"
       )
     ]

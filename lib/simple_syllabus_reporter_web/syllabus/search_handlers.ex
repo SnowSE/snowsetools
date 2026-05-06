@@ -10,6 +10,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
   alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
 
   def handle_params(%{"q" => query} = params, socket) when byte_size(query) > 0 do
+    org_id = params["org_id"]
     code = params["code"]
     title = params["title"]
     term = params["term"] || ""
@@ -20,14 +21,15 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
     code_changed? = code != prev_code
 
     socket =
-      if query_changed? do
+      if query_changed? and is_binary(org_id) do
         socket
         |> assign(:query, query)
+        |> assign(:org_id, org_id)
         |> assign(:loading_search, true)
         |> assign(:search_error, nil)
         |> stream(:syllabi, [], reset: true)
         |> assign(:syllabi_empty?, true)
-        |> start_async(:search, fn -> SimpleSyllabusApi.search_syllabi(query) end)
+        |> start_async(:search, fn -> SimpleSyllabusApi.search_syllabi(org_id) end)
       else
         socket
       end
@@ -49,7 +51,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
           })
           |> assign(:selected_element_id, nil)
           |> assign(:report_items, %{})
-          |> assign(:generating, MapSet.new())
+          |> assign(:generating, Map.get(socket.assigns.generating_per_code, code, MapSet.new()))
           |> assign(:generation_errors, %{})
           |> start_async(:fetch_detail, fn -> SimpleSyllabusApi.get_syllabus_details(code) end)
           |> start_async(:fetch_existing_items, fn -> existing_items_for_code(code) end)
@@ -68,22 +70,32 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
       end
 
     {:noreply,
-     push_event(socket, "save_state", %{query: query, code: code, title: title, term: term})}
+     push_event(socket, "save_state", %{
+       query: query,
+       org_id: org_id,
+       code: code,
+       title: title,
+       term: term
+     })}
   end
 
   def handle_params(_params, socket) do
     {:noreply, socket}
   end
 
-  def handle_event("restore_state", %{"query" => query} = params, socket)
+  def handle_event(
+        "restore_state",
+        %{"query" => query, "org_id" => org_id} = params,
+        socket
+      )
       when is_binary(query) and byte_size(query) > 0 do
     to =
       case params do
         %{"code" => code, "title" => title, "term" => term} when is_binary(code) ->
-          ~p"/syllabi?q=#{query}&code=#{code}&title=#{title}&term=#{term}"
+          ~p"/syllabi?q=#{query}&org_id=#{org_id}&code=#{code}&title=#{title}&term=#{term}"
 
         _ ->
-          ~p"/syllabi?q=#{query}"
+          ~p"/syllabi?q=#{query}&org_id=#{org_id}"
       end
 
     {:noreply, push_patch(socket, to: to)}
@@ -94,18 +106,34 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
   end
 
   def handle_event("search", %{"query" => query}, socket) do
-    {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}")}
+    case find_department(socket.assigns.departments, query) do
+      %{"entity_id" => org_id} ->
+        {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}&org_id=#{org_id}")}
+
+      nil ->
+        {:noreply, assign(socket, :search_error, "Please select a department from the list")}
+    end
   end
 
   def handle_event("select", %{"code" => code, "title" => title, "term" => term}, socket) do
-    {:noreply,
-     push_patch(socket,
-       to: ~p"/syllabi?q=#{socket.assigns.query}&code=#{code}&title=#{title}&term=#{term}"
-     )}
+    params = %{
+      "q" => socket.assigns.query,
+      "org_id" => socket.assigns.org_id,
+      "code" => code,
+      "title" => title,
+      "term" => term
+    }
+
+    {:noreply, push_patch(socket, to: ~p"/syllabi?#{params}")}
   end
 
   def handle_event("close_detail", _params, socket) do
-    {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{socket.assigns.query}")}
+    params = %{"q" => socket.assigns.query, "org_id" => socket.assigns.org_id}
+    {:noreply, push_patch(socket, to: ~p"/syllabi?#{params}")}
+  end
+
+  defp find_department(departments, name) do
+    Enum.find(departments, &(String.downcase(&1["name"]) == String.downcase(name)))
   end
 
   def handle_async(:search, {:ok, {:ok, %{items: docs}}}, socket) do
@@ -185,6 +213,14 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
   end
 
   def handle_async(:fetch_report_counts, _result, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_async(:fetch_departments, {:ok, {:ok, departments}}, socket) do
+    {:noreply, assign(socket, :departments, departments)}
+  end
+
+  def handle_async(:fetch_departments, _result, socket) do
     {:noreply, socket}
   end
 

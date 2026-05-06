@@ -6,127 +6,80 @@ defmodule SimpleSyllabusReporter.SimpleSyllabusApi do
 
   @base_url "https://snow.simplesyllabus.com/api2"
 
-  @doc """
-  Searches for syllabi by a free-text query, fanning out to multiple API filter
-  strategies simultaneously (instructor name, course title, course number) and
-  merging the deduplicated results.
-
-  Returns `{:ok, %{items: [...], pagination: %{total: n}}}` or `{:error, reason}`.
-  """
-  def search_syllabi(query) when is_binary(query) do
-    fetch_syllabi_multi(query |> String.trim() |> String.downcase())
+  def search_syllabi(org_id) when is_binary(org_id) do
+    fetch_syllabi_by_org(org_id)
   end
 
-  defp build_filter_sets(query) do
-    base = [
-      %{"editor" => query},
-      %{"search" => query}
-    ]
+  ttl_cache def fetch_syllabi_by_org(org_id) do
+    case fetch_syllabi_page(org_id, 0) do
+      {:ok, %{"items" => first_page_raw, "pagination" => pagination}} ->
+        %{"total" => total, "returned" => returned, "page_size" => page_size} = pagination
 
-    # If the query is a pure integer, also search by course number
-    case Integer.parse(String.trim(query)) do
-      {n, ""} -> [%{"course_number" => n} | base]
-      _ -> base
+        remaining_pages =
+          if total > returned do
+            last_page = ceil(total / page_size) - 1
+
+            1..last_page
+            |> Task.async_stream(
+              fn page -> fetch_syllabi_page(org_id, page) end,
+              timeout: 15_000,
+              on_timeout: :kill_task
+            )
+            |> Enum.flat_map(fn
+              {:ok, {:ok, %{"items" => items}}} ->
+                items
+
+              {:ok, {:error, reason}} ->
+                Logger.warning(
+                  "fetch_syllabi_by_org page error org_id=#{org_id} reason=#{inspect(reason)}"
+                )
+
+                []
+
+              {:exit, reason} ->
+                Logger.warning(
+                  "fetch_syllabi_by_org page exit org_id=#{org_id} reason=#{inspect(reason)}"
+                )
+
+                []
+            end)
+          else
+            []
+          end
+
+        all_raw = first_page_raw ++ remaining_pages
+
+        Logger.info(
+          "fetch_syllabi_by_org org_id=#{org_id} total=#{total} fetched=#{length(all_raw)}"
+        )
+
+        {:ok, docs} = SyllabusSchemas.parse_list(all_raw)
+        {:ok, %{items: docs, pagination: pagination}}
+
+      {:error, _} = err ->
+        err
     end
   end
 
-  ttl_cache def fetch_syllabi_multi(normalized_query) do
-    all_items =
-      normalized_query
-      |> build_filter_sets()
-      |> Task.async_stream(
-        fn filters ->
-          fetch_syllabi(normalize_filters(filters))
-        end,
-        timeout: 15_000,
-        on_timeout: :kill_task
-      )
-      |> Enum.flat_map(fn
-        {:ok, {:ok, %{items: items}}} ->
-          items
-
-        {:ok, {:error, reason}} ->
-          Logger.warning("search_syllabi partial error reason=#{inspect(reason)}")
-          []
-
-        {:exit, reason} ->
-          Logger.warning("search_syllabi task exit reason=#{inspect(reason)}")
-          []
-      end)
-
-    # Deduplicate by "code", preserving first-seen order
-    {deduplicated, _} =
-      Enum.reduce(all_items, {[], MapSet.new()}, fn doc, {acc, seen} ->
-        code = doc["code"]
-
-        if MapSet.member?(seen, code) do
-          {acc, seen}
-        else
-          {[doc | acc], MapSet.put(seen, code)}
-        end
-      end)
-
-    deduplicated = Enum.reverse(deduplicated)
-
-    Logger.info(
-      "search_syllabi query=#{inspect(normalized_query)} raw=#{length(all_items)} deduped=#{length(deduplicated)}"
-    )
-
-    {:ok, %{items: deduplicated, pagination: %{"total" => length(deduplicated)}}}
-  end
-
-  defp normalize_filters(filters) do
-    filters
-    |> Enum.map(fn {k, v} -> {to_string(k), v} end)
-    |> Enum.reject(fn {_k, v} -> v == nil or v == "" or v == [] end)
-    |> Enum.sort()
-  end
-
-  ttl_cache def fetch_syllabi(normalized_filters) do
+  defp fetch_syllabi_page(org_id, page) do
     url = "#{@base_url}/doc-library-search"
 
-    params =
-      Enum.flat_map(normalized_filters, fn
-        {"term_statuses", statuses} when is_list(statuses) ->
-          Enum.map(statuses, fn s -> {"term_statuses[]", s} end)
-
-        {"term_statuses", status} ->
-          [{"term_statuses[]", status}]
-
-        {k, v} ->
-          [{k, v}]
-      end)
-
-    # Default to future terms if not specified
-    params =
-      if Enum.any?(params, fn {k, _} -> k == "term_statuses[]" end),
-        do: params,
-        else: params ++ [{"term_statuses[]", "future"}]
-
-    case Req.get(url, params: params, receive_timeout: 10_000) do
+    case Req.get(url,
+           params: [organization_id: org_id, page: page, "term_statuses[]": "future"],
+           receive_timeout: 10_000
+         ) do
       {:ok, %Req.Response{status: 200, body: body}} ->
-        raw_docs = Map.get(body, "items", [])
-        pagination = Map.get(body, "pagination", %{})
-
-        Logger.info(
-          "search_syllabi filters=#{inspect(normalized_filters)} count=#{length(raw_docs)} total=#{pagination["total"]}"
-        )
-
-        {:ok, docs} = SyllabusSchemas.parse_list(raw_docs)
-        {:ok, %{items: docs, pagination: pagination}}
+        {:ok, body}
 
       {:ok, %Req.Response{status: status, body: body}} ->
         Logger.warning(
-          "search_syllabi filters=#{inspect(normalized_filters)} status=#{status} body=#{inspect(body)}"
+          "fetch_syllabi_page org_id=#{org_id} page=#{page} status=#{status} body=#{inspect(body)}"
         )
 
         {:error, "Unexpected status #{status}"}
 
       {:error, reason} ->
-        Logger.error(
-          "search_syllabi filters=#{inspect(normalized_filters)} error=#{inspect(reason)}"
-        )
-
+        Logger.error("fetch_syllabi_page org_id=#{org_id} page=#{page} error=#{inspect(reason)}")
         {:error, inspect(reason)}
     end
   end
@@ -177,10 +130,6 @@ defmodule SimpleSyllabusReporter.SimpleSyllabusApi do
     Map.put(doc_data, "components", components)
   end
 
-  # ---------------------------------------------------------------------------
-  # Organizations
-  # ---------------------------------------------------------------------------
-
   @organization_schema Zoi.object(%{
                          "entity_id" => Zoi.string(),
                          "name" => Zoi.string(),
@@ -195,16 +144,21 @@ defmodule SimpleSyllabusReporter.SimpleSyllabusApi do
                          "name_locale" => Zoi.string()
                        })
 
-  @doc """
-  Returns `{:ok, [org]}` where each org is a validated map with:
-    - `"entity_id"`, `"name"`, `"level"` (1–3)
-    - `"parent_id"` / `"parent_level"` (nil for root)
-    - `"entity_type"` (`"organization1"` | `"organization2"` | `"organization3"`)
-    - `"is_active"`, `"is_self_active"`, `"is_parent_active"`
-    - `"locale"`, `"name_locale"`
+  def get_departments do
+    case get_organizations() do
+      {:ok, orgs} ->
+        departments =
+          orgs
+          |> Enum.filter(&(&1["is_self_active"] && &1["level"] >= 2))
+          |> Enum.sort_by(&{&1["level"], &1["name"]})
 
-  Results are cached for 6 hours.
-  """
+        {:ok, departments}
+
+      {:error, _} = err ->
+        err
+    end
+  end
+
   ttl_cache def get_organizations do
     url = "#{@base_url}/app-state"
 
