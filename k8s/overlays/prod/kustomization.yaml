@@ -14,7 +14,7 @@ patches:
         template:
           spec:
             containers:
-              - name: app
+              - name: webapp
                 env:
                   - name: PHX_HOST
                     value: "simplesyllabuscheck.snowse.io"
