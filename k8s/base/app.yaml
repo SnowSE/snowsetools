@@ -16,7 +16,7 @@ metadata:
   name: simple-syllabus-reporter
   namespace: simple-syllabus
   annotations:
-    argocd-image-updater.argoproj.io/image-list: app=ghcr.io/alexmickelson/simple-syllabus-reporter
+    argocd-image-updater.argoproj.io/image-list: app=ghcr.io/alexmickelson/simpleSyllabusReporter
     argocd-image-updater.argoproj.io/app.update-strategy: latest
     argocd-image-updater.argoproj.io/write-back-method: git
 spec:
@@ -31,7 +31,7 @@ spec:
     spec:
       containers:
         - name: app
-          image: ghcr.io/alexmickelson/simple-syllabus-reporter:latest
+          image: ghcr.io/alexmickelson/simpleSyllabusReporter:latest
           ports:
             - containerPort: 4000
           envFrom:
