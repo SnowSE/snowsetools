@@ -15,5 +15,5 @@ spec:
             type: PathPrefix
             value: /
       backendRefs:
-        - name: app
+        - name: webapp
           port: 4000
