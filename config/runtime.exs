@@ -45,6 +45,5 @@ if config_env() == :prod do
 
   config :simple_syllabus_reporter, SimpleSyllabusReporterWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
-    http: [ip: {0, 0, 0, 0, 0, 0, 0, 0}],
     secret_key_base: secret_key_base
 end
