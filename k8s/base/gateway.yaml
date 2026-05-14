@@ -1,31 +1,12 @@
 apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
-metadata:
-  name: simple-syllabus
-  namespace: simple-syllabus
-spec:
-  gatewayClassName: changed by kustomize
-  listeners:
-    - name: https
-      protocol: HTTPS
-      port: 443
-      tls:
-        mode: Terminate
-        certificateRefs:
-          - kind: Secret
-            name: tls-cert
-      allowedRoutes:
-        namespaces:
-          from: Same
----
-apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: simple-syllabus
   namespace: simple-syllabus
 spec:
   parentRefs:
-    - name: simple-syllabus
+    - name: changed by kustomize
+      namespace: istio-system
   hostnames:
     - "changed by kustomize"
   rules:
