@@ -13,6 +13,6 @@ resources:
 configMapGenerator:
   - name: schema-sql
     files:
-      - schema.sql=../../schema.sql
+      - schema.sql
     options:
       disableNameSuffixHash: true
