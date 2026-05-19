@@ -19,9 +19,13 @@ defmodule SimpleSyllabusReporterWeb.AI.CompletionsHistoryLive do
     } =
       AsyncCompletions.status()
 
+    ai_config = Application.get_env(:simple_syllabus_reporter, :ai, [])
+
     socket =
       socket
       |> assign(:page_title, "AI Completions History")
+      |> assign(:ai_endpoint, ai_config[:endpoint])
+      |> assign(:ai_model, ai_config[:model])
       |> assign(:loading, true)
       |> assign(:completions_empty?, true)
       |> assign(:in_flight_items, in_flight_items)
@@ -73,11 +77,19 @@ defmodule SimpleSyllabusReporterWeb.AI.CompletionsHistoryLive do
       current_path={@current_path}
     >
       <div class="max-w-5xl mx-auto w-full px-3 pt-3 pb-6 flex flex-col gap-4">
-        <div class="flex items-center gap-3 mb-3 shrink-0">
-          <h1 class="text-xl font-semibold text-slate-100">AI Completions History</h1>
-          <%= if @loading do %>
-            <span class="text-slate-400 text-sm">Loading…</span>
-          <% end %>
+        <div class="flex items-start justify-between gap-3 mb-3 shrink-0">
+          <div class="flex items-center gap-3">
+            <h1 class="text-xl font-semibold text-slate-100">AI Completions History</h1>
+            <%= if @loading do %>
+              <span class="text-slate-400 text-sm">Loading…</span>
+            <% end %>
+          </div>
+          <div class="flex flex-col items-end gap-0.5">
+            <span class="text-xs text-slate-400 font-mono">{@ai_model}</span>
+            <span class="text-xs text-slate-600 font-mono truncate max-w-xs" title={@ai_endpoint}>
+              {@ai_endpoint}
+            </span>
+          </div>
         </div>
 
         <%!-- Active queue section --%>

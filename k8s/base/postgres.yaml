@@ -49,8 +49,7 @@ spec:
                   name: app-secrets
                   key: POSTGRES_PASSWORD
           # To sync the postgres password after rotating the secret, run:
-          # kubectl exec -n simple-syllabus postgres-0 -- sh -c \
-          #   'escaped=$(printf "%s" "$POSTGRES_PASSWORD" | sed "s/'"'"'/'"'"''"'"'/g") && psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "ALTER USER \"$POSTGRES_USER\" WITH PASSWORD '"'"'$escaped'"'"'"'
+          # kubectl exec -n simple-syllabus postgres-0 -- sh -c 'escaped=$(printf "%s" "$POSTGRES_PASSWORD" | sed "s/'"'"'/'"'"''"'"'/g") && psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "ALTER USER \"$POSTGRES_USER\" WITH PASSWORD '"'"'$escaped'"'"'"'
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
