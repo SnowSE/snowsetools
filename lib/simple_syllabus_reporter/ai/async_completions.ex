@@ -21,7 +21,7 @@ defmodule SimpleSyllabusReporter.AI.AsyncCompletions do
   alias SimpleSyllabusReporter.AI.CompletionLog
 
   @pubsub SimpleSyllabusReporter.PubSub
-  @max_concurrent 1
+  @max_concurrent 3
   @status_topic "async_completions:status"
 
   @type message :: %{role: String.t(), content: String.t()}
@@ -43,12 +43,19 @@ defmodule SimpleSyllabusReporter.AI.AsyncCompletions do
 
   @impl true
   def init(_opts) do
-    {:ok, %{queue: :queue.new(), in_flight: 0, max_concurrent: @max_concurrent, monitors: %{}}}
+    {:ok,
+     %{
+       queue: :queue.new(),
+       in_flight: 0,
+       max_concurrent: @max_concurrent,
+       monitors: %{},
+       recently_failed: []
+     }}
   end
 
   @impl true
   def handle_call(:status, _from, state) do
-    {:reply, %{in_flight: state.in_flight, queued: :queue.len(state.queue)}, state}
+    {:reply, build_status(state), state}
   end
 
   @impl true
@@ -91,19 +98,44 @@ defmodule SimpleSyllabusReporter.AI.AsyncCompletions do
       )
 
       Phoenix.PubSub.broadcast(@pubsub, topic, {event, {:error, error}})
-    end
 
-    new_state = drain_queue(%{state | monitors: monitors})
-    broadcast_status(new_state)
-    {:noreply, new_state}
+      failure = %{
+        topic: topic,
+        event: event,
+        reason: inspect(error),
+        failed_at: DateTime.utc_now()
+      }
+
+      recently_failed = Enum.take([failure | state.recently_failed], 50)
+      new_state = drain_queue(%{state | monitors: monitors, recently_failed: recently_failed})
+      broadcast_status(new_state)
+      {:noreply, new_state}
+    else
+      new_state = drain_queue(%{state | monitors: monitors})
+      broadcast_status(new_state)
+      {:noreply, new_state}
+    end
   end
 
   defp broadcast_status(state) do
-    Phoenix.PubSub.broadcast(
-      @pubsub,
-      @status_topic,
-      {:queue_status, %{in_flight: state.in_flight, queued: :queue.len(state.queue)}}
-    )
+    Phoenix.PubSub.broadcast(@pubsub, @status_topic, {:queue_status, build_status(state)})
+  end
+
+  defp build_status(state) do
+    in_flight_items = Map.values(state.monitors)
+
+    queued_items =
+      state.queue
+      |> :queue.to_list()
+      |> Enum.map(fn {topic, event, _messages, _opts} -> {topic, event} end)
+
+    %{
+      in_flight: state.in_flight,
+      queued: :queue.len(state.queue),
+      in_flight_items: in_flight_items,
+      queued_items: queued_items,
+      recently_failed: state.recently_failed
+    }
   end
 
   defp worker_error({exception, _stacktrace}) when is_exception(exception) do

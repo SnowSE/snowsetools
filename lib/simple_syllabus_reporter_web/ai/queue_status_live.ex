@@ -23,7 +23,7 @@ defmodule SimpleSyllabusReporterWeb.AI.QueueStatusLive do
       <%= if @in_flight > 0 || @queued > 0 do %>
         <span class="size-1.5 rounded-full bg-indigo-400 animate-pulse shrink-0" />
         <%= if @in_flight > 0 do %>
-          <span>{@in_flight} report generating</span>
+          <span>{@in_flight} report{if @in_flight > 1, do: "s"} generating</span>
         <% end %>
         <%= if @in_flight > 0 && @queued > 0 do %>
           <span class="text-slate-600">·</span>

@@ -2,21 +2,44 @@ defmodule SimpleSyllabusReporterWeb.AI.CompletionsHistoryLive do
   use SimpleSyllabusReporterWeb, :live_view
 
   alias SimpleSyllabusReporter.AI.CompletionLog
+  alias SimpleSyllabusReporter.AI.AsyncCompletions
   import SimpleSyllabusReporterWeb.AI.CompletionDetails
 
   on_mount {SimpleSyllabusReporterWeb.UserAuth, :ensure_authenticated}
 
   def mount(_params, _session, socket) do
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(SimpleSyllabusReporter.PubSub, AsyncCompletions.status_topic())
+    end
+
+    %{
+      in_flight_items: in_flight_items,
+      queued_items: queued_items,
+      recently_failed: recently_failed
+    } =
+      AsyncCompletions.status()
+
     socket =
       socket
       |> assign(:page_title, "AI Completions History")
       |> assign(:loading, true)
       |> assign(:completions_empty?, true)
+      |> assign(:in_flight_items, in_flight_items)
+      |> assign(:queued_items, queued_items)
+      |> assign(:recently_failed, recently_failed)
       |> stream_configure(:completions, dom_id: fn item -> "completion-#{item["id"]}" end)
       |> stream(:completions, [])
       |> start_async(:fetch, fn -> CompletionLog.list_recent(200) end)
 
     {:ok, socket}
+  end
+
+  def handle_info({:queue_status, status}, socket) do
+    {:noreply,
+     socket
+     |> assign(:in_flight_items, status.in_flight_items)
+     |> assign(:queued_items, status.queued_items)
+     |> assign(:recently_failed, status.recently_failed)}
   end
 
   def handle_async(:fetch, {:ok, {:ok, completions}}, socket) do
@@ -56,6 +79,43 @@ defmodule SimpleSyllabusReporterWeb.AI.CompletionsHistoryLive do
             <span class="text-slate-400 text-sm">Loading…</span>
           <% end %>
         </div>
+
+        <%!-- Active queue section --%>
+        <%= if @in_flight_items != [] || @queued_items != [] || @recently_failed != [] do %>
+          <div class="flex flex-col gap-2">
+            <%= for {topic, event} <- @in_flight_items do %>
+              <div class="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-indigo-700/50 bg-indigo-900/20">
+                <span class="size-1.5 rounded-full bg-indigo-400 animate-pulse shrink-0" />
+                <span class="text-xs font-bold uppercase tracking-wider text-indigo-400">
+                  in flight
+                </span>
+                <span class="text-xs text-slate-300 font-mono truncate">{format_event(event)}</span>
+                <span class="text-xs text-slate-500 ml-auto truncate">{topic}</span>
+              </div>
+            <% end %>
+
+            <%= for {topic, event} <- @queued_items do %>
+              <div class="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-slate-700 bg-slate-800/40">
+                <span class="size-1.5 rounded-full bg-slate-500 shrink-0" />
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-400">queued</span>
+                <span class="text-xs text-slate-400 font-mono truncate">{format_event(event)}</span>
+                <span class="text-xs text-slate-600 ml-auto truncate">{topic}</span>
+              </div>
+            <% end %>
+
+            <%= for failure <- @recently_failed do %>
+              <div class="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-red-700/50 bg-red-900/20">
+                <span class="size-1.5 rounded-full bg-red-400 shrink-0" />
+                <span class="text-xs font-bold uppercase tracking-wider text-red-400">failed</span>
+                <span class="text-xs text-red-300 font-mono truncate">
+                  {format_event(failure.event)}
+                </span>
+                <span class="text-xs text-red-500/70 truncate">{failure.reason}</span>
+                <span class="text-xs text-slate-600 ml-auto">{format_time(failure.failed_at)}</span>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
 
         <div
           :if={@completions_empty? && !@loading}
@@ -123,6 +183,9 @@ defmodule SimpleSyllabusReporterWeb.AI.CompletionsHistoryLive do
   defp message_count(nil), do: 0
   defp message_count(msgs) when is_list(msgs), do: length(msgs)
   defp message_count(_), do: 0
+
+  defp format_event({code, element_id, _report_id}), do: "#{code} / element #{element_id}"
+  defp format_event(event), do: inspect(event)
 
   defp format_time(nil), do: ""
 
