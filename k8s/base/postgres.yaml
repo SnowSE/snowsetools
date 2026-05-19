@@ -48,6 +48,17 @@ spec:
                 secretKeyRef:
                   name: app-secrets
                   key: POSTGRES_PASSWORD
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - |
+                    until pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 1; done
+                    psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+                      --set=password="$POSTGRES_PASSWORD" \
+                      -c "ALTER USER \"$POSTGRES_USER\" WITH PASSWORD :'password'"
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
