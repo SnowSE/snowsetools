@@ -18,6 +18,8 @@ patches:
                 env:
                   - name: PHX_HOST
                     value: "alexsimplesyllabuscheck.snowse.io"
+                  - name: OIDC_REDIRECT_URI
+                    value: "https://alexsimplesyllabuscheck.snowse.io/auth/callback"
 
     target:
       kind: Deployment

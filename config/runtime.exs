@@ -18,7 +18,8 @@ end
 
 config :simple_syllabus_reporter, :oidc,
   issuer: env!("OIDC_ISSUER", :string!),
-  client_id: env!("OIDC_CLIENT_ID", :string!)
+  client_id: env!("OIDC_CLIENT_ID", :string!),
+  redirect_uri: env!("OIDC_REDIRECT_URI", :string, nil)
 
 config :simple_syllabus_reporter, :ai,
   endpoint: env!("AI_ENDPOINT", :string!),
