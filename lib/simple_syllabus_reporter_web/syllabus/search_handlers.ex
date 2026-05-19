@@ -10,7 +10,6 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
   alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
 
   def handle_params(%{"q" => query} = params, socket) when byte_size(query) > 0 do
-    org_id = params["org_id"]
     code = params["code"]
     title = params["title"]
     term = params["term"] || ""
@@ -20,29 +19,51 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
     query_changed? = query != prev_query
     code_changed? = code != prev_code
 
-    email = params["email"]
-
     socket =
       cond do
-        query_changed? and is_binary(org_id) ->
-          socket
-          |> assign(:query, query)
-          |> assign(:org_id, org_id)
-          |> assign(:loading_search, true)
-          |> assign(:search_error, nil)
-          |> stream(:syllabi, [], reset: true)
-          |> assign(:syllabi_empty?, true)
-          |> start_async(:search, fn -> SimpleSyllabusApi.search_syllabi(org_id) end)
-
-        query_changed? and is_binary(email) ->
+        query_changed? and email?(query) ->
           socket
           |> assign(:query, query)
           |> assign(:org_id, nil)
+          |> assign(:search_pending?, false)
           |> assign(:loading_search, true)
           |> assign(:search_error, nil)
           |> stream(:syllabi, [], reset: true)
           |> assign(:syllabi_empty?, true)
-          |> start_async(:search, fn -> SimpleSyllabusApi.search_syllabi_by_email(email) end)
+          |> start_async(:search, fn -> SimpleSyllabusApi.search_syllabi_by_email(query) end)
+
+        query_changed? and socket.assigns.departments == [] ->
+          socket
+          |> assign(:query, query)
+          |> assign(:org_id, nil)
+          |> assign(:search_pending?, true)
+          |> assign(:loading_search, true)
+          |> assign(:search_error, nil)
+          |> stream(:syllabi, [], reset: true)
+          |> assign(:syllabi_empty?, true)
+
+        query_changed? ->
+          case find_department(socket.assigns.departments, query) do
+            nil ->
+              assign(socket,
+                query: query,
+                search_error: "Department not found",
+                loading_search: false
+              )
+
+            dept ->
+              org_id = dept["entity_id"]
+
+              socket
+              |> assign(:query, query)
+              |> assign(:org_id, org_id)
+              |> assign(:search_pending?, false)
+              |> assign(:loading_search, true)
+              |> assign(:search_error, nil)
+              |> stream(:syllabi, [], reset: true)
+              |> assign(:syllabi_empty?, true)
+              |> start_async(:search, fn -> SimpleSyllabusApi.search_syllabi(org_id) end)
+          end
 
         true ->
           socket
@@ -83,55 +104,16 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
           socket
       end
 
-    {:noreply,
-     push_event(socket, "save_state", %{
-       query: query,
-       org_id: org_id,
-       email: email,
-       code: code,
-       title: title,
-       term: term
-     })}
+    {:noreply, push_event(socket, "save_state", %{query: query})}
   end
 
   def handle_params(_params, socket) do
     {:noreply, socket}
   end
 
-  def handle_event(
-        "restore_state",
-        %{"query" => query, "org_id" => org_id} = params,
-        socket
-      )
+  def handle_event("restore_state", %{"query" => query}, socket)
       when is_binary(query) and byte_size(query) > 0 do
-    to =
-      case params do
-        %{"code" => code, "title" => title, "term" => term} when is_binary(code) ->
-          ~p"/syllabi?q=#{query}&org_id=#{org_id}&code=#{code}&title=#{title}&term=#{term}"
-
-        _ ->
-          ~p"/syllabi?q=#{query}&org_id=#{org_id}"
-      end
-
-    {:noreply, push_patch(socket, to: to)}
-  end
-
-  def handle_event(
-        "restore_state",
-        %{"query" => query, "email" => email} = params,
-        socket
-      )
-      when is_binary(query) and byte_size(query) > 0 do
-    to =
-      case params do
-        %{"code" => code, "title" => title, "term" => term} when is_binary(code) ->
-          ~p"/syllabi?q=#{query}&email=#{email}&code=#{code}&title=#{title}&term=#{term}"
-
-        _ ->
-          ~p"/syllabi?q=#{query}&email=#{email}"
-      end
-
-    {:noreply, push_patch(socket, to: to)}
+    {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}")}
   end
 
   def handle_event("restore_state", _params, socket) do
@@ -140,21 +122,21 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
 
   def handle_event(
         "quick_nav",
-        %{"type" => "division", "name" => name, "org-id" => org_id},
+        %{"type" => "division", "name" => name},
         socket
       ) do
-    {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{name}&org_id=#{org_id}")}
+    {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{name}")}
   end
 
   def handle_event("quick_nav", %{"type" => "my_syllabi"}, socket) do
     email = socket.assigns.current_user.email
-    {:noreply, assign(socket, query: email, search_error: nil)}
+    {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{email}")}
   end
 
   def handle_event("search", %{"query" => query}, socket) do
     cond do
       email?(query) ->
-        {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}&email=#{query}")}
+        {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}")}
 
       dept = find_department(socket.assigns.departments, query) ->
         {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}&org_id=#{dept["entity_id"]}")}
@@ -170,39 +152,21 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
   end
 
   def handle_event("select", %{"code" => code, "title" => title, "term" => term}, socket) do
-    base_params = %{
-      "q" => socket.assigns.query,
-      "code" => code,
-      "title" => title,
-      "term" => term
-    }
+    query = socket.assigns.query
 
-    params =
-      if socket.assigns.org_id do
-        Map.put(base_params, "org_id", socket.assigns.org_id)
-      else
-        Map.put(base_params, "email", socket.assigns.query)
-      end
-
-    {:noreply, push_patch(socket, to: ~p"/syllabi?#{params}")}
+    {:noreply,
+     push_patch(socket, to: ~p"/syllabi?q=#{query}&code=#{code}&title=#{title}&term=#{term}")}
   end
 
   def handle_event("close_detail", _params, socket) do
-    params =
-      if socket.assigns.org_id do
-        %{"q" => socket.assigns.query, "org_id" => socket.assigns.org_id}
-      else
-        %{"q" => socket.assigns.query, "email" => socket.assigns.query}
-      end
-
-    {:noreply, push_patch(socket, to: ~p"/syllabi?#{params}")}
+    {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{socket.assigns.query}")}
   end
 
   defp find_department(departments, name) do
     Enum.find(departments, &(String.downcase(&1["name"]) == String.downcase(name)))
   end
 
-  defp email?(query), do: String.contains?(query, "@")
+  defp email?(query), do: Regex.match?(~r/^[^\s@]+@[^\s@]+\.[^\s@]+$/, query)
 
   def handle_async(:search, {:ok, {:ok, %{items: docs}}}, socket) do
     codes = Enum.map(docs, & &1["code"])
@@ -285,7 +249,33 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
   end
 
   def handle_async(:fetch_departments, {:ok, {:ok, departments}}, socket) do
-    {:noreply, assign(socket, :departments, departments)}
+    socket = assign(socket, :departments, departments)
+
+    socket =
+      if socket.assigns.search_pending? do
+        query = socket.assigns.query
+
+        case find_department(departments, query) do
+          nil ->
+            assign(socket,
+              loading_search: false,
+              search_error: "Department not found",
+              search_pending?: false
+            )
+
+          dept ->
+            org_id = dept["entity_id"]
+
+            socket
+            |> assign(:org_id, org_id)
+            |> assign(:search_pending?, false)
+            |> start_async(:search, fn -> SimpleSyllabusApi.search_syllabi(org_id) end)
+        end
+      else
+        socket
+      end
+
+    {:noreply, socket}
   end
 
   def handle_async(:fetch_departments, _result, socket) do

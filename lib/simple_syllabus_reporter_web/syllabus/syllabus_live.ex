@@ -27,6 +27,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
       |> assign(:report_counts, %{})
       |> assign(:departments, [])
       |> assign(:org_id, nil)
+      |> assign(:search_pending?, false)
       |> ReportHandlers.mount_assigns()
 
     socket =
