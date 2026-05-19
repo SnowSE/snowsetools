@@ -21,62 +21,41 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
 
     socket =
       cond do
-        query_changed? and email?(query) ->
+        not query_changed? ->
           socket
-          |> assign(:query, query)
-          |> assign(:org_id, nil)
-          |> assign(:search_pending?, false)
-          |> assign(:loading_search, true)
-          |> assign(:search_error, nil)
-          |> stream(:syllabi, [], reset: true)
-          |> assign(:syllabi_empty?, true)
+
+        email?(query) ->
+          socket
+          |> reset_for_search(query, nil)
           |> start_async(:search, fn -> SimpleSyllabusApi.search_syllabi_by_email(query) end)
 
-        query_changed? and socket.assigns.departments == [] ->
+        socket.assigns.departments == [] ->
           socket
-          |> assign(:query, query)
-          |> assign(:org_id, nil)
+          |> reset_for_search(query, nil)
           |> assign(:search_pending?, true)
-          |> assign(:loading_search, true)
-          |> assign(:search_error, nil)
-          |> stream(:syllabi, [], reset: true)
-          |> assign(:syllabi_empty?, true)
 
-        query_changed? ->
-          case find_department(socket.assigns.departments, query) do
-            nil ->
-              assign(socket,
-                query: query,
-                search_error: "Department not found",
-                loading_search: false
-              )
+        dept = find_department(socket.assigns.departments, query) ->
+          org_id = dept["entity_id"]
 
-            dept ->
-              org_id = dept["entity_id"]
-
-              socket
-              |> assign(:query, query)
-              |> assign(:org_id, org_id)
-              |> assign(:search_pending?, false)
-              |> assign(:loading_search, true)
-              |> assign(:search_error, nil)
-              |> stream(:syllabi, [], reset: true)
-              |> assign(:syllabi_empty?, true)
-              |> start_async(:search, fn -> SimpleSyllabusApi.search_syllabi(org_id) end)
-          end
+          socket
+          |> reset_for_search(query, org_id)
+          |> start_async(:search, fn -> SimpleSyllabusApi.search_syllabi(org_id) end)
 
         true ->
-          socket
+          assign(socket,
+            query: query,
+            search_error: "Department not found",
+            loading_search: false
+          )
       end
 
     socket =
       cond do
         code && code_changed? ->
-          docs_by_code = socket.assigns.syllabi_docs
-
           socket
-          |> reinsert_syllabus(docs_by_code, prev_code)
-          |> reinsert_syllabus(docs_by_code, code)
+          |> reinsert_syllabus(socket.assigns.syllabi_docs, prev_code)
+          |> reinsert_syllabus(socket.assigns.syllabi_docs, code)
+          |> clear_detail()
           |> assign(:loading_detail, true)
           |> assign(:detail_error, nil)
           |> assign(:selected, %{
@@ -84,21 +63,14 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
             "title" => (socket.assigns.selected || %{})["title"] || title || code,
             "term" => term
           })
-          |> assign(:selected_element_id, nil)
-          |> assign(:report_items, %{})
           |> assign(:generating, Map.get(socket.assigns.generating_per_code, code, MapSet.new()))
-          |> assign(:generation_errors, %{})
           |> start_async(:fetch_detail, fn -> SimpleSyllabusApi.get_syllabus_details(code) end)
           |> start_async(:fetch_existing_items, fn -> existing_items_for_code(code) end)
 
         is_nil(code) && code_changed? ->
           socket
           |> reinsert_syllabus(socket.assigns.syllabi_docs, prev_code)
-          |> assign(:selected, nil)
-          |> assign(:selected_element_id, nil)
-          |> assign(:report_items, %{})
-          |> assign(:generating, MapSet.new())
-          |> assign(:generation_errors, %{})
+          |> clear_detail()
 
         true ->
           socket
@@ -138,8 +110,8 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
       email?(query) ->
         {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}")}
 
-      dept = find_department(socket.assigns.departments, query) ->
-        {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}&org_id=#{dept["entity_id"]}")}
+      find_department(socket.assigns.departments, query) ->
+        {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}")}
 
       true ->
         {:noreply,
@@ -160,6 +132,26 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
 
   def handle_event("close_detail", _params, socket) do
     {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{socket.assigns.query}")}
+  end
+
+  defp clear_detail(socket) do
+    socket
+    |> assign(:selected, nil)
+    |> assign(:selected_element_id, nil)
+    |> assign(:report_items, %{})
+    |> assign(:generating, MapSet.new())
+    |> assign(:generation_errors, %{})
+  end
+
+  defp reset_for_search(socket, query, org_id) do
+    socket
+    |> assign(:query, query)
+    |> assign(:org_id, org_id)
+    |> assign(:search_pending?, false)
+    |> assign(:loading_search, true)
+    |> assign(:search_error, nil)
+    |> stream(:syllabi, [], reset: true)
+    |> assign(:syllabi_empty?, true)
   end
 
   defp find_department(departments, name) do
