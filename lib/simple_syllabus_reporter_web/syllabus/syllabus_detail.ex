@@ -56,8 +56,8 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusDetail do
             @loading_elements or @loading_detail or missing_count == 0 or MapSet.size(@generating) > 0
           }
           class={[
-            "shrink-0 inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer",
-            missing_count > 0 && "bg-indigo-950/50 py-1 px-2 rounded"
+            "shrink-0 inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer",
+            missing_count > 0 && "bg-blue-950/50 py-1 px-2 rounded"
           ]}
           title="Generate missing reports for this syllabus"
         >
