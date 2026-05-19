@@ -46,6 +46,15 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   end
 
   @doc """
+  Enqueues async regeneration for every syllabus that has an unmet or
+  partially_met item for `required_element`, excluding `exclude_code`
+  (which is expected to already be re-queued by the caller).
+  """
+  def generate_async_all_unmet(required_element, exclude_code) do
+    GenServer.cast(__MODULE__, {:generate_all_unmet, required_element, exclude_code})
+  end
+
+  @doc """
   Requests an immediate broadcast of the current pending element_ids for each
   given code to `pending_topic(code)`. Call this after subscribing to ensure
   you receive the current state.
@@ -90,6 +99,34 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
           {:noreply, state}
       end
     end
+  end
+
+  @impl true
+  def handle_cast({:generate_all_unmet, element, exclude_code}, state) do
+    Task.start(fn ->
+      case GeneratedReportItem.list_unmet_for_element(element["id"]) do
+        {:ok, rows} ->
+          rows
+          |> Enum.reject(fn row -> row["code"] == exclude_code end)
+          |> Enum.group_by(& &1["code"])
+          |> Enum.each(fn {code, _} ->
+            case SimpleSyllabusApi.get_syllabus_details(code) do
+              {:ok, syllabus_doc} ->
+                generate_async(syllabus_doc, element)
+
+              {:error, reason} ->
+                Logger.error(
+                  "generate_all_unmet: failed to fetch syllabus code=#{code} reason=#{inspect(reason)}"
+                )
+            end
+          end)
+
+        {:error, reason} ->
+          Logger.error("generate_all_unmet: failed to list unmet items reason=#{inspect(reason)}")
+      end
+    end)
+
+    {:noreply, state}
   end
 
   @impl true

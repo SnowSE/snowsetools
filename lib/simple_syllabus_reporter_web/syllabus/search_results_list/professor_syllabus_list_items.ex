@@ -162,7 +162,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ProfessorSyllabusListItems do
         <div class="flex items-center gap-2">
           <div class="flex-1 h-1.5 bg-slate-700/60 rounded-full overflow-hidden flex">
             <div
-              class="h-full transition-all duration-500 bg-[#3d6b52]"
+              class="h-full transition-all duration-500 bg-[#79C59B]"
               style={"width: #{met / @total_elements * 100}%"}
             />
             <div

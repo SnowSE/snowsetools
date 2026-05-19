@@ -141,4 +141,25 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportItem do
          end)}
     end
   end
+
+  def list_unmet_for_element(required_element_id) do
+    sql = """
+    SELECT
+      gr.syllabus_code AS code,
+      re.id            AS element_id,
+      re.name          AS element_name,
+      re.description   AS element_description
+    FROM generated_report_items gri
+    JOIN generated_reports gr ON gr.id = gri.generated_report_id
+    JOIN required_elements re ON re.id = gri.required_element_id
+    WHERE gri.required_element_id = $(required_element_id)
+      AND gri.status IN ('not_met', 'partially_met')
+    ORDER BY gr.inserted_at ASC
+    """
+
+    case DbHelpers.run_sql(sql, %{"required_element_id" => required_element_id}) do
+      {:error, _} = err -> err
+      rows -> {:ok, rows}
+    end
+  end
 end

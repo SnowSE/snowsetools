@@ -91,6 +91,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportCorrection do
       {:ok, _} ->
         element = Enum.find(socket.assigns.elements, fn e -> e["id"] == element_id end)
         ReportGenerator.generate_async(syllabus, element)
+        ReportGenerator.generate_async_all_unmet(element, syllabus["code"])
 
         {:noreply,
          socket
