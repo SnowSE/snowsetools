@@ -7,6 +7,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   alias SimpleSyllabusReporter.Reports.GeneratedReportItem
   alias SimpleSyllabusReporter.Reports.ReportInstruction
   alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
+  alias SimpleSyllabusReporter.SimpleSyllabusApi
 
   @pubsub SimpleSyllabusReporter.PubSub
   @ai_topic "report_generator:ai"

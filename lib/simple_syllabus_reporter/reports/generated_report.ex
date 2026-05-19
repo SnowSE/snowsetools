@@ -127,4 +127,28 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReport do
       _ -> :ok
     end
   end
+
+  def list_pending_with_incomplete_elements do
+    sql = """
+    SELECT
+      gr.id            AS report_id,
+      gr.syllabus_code AS code,
+      re.id            AS element_id,
+      re.name          AS element_name,
+      re.description   AS element_description
+    FROM generated_reports gr
+    JOIN required_elements re ON TRUE
+    LEFT JOIN generated_report_items gri
+      ON gri.generated_report_id = gr.id
+     AND gri.required_element_id = re.id
+    WHERE gr.status = 'pending'
+      AND gri.id IS NULL
+    ORDER BY gr.inserted_at ASC
+    """
+
+    case DbHelpers.run_sql(sql, %{}) do
+      {:error, _} = err -> err
+      rows -> {:ok, rows}
+    end
+  end
 end
