@@ -82,6 +82,49 @@ defmodule SimpleSyllabusReporter.Data.DbHelpers do
 
   defp format_uuid_binary(val), do: val
 
+  @doc """
+  Runs a transaction. Inside the callback, use `run_sql/2,3` as normal — any
+  `{:error, _}` return will automatically roll back the transaction. If the
+  callback returns `:ok` or `{:ok, value}`, the transaction commits and that
+  value is returned unwrapped.
+
+  Example:
+
+      DbHelpers.transaction(fn ->
+        DbHelpers.run_sql("DELETE FROM foo WHERE id = $(id)", %{"id" => id})
+        {:ok, DbHelpers.run_sql("INSERT INTO bar ...", %{...})}
+      end)
+  """
+  def transaction(fun) when is_function(fun, 0) do
+    SimpleSyllabusReporter.Repo.transaction(fn ->
+      result =
+        try do
+          fun.()
+        rescue
+          e ->
+            Logger.error("Transaction callback raised: #{Exception.message(e)}")
+            {:error, e}
+        end
+
+      case result do
+        {:error, reason} ->
+          Logger.error("Transaction rolling back reason=#{inspect(reason)}")
+          SimpleSyllabusReporter.Repo.rollback(reason)
+
+        other ->
+          other
+      end
+    end)
+    |> case do
+      {:ok, result} ->
+        result
+
+      {:error, reason} = err ->
+        Logger.error("Transaction failed reason=#{inspect(reason)}")
+        err
+    end
+  end
+
   defp validate_rows({:error, :db_error}, _schema), do: {:error, :db_error}
 
   defp validate_rows(rows, schema) do

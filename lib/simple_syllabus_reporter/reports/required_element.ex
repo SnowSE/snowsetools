@@ -94,11 +94,14 @@ defmodule SimpleSyllabusReporter.Reports.RequiredElement do
   end
 
   def delete(id) do
-    sql = "DELETE FROM required_elements WHERE id = $(id)"
+    DbHelpers.transaction(fn ->
+      DbHelpers.run_sql(
+        "DELETE FROM generated_report_items WHERE required_element_id = $(id)",
+        %{"id" => id}
+      )
 
-    case DbHelpers.run_sql(sql, %{"id" => id}) do
-      {:error, _} = err -> err
-      _ -> :ok
-    end
+      DbHelpers.run_sql("DELETE FROM required_elements WHERE id = $(id)", %{"id" => id})
+      :ok
+    end)
   end
 end

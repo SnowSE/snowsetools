@@ -28,7 +28,13 @@ defmodule SimpleSyllabusReporterWeb.Layouts do
     <script :type={Phoenix.LiveView.ColocatedHook} name=".SessionRefresh">
       export default {
         mounted() {
+          this.refreshing = false;
           this.handleEvent("session_refresh", () => {
+            if (this.refreshing) {
+              console.log("[SessionRefresh] Refresh already in progress, skipping duplicate trigger");
+              return;
+            }
+            this.refreshing = true;
             console.log("[SessionRefresh] Timer fired, calling /auth/refresh");
             fetch("/auth/refresh", { credentials: "same-origin" })
               .then(resp => {
@@ -51,6 +57,9 @@ defmodule SimpleSyllabusReporterWeb.Layouts do
               .catch(err => {
                 console.error("[SessionRefresh] Fetch error:", err, "- redirecting to login");
                 window.location.href = "/auth/login";
+              })
+              .finally(() => {
+                this.refreshing = false;
               });
           });
         }

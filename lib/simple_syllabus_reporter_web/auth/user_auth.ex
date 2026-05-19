@@ -5,12 +5,7 @@ defmodule SimpleSyllabusReporterWeb.UserAuth do
   alias SimpleSyllabusReporter.Data.User
 
   def on_mount(:ensure_authenticated, _params, session, socket) do
-    user_result =
-      if session_expired?(session) do
-        :expired
-      else
-        session["current_user_id"] && User.get_by_id(session["current_user_id"])
-      end
+    user_result = session["current_user_id"] && User.get_by_id(session["current_user_id"])
 
     case user_result do
       {:ok, user} ->
@@ -81,10 +76,4 @@ defmodule SimpleSyllabusReporterWeb.UserAuth do
   end
 
   defp schedule_session_refresh(socket, _session), do: socket
-
-  defp session_expired?(%{"session_expires_at" => exp}) when is_integer(exp) do
-    System.system_time(:second) >= exp
-  end
-
-  defp session_expired?(_), do: false
 end

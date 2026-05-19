@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS ai_completions (
   messages    JSONB       NOT NULL DEFAULT '[]',
   status      TEXT        NOT NULL CHECK (status IN ('ok', 'error')),
   result      TEXT        NOT NULL DEFAULT '',
+  thinking    TEXT        NOT NULL DEFAULT '',
   inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
