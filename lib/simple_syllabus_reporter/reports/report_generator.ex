@@ -57,6 +57,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   @impl true
   def init(state) do
     Phoenix.PubSub.subscribe(@pubsub, @ai_topic)
+    send(self(), :recover_pending_reports)
     {:ok, state}
   end
 
@@ -74,27 +75,11 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
           server = self()
 
           Task.start(fn ->
-            result =
-              try do
-                build_messages_for(syllabus_doc, element)
-              rescue
-                e -> {:error, {:exception, Exception.message(e)}}
-              catch
-                kind, reason -> {:error, {kind, reason}}
-              end
-
-            case result do
-              {:ok, messages} ->
-                send(server, {:generation_prepared, code, element_id, report_id, messages})
-
-              {:error, reason} ->
-                send(server, {:generation_failed, code, element_id, reason})
-            end
+            prepare_and_send(server, syllabus_doc, element, code, report_id)
           end)
 
-          new_pending = MapSet.put(state.pending, key)
-          broadcast_pending_update(code, new_pending)
-          {:noreply, %{state | pending: new_pending, report_ids: new_report_ids}}
+          {:noreply,
+           add_pending(%{state | report_ids: new_report_ids}, code, element_id, report_id)}
 
         {:error, reason} ->
           Logger.error(
@@ -111,6 +96,47 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   def handle_cast({:request_pending, codes}, state) do
     Enum.each(codes, fn code -> broadcast_pending_update(code, state.pending) end)
     {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:recover_pending_reports, state) do
+    case GeneratedReport.list_pending_with_incomplete_elements() do
+      {:ok, []} ->
+        {:noreply, state}
+
+      {:ok, rows} ->
+        Logger.info("Recovering #{length(rows)} pending report element(s) after restart")
+
+        rows
+        |> Enum.group_by(& &1["code"])
+        |> Enum.each(fn {code, elements} ->
+          Task.start(fn ->
+            case SimpleSyllabusApi.get_syllabus_details(code) do
+              {:ok, syllabus_doc} ->
+                Enum.each(elements, fn row ->
+                  element = %{
+                    "id" => row["element_id"],
+                    "name" => row["element_name"],
+                    "description" => row["element_description"]
+                  }
+
+                  generate_async(syllabus_doc, element)
+                end)
+
+              {:error, reason} ->
+                Logger.error(
+                  "Recovery: failed to fetch syllabus code=#{code} reason=#{inspect(reason)}"
+                )
+            end
+          end)
+        end)
+
+        {:noreply, state}
+
+      {:error, reason} ->
+        Logger.error("Failed to recover pending reports: #{inspect(reason)}")
+        {:noreply, state}
+    end
   end
 
   @impl true
@@ -185,6 +211,33 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
       report_id ->
         {:ok, report_id, report_ids}
     end
+  end
+
+  defp prepare_and_send(server, syllabus_doc, element, code, report_id) do
+    element_id = element["id"]
+
+    result =
+      try do
+        build_messages_for(syllabus_doc, element)
+      rescue
+        e -> {:error, {:exception, Exception.message(e)}}
+      catch
+        kind, reason -> {:error, {kind, reason}}
+      end
+
+    case result do
+      {:ok, messages} ->
+        send(server, {:generation_prepared, code, element_id, report_id, messages})
+
+      {:error, reason} ->
+        send(server, {:generation_failed, code, element_id, reason})
+    end
+  end
+
+  defp add_pending(state, code, element_id, report_id) do
+    new_pending = MapSet.put(state.pending, {code, element_id})
+    broadcast_pending_update(code, new_pending)
+    %{state | pending: new_pending, report_ids: Map.put(state.report_ids, code, report_id)}
   end
 
   defp drop_pending(state, code, element_id) do
