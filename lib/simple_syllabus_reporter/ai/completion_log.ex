@@ -2,7 +2,7 @@ defmodule SimpleSyllabusReporter.AI.CompletionLog do
   require Logger
   alias SimpleSyllabusReporter.Data.DbHelpers
 
-  def record(topic, event, model, endpoint, messages, result) do
+  def record(topic, event, model, endpoint, messages, result, thinking \\ nil) do
     {status, result_text} =
       case result do
         {:ok, content} when is_binary(content) -> {"ok", content}
@@ -11,8 +11,8 @@ defmodule SimpleSyllabusReporter.AI.CompletionLog do
       end
 
     sql = """
-    INSERT INTO ai_completions (topic, event, model, endpoint, messages, status, result)
-    VALUES ($(topic), $(event), $(model), $(endpoint), $(messages), $(status), $(result))
+    INSERT INTO ai_completions (topic, event, model, endpoint, messages, status, result, thinking)
+    VALUES ($(topic), $(event), $(model), $(endpoint), $(messages), $(status), $(result), $(thinking))
     """
 
     case DbHelpers.run_sql(sql, %{
@@ -22,7 +22,8 @@ defmodule SimpleSyllabusReporter.AI.CompletionLog do
            "endpoint" => endpoint,
            "messages" => messages,
            "result" => result_text,
-           "status" => status
+           "status" => status,
+           "thinking" => thinking || ""
          }) do
       {:error, reason} -> Logger.error("Failed to log AI completion: #{inspect(reason)}")
       _ -> :ok
@@ -31,7 +32,7 @@ defmodule SimpleSyllabusReporter.AI.CompletionLog do
 
   def list_recent(limit \\ 100) do
     sql = """
-    SELECT id, topic, event, model, endpoint, messages, status, result, inserted_at
+    SELECT id, topic, event, model, endpoint, messages, status, result, thinking, inserted_at
     FROM ai_completions
     ORDER BY inserted_at DESC
     LIMIT $(limit)
@@ -45,7 +46,7 @@ defmodule SimpleSyllabusReporter.AI.CompletionLog do
 
   def get(id) do
     sql = """
-    SELECT id, topic, event, model, endpoint, messages, status, result, inserted_at
+    SELECT id, topic, event, model, endpoint, messages, status, result, thinking, inserted_at
     FROM ai_completions
     WHERE id = $(id)
     """

@@ -46,7 +46,7 @@ spec:
             - name: PHX_HOST
               value: "changed by kustomize"
             - name: AI_MODEL
-              value: "qwen3.6-35b"
+              value: "qwen3.5-122b"
           readinessProbe:
             httpGet:
               path: /

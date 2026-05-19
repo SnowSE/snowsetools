@@ -126,9 +126,19 @@ defmodule SimpleSyllabusReporter.AI.AsyncCompletions do
   defp spawn_completion(topic, event, messages, opts) do
     {_pid, ref} =
       spawn_monitor(fn ->
-        result = complete_sync(messages, opts)
+        {result, thinking} = complete_sync(messages, opts)
         config = Application.fetch_env!(:simple_syllabus_reporter, :ai)
-        CompletionLog.record(topic, event, config[:model], config[:endpoint], messages, result)
+
+        CompletionLog.record(
+          topic,
+          event,
+          config[:model],
+          config[:endpoint],
+          messages,
+          result,
+          thinking
+        )
+
         Phoenix.PubSub.broadcast(@pubsub, topic, {event, result})
       end)
 
@@ -152,9 +162,16 @@ defmodule SimpleSyllabusReporter.AI.AsyncCompletions do
            headers: [{"authorization", "Bearer #{config[:api_key]}"}],
            receive_timeout: :timer.minutes(10)
          ) do
-      {:ok, %{status: 200, body: body}} -> extract_content(body, opts[:schema])
-      {:ok, %{status: status, body: body}} -> {:error, {status, extract_error_message(body)}}
-      {:error, reason} -> {:error, reason}
+      {:ok, %{status: 200, body: body}} ->
+        thinking = extract_thinking(body)
+        result = extract_content(body, opts[:schema])
+        {result, thinking}
+
+      {:ok, %{status: status, body: body}} ->
+        {{:error, {status, extract_error_message(body)}}, nil}
+
+      {:error, reason} ->
+        {{:error, reason}, nil}
     end
   end
 
@@ -167,14 +184,59 @@ defmodule SimpleSyllabusReporter.AI.AsyncCompletions do
     })
   end
 
-  defp extract_content(%{"choices" => [%{"message" => %{"content" => content}} | _]}, nil) do
+  defp extract_thinking(%{"choices" => [%{"message" => message} | _]}) do
+    cond do
+      is_binary(message["reasoning_content"]) and message["reasoning_content"] != "" ->
+        message["reasoning_content"]
+
+      is_list(message["content"]) ->
+        case Enum.find(message["content"], &(&1["type"] == "thinking")) do
+          %{"thinking" => t} when is_binary(t) -> t
+          _ -> nil
+        end
+
+      true ->
+        nil
+    end
+  end
+
+  defp extract_thinking(_), do: nil
+
+  defp extract_content(%{"choices" => [%{"message" => %{"content" => content}} | _]}, nil)
+       when is_binary(content) do
     {:ok, content}
   end
 
-  defp extract_content(%{"choices" => [%{"message" => %{"content" => content}} | _]}, _schema) do
+  defp extract_content(%{"choices" => [%{"message" => %{"content" => blocks}} | _]}, nil)
+       when is_list(blocks) do
+    text =
+      Enum.find_value(blocks, "", fn
+        %{"type" => "text", "text" => t} -> t
+        _ -> false
+      end)
+
+    {:ok, text}
+  end
+
+  defp extract_content(%{"choices" => [%{"message" => %{"content" => content}} | _]}, _schema)
+       when is_binary(content) do
     case Jason.decode(content) do
       {:ok, parsed} -> {:ok, parsed}
       {:error, _} -> {:error, {:invalid_json, content}}
+    end
+  end
+
+  defp extract_content(%{"choices" => [%{"message" => %{"content" => blocks}} | _]}, _schema)
+       when is_list(blocks) do
+    text =
+      Enum.find_value(blocks, "", fn
+        %{"type" => "text", "text" => t} -> t
+        _ -> false
+      end)
+
+    case Jason.decode(text) do
+      {:ok, parsed} -> {:ok, parsed}
+      {:error, _} -> {:error, {:invalid_json, text}}
     end
   end
 
