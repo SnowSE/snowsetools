@@ -56,9 +56,9 @@ spec:
                   - -c
                   - |
                     until pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 1; done
+                    escaped=$(printf '%s' "$POSTGRES_PASSWORD" | sed "s/'/''/g")
                     psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-                      --set=password="$POSTGRES_PASSWORD" \
-                      -c "ALTER USER \"$POSTGRES_USER\" WITH PASSWORD :'password'"
+                      -c "ALTER USER \"$POSTGRES_USER\" WITH PASSWORD '$escaped'"
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
