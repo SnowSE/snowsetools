@@ -22,7 +22,7 @@ services:
     restart: unless-stopped
 
   db:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     env_file:
       - .env
     environment:
