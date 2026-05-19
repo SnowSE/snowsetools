@@ -4,6 +4,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
   alias SimpleSyllabusReporterWeb.Syllabus.SearchHandlers
   alias SimpleSyllabusReporterWeb.Syllabus.ReportHandlers
   alias SimpleSyllabusReporterWeb.Syllabus.SyllabusDetail
+  alias SimpleSyllabusReporterWeb.Syllabus.SearchQuickNavigation
   alias SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchForm
   alias SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList
 
@@ -46,6 +47,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
 
   @search_events ~w[
     restore_state
+    quick_nav
     search
     select
     close_detail
@@ -59,6 +61,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
     generate_missing_for_selected
     generate_all_missing
     generate_missing_for_professor
+    regenerate_non_met
   ]
 
   def handle_event(event, params, socket) when event in @search_events do
@@ -96,6 +99,11 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
         phx-hook=".SyllabusState"
         class="flex flex-col h-full min-h-0 max-w-[2000px] mx-auto w-full p-4"
       >
+        <SearchQuickNavigation.quick_navigation
+          departments={@departments}
+          current_user={@current_user}
+          active_query={@query}
+        />
         <SyllabusSearchForm.search_form
           query={@query}
           loading_search={@loading_search}
@@ -138,6 +146,8 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
               generation_errors={@generation_errors}
               correcting_element_id={@correcting_element_id}
             />
+          <% else %>
+            <SyllabusDetail.detail_panel_placeholder />
           <% end %>
         </div>
       </div>

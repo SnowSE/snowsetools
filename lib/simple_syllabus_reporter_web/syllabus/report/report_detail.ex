@@ -15,6 +15,12 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportDetail do
   def report_detail(assigns) do
     ~H"""
     <div class={@class}>
+      <div class="mb-4 flex items-start gap-2 rounded-lg border border-blue-700/50 bg-blue-950/20 px-3 py-2.5 text-blue-100">
+        <span class="hero-exclamation-triangle size-4  my-auto shrink-0" />
+        <p>
+          This syllabus check is unofficial, AI generated, and probably inaccurate
+        </p>
+      </div>
       <%= if @selected_element_id do %>
         <% element = Enum.find(@elements, fn e -> e["id"] == @selected_element_id end) %>
         <%= if element do %>

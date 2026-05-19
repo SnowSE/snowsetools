@@ -32,8 +32,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList do
 
     ~H"""
     <div class={[
-      "flex flex-col min-h-0 flex-1",
-      @selected && "hidden sm:flex sm:w-64 sm:flex-none"
+      "flex flex-col min-h-0 w-[400px] "
     ]}>
       <%= if not @syllabi_empty? && @total_elements > 0 && !@loading_search do %>
         <div class="mb-3 shrink-0">
@@ -79,7 +78,20 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList do
         No syllabi found for "{@query}".
       </div>
 
-      <div id="syllabi-list" phx-hook=".ProfessorExpansion" class="overflow-y-auto flex-1 min-h-0">
+      <div
+        :if={@loading_search}
+        id="syllabi-loading"
+        class="flex flex-col items-center justify-center gap-3 py-16 text-slate-500"
+      >
+        <span class="hero-arrow-path size-6 animate-spin text-indigo-400" />
+        <span class="text-sm">Loading syllabi…</span>
+      </div>
+
+      <div
+        id="syllabi-list"
+        phx-hook=".ProfessorExpansion"
+        class={["overflow-y-auto flex-1 min-h-0", @loading_search && "hidden"]}
+      >
         <%= for {professor, syllabi} <- @professors_grouped do %>
           <.professor_syllabi_items
             professor={professor}

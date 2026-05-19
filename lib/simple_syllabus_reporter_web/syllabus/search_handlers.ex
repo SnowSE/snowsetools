@@ -20,18 +20,32 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
     query_changed? = query != prev_query
     code_changed? = code != prev_code
 
+    email = params["email"]
+
     socket =
-      if query_changed? and is_binary(org_id) do
-        socket
-        |> assign(:query, query)
-        |> assign(:org_id, org_id)
-        |> assign(:loading_search, true)
-        |> assign(:search_error, nil)
-        |> stream(:syllabi, [], reset: true)
-        |> assign(:syllabi_empty?, true)
-        |> start_async(:search, fn -> SimpleSyllabusApi.search_syllabi(org_id) end)
-      else
-        socket
+      cond do
+        query_changed? and is_binary(org_id) ->
+          socket
+          |> assign(:query, query)
+          |> assign(:org_id, org_id)
+          |> assign(:loading_search, true)
+          |> assign(:search_error, nil)
+          |> stream(:syllabi, [], reset: true)
+          |> assign(:syllabi_empty?, true)
+          |> start_async(:search, fn -> SimpleSyllabusApi.search_syllabi(org_id) end)
+
+        query_changed? and is_binary(email) ->
+          socket
+          |> assign(:query, query)
+          |> assign(:org_id, nil)
+          |> assign(:loading_search, true)
+          |> assign(:search_error, nil)
+          |> stream(:syllabi, [], reset: true)
+          |> assign(:syllabi_empty?, true)
+          |> start_async(:search, fn -> SimpleSyllabusApi.search_syllabi_by_email(email) end)
+
+        true ->
+          socket
       end
 
     socket =
@@ -73,6 +87,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
      push_event(socket, "save_state", %{
        query: query,
        org_id: org_id,
+       email: email,
        code: code,
        title: title,
        term: term
@@ -101,40 +116,93 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
     {:noreply, push_patch(socket, to: to)}
   end
 
+  def handle_event(
+        "restore_state",
+        %{"query" => query, "email" => email} = params,
+        socket
+      )
+      when is_binary(query) and byte_size(query) > 0 do
+    to =
+      case params do
+        %{"code" => code, "title" => title, "term" => term} when is_binary(code) ->
+          ~p"/syllabi?q=#{query}&email=#{email}&code=#{code}&title=#{title}&term=#{term}"
+
+        _ ->
+          ~p"/syllabi?q=#{query}&email=#{email}"
+      end
+
+    {:noreply, push_patch(socket, to: to)}
+  end
+
   def handle_event("restore_state", _params, socket) do
     {:noreply, socket}
   end
 
-  def handle_event("search", %{"query" => query}, socket) do
-    case find_department(socket.assigns.departments, query) do
-      %{"entity_id" => org_id} ->
-        {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}&org_id=#{org_id}")}
+  def handle_event(
+        "quick_nav",
+        %{"type" => "division", "name" => name, "org-id" => org_id},
+        socket
+      ) do
+    {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{name}&org_id=#{org_id}")}
+  end
 
-      nil ->
-        {:noreply, assign(socket, :search_error, "Please select a department from the list")}
+  def handle_event("quick_nav", %{"type" => "my_syllabi"}, socket) do
+    email = socket.assigns.current_user.email
+    {:noreply, assign(socket, query: email, search_error: nil)}
+  end
+
+  def handle_event("search", %{"query" => query}, socket) do
+    cond do
+      email?(query) ->
+        {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}&email=#{query}")}
+
+      dept = find_department(socket.assigns.departments, query) ->
+        {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}&org_id=#{dept["entity_id"]}")}
+
+      true ->
+        {:noreply,
+         assign(
+           socket,
+           :search_error,
+           "Please select a department from the list or enter an email address"
+         )}
     end
   end
 
   def handle_event("select", %{"code" => code, "title" => title, "term" => term}, socket) do
-    params = %{
+    base_params = %{
       "q" => socket.assigns.query,
-      "org_id" => socket.assigns.org_id,
       "code" => code,
       "title" => title,
       "term" => term
     }
 
+    params =
+      if socket.assigns.org_id do
+        Map.put(base_params, "org_id", socket.assigns.org_id)
+      else
+        Map.put(base_params, "email", socket.assigns.query)
+      end
+
     {:noreply, push_patch(socket, to: ~p"/syllabi?#{params}")}
   end
 
   def handle_event("close_detail", _params, socket) do
-    params = %{"q" => socket.assigns.query, "org_id" => socket.assigns.org_id}
+    params =
+      if socket.assigns.org_id do
+        %{"q" => socket.assigns.query, "org_id" => socket.assigns.org_id}
+      else
+        %{"q" => socket.assigns.query, "email" => socket.assigns.query}
+      end
+
     {:noreply, push_patch(socket, to: ~p"/syllabi?#{params}")}
   end
 
   defp find_department(departments, name) do
     Enum.find(departments, &(String.downcase(&1["name"]) == String.downcase(name)))
   end
+
+  defp email?(query), do: String.contains?(query, "@")
 
   def handle_async(:search, {:ok, {:ok, %{items: docs}}}, socket) do
     codes = Enum.map(docs, & &1["code"])

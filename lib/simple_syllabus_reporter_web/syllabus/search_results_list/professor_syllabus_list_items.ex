@@ -87,10 +87,11 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ProfessorSyllabusListItems do
               type="button"
               phx-click="generate_missing_for_professor"
               phx-value-codes={@syllabus_codes}
-              class={["ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-lg self-end",
-                     "text-xs font-medium text-indigo-400 bg-indigo-950/30",
-                     "hover:text-indigo-300 hover:bg-indigo-950/50 active:bg-indigo-950/70",
-                     "transition-all duration-150"
+              class={[
+                "ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-lg self-end",
+                "text-xs font-medium text-indigo-400 bg-indigo-950/30",
+                "hover:text-indigo-300 hover:bg-indigo-950/50 active:bg-indigo-950/70",
+                "transition-all duration-150"
               ]}
               title={"Generate missing reports for #{@professor}"}
             >
@@ -98,71 +99,106 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ProfessorSyllabusListItems do
             </button>
           <% end %>
           <%= for doc <- Enum.sort_by(@syllabi, &(&1["title"] || &1["course_name"] || "")) do %>
-            <% selected? = @selected && @selected["code"] == doc["code"] %>
-            <div
-              id={"syllabus-#{doc["code"]}-#{professor_slug(@professor)}"}
-              phx-click="select"
-              phx-value-code={doc["code"]}
-              phx-value-title={doc["title"] || doc["course_name"] || "Untitled"}
-              phx-value-term={doc["term_name"] || ""}
-              class={[
-                "group flex flex-col gap-0.5 p-2 rounded-lg cursor-pointer border transition-all relative",
-                if(selected?,
-                  do: "bg-indigo-950/40 border-indigo-500/40",
-                  else:
-                    "bg-slate-800/40 border-slate-800 hover:bg-slate-900 hover:border-indigo-500/50"
-                )
-              ]}
-            >
-              <span class={[
-                "text-sm font-medium leading-snug transition-colors",
-                if(selected?,
-                  do: "text-indigo-100",
-                  else: "text-slate-100 group-hover:text-indigo-100"
-                )
-              ]}>
-                {doc["title"] || doc["course_name"] || "Untitled"}
-              </span>
-              <div class="flex flex-wrap gap-x-3 gap-y-0.5 ">
-                <span :if={doc["term_name"] || doc["term"]} class="text-xs text-slate-400">
-                  {doc["term_name"] || doc["term"]}
-                </span>
-              </div>
-              <%= if @total_elements > 0 do %>
-                <% counts = Map.get(@report_counts, doc["code"], %{}) %>
-                <% met = Map.get(counts, "met", 0) %>
-                <% not_met = Map.get(counts, "not_met", 0) %>
-                <% partially_met = Map.get(counts, "partially_met", 0) %>
-                <% total_run = met + not_met + partially_met %>
-                <% item_generating? =
-                  MapSet.size(Map.get(@generating_per_code, doc["code"], MapSet.new())) > 0 %>
-                <div class="flex items-center gap-2 ">
-                  <div class="flex-1 h-1.5 bg-slate-700/60 rounded-full overflow-hidden flex">
-                    <div
-                      class="h-full transition-all duration-500 bg-[#3d6b52]"
-                      style={"width: #{met / @total_elements * 100}%"}
-                    />
-                    <div
-                      class="h-full transition-all duration-500 bg-[#7a6a3a]"
-                      style={"width: #{partially_met / @total_elements * 100}%"}
-                    />
-                    <div
-                      class="h-full transition-all duration-500 bg-[#7a4040]"
-                      style={"width: #{not_met / @total_elements * 100}%"}
-                    />
-                  </div>
-                  <span class="text-xs text-slate-500 shrink-0 tabular-nums">
-                    {total_run}/{@total_elements}
-                    <%= if item_generating? do %>
-                      <span class="hero-arrow-path size-3 animate-spin inline-block ml-0.5 text-indigo-400" />
-                    <% end %>
-                  </span>
-                </div>
-              <% end %>
-            </div>
+            <.syllabus_item
+              doc={doc}
+              professor={@professor}
+              selected={@selected}
+              total_elements={@total_elements}
+              report_counts={@report_counts}
+              generating_per_code={@generating_per_code}
+            />
           <% end %>
         </div>
       </div>
+    </div>
+    """
+  end
+
+  attr :doc, :map, required: true
+  attr :professor, :string, required: true
+  attr :selected, :map, default: nil
+  attr :total_elements, :integer, required: true
+  attr :report_counts, :map, required: true
+  attr :generating_per_code, :map, required: true
+
+  defp syllabus_item(assigns) do
+    selected? = assigns.selected && assigns.selected["code"] == assigns.doc["code"]
+    assigns = assign(assigns, selected?: selected?)
+
+    ~H"""
+    <% counts = Map.get(@report_counts, @doc["code"], %{}) %>
+    <% met = Map.get(counts, "met", 0) %>
+    <% not_met = Map.get(counts, "not_met", 0) %>
+    <% partially_met = Map.get(counts, "partially_met", 0) %>
+    <% total_run = met + not_met + partially_met %>
+    <% item_generating? =
+      MapSet.size(Map.get(@generating_per_code, @doc["code"], MapSet.new())) > 0 %>
+    <div
+      id={"syllabus-#{@doc["code"]}-#{professor_slug(@professor)}"}
+      phx-click="select"
+      phx-value-code={@doc["code"]}
+      phx-value-title={@doc["title"] || @doc["course_name"] || "Untitled"}
+      phx-value-term={@doc["term_name"] || ""}
+      class={[
+        "group flex flex-col gap-0.5 p-2 rounded-lg cursor-pointer border transition-all relative",
+        if(@selected?,
+          do: "bg-indigo-950/40 border-indigo-500/40",
+          else: "bg-slate-800/40 border-slate-800 hover:bg-slate-900 hover:border-indigo-500/50"
+        )
+      ]}
+    >
+      <span class={[
+        "text-sm font-medium leading-snug transition-colors",
+        if(@selected?, do: "text-indigo-100", else: "text-slate-100 group-hover:text-indigo-100")
+      ]}>
+        {@doc["title"] || @doc["course_name"] || "Untitled"}
+      </span>
+      <div class="flex flex-wrap gap-x-3 gap-y-0.5">
+        <span :if={@doc["term_name"] || @doc["term"]} class="text-xs text-slate-400">
+          {@doc["term_name"] || @doc["term"]}
+        </span>
+      </div>
+      <%= if @total_elements > 0 do %>
+        <div class="flex items-center gap-2">
+          <div class="flex-1 h-1.5 bg-slate-700/60 rounded-full overflow-hidden flex">
+            <div
+              class="h-full transition-all duration-500 bg-[#3d6b52]"
+              style={"width: #{met / @total_elements * 100}%"}
+            />
+            <div
+              class="h-full transition-all duration-500 bg-[#7a6a3a]"
+              style={"width: #{partially_met / @total_elements * 100}%"}
+            />
+            <div
+              class="h-full transition-all duration-500 bg-[#7a4040]"
+              style={"width: #{not_met / @total_elements * 100}%"}
+            />
+          </div>
+          <span class="text-xs text-slate-500 shrink-0 tabular-nums">
+            {total_run}/{@total_elements}
+            <%= if item_generating? do %>
+              <span class="hero-arrow-path size-3 animate-spin inline-block ml-0.5 text-indigo-400" />
+            <% end %>
+          </span>
+        </div>
+        <%= if total_run == @total_elements && (not_met + partially_met > 0) && !item_generating? do %>
+          <button
+            id={"regen-non-met-#{@doc["code"]}"}
+            type="button"
+            phx-click="regenerate_non_met"
+            phx-value-code={@doc["code"]}
+            class={[
+              "mt-1 self-end inline-flex items-center gap-1 px-2 py-0.5 rounded-md",
+              "text-xs font-medium text-amber-200 bg-amber-950/30 border border-amber-700/10",
+              "hover:text-amber-300 hover:bg-amber-950/50 active:bg-amber-950/70",
+              "transition-all duration-150"
+            ]}
+            title="Re-generate non-met and partially met reports"
+          >
+            <span class="hero-arrow-path size-3" /> Re-run non-met
+          </button>
+        <% end %>
+      <% end %>
     </div>
     """
   end

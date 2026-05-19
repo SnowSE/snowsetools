@@ -10,6 +10,87 @@ defmodule SimpleSyllabusReporter.SimpleSyllabusApi do
     fetch_syllabi_by_org(org_id)
   end
 
+  def search_syllabi_by_email(email) when is_binary(email) do
+    fetch_syllabi_by_email(email)
+  end
+
+  ttl_cache def fetch_syllabi_by_email(email) do
+    case fetch_syllabi_page_by_editor(email, 0) do
+      {:ok, %{"items" => first_page_raw, "pagination" => pagination}} ->
+        %{"total" => total, "returned" => returned, "page_size" => page_size} = pagination
+
+        remaining_pages =
+          if total > returned do
+            last_page = ceil(total / page_size) - 1
+
+            1..last_page
+            |> Task.async_stream(
+              fn page -> fetch_syllabi_page_by_editor(email, page) end,
+              timeout: 15_000,
+              on_timeout: :kill_task
+            )
+            |> Enum.flat_map(fn
+              {:ok, {:ok, %{"items" => items}}} ->
+                items
+
+              {:ok, {:error, reason}} ->
+                Logger.warning(
+                  "fetch_syllabi_by_email page error email=#{email} reason=#{inspect(reason)}"
+                )
+
+                []
+
+              {:exit, reason} ->
+                Logger.warning(
+                  "fetch_syllabi_by_email page exit email=#{email} reason=#{inspect(reason)}"
+                )
+
+                []
+            end)
+          else
+            []
+          end
+
+        all_raw = first_page_raw ++ remaining_pages
+
+        Logger.info(
+          "fetch_syllabi_by_email email=#{email} total=#{total} fetched=#{length(all_raw)}"
+        )
+
+        {:ok, docs} = SyllabusSchemas.parse_list(all_raw)
+        {:ok, %{items: docs, pagination: pagination}}
+
+      {:error, _} = err ->
+        err
+    end
+  end
+
+  defp fetch_syllabi_page_by_editor(editor, page) do
+    url = "#{@base_url}/doc-library-search"
+
+    case Req.get(url,
+           params: [editor: editor, page: page, "term_statuses[]": "future"],
+           receive_timeout: 10_000
+         ) do
+      {:ok, %Req.Response{status: 200, body: body}} ->
+        {:ok, body}
+
+      {:ok, %Req.Response{status: status, body: body}} ->
+        Logger.warning(
+          "fetch_syllabi_page_by_editor editor=#{editor} page=#{page} status=#{status} body=#{inspect(body)}"
+        )
+
+        {:error, "Unexpected status #{status}"}
+
+      {:error, reason} ->
+        Logger.error(
+          "fetch_syllabi_page_by_editor editor=#{editor} page=#{page} error=#{inspect(reason)}"
+        )
+
+        {:error, inspect(reason)}
+    end
+  end
+
   ttl_cache def fetch_syllabi_by_org(org_id) do
     case fetch_syllabi_page(org_id, 0) do
       {:ok, %{"items" => first_page_raw, "pagination" => pagination}} ->

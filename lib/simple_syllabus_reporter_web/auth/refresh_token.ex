@@ -13,6 +13,7 @@ defmodule SimpleSyllabusReporterWeb.Plugs.RefreshToken do
 
   import Plug.Conn
   require Logger
+  @refresh_before_seconds 60
 
   def init(opts), do: opts
 
@@ -21,8 +22,10 @@ defmodule SimpleSyllabusReporterWeb.Plugs.RefreshToken do
 
   def call(conn, _opts) do
     with user_id when not is_nil(user_id) <- get_session(conn, "current_user_id"),
-         expires_at when is_integer(expires_at) <- get_session(conn, "token_expires_at"),
-         true <- System.system_time(:second) >= expires_at do
+         expires_at when is_integer(expires_at) <- get_session(conn, "session_expires_at"),
+         true <- System.system_time(:second) >= expires_at - @refresh_before_seconds do
+      ttl = expires_at - System.system_time(:second)
+      Logger.info("RefreshToken plug: token expiring in #{ttl}s, attempting refresh path=#{conn.request_path}")
       attempt_refresh(conn)
     else
       _ -> conn
@@ -31,7 +34,8 @@ defmodule SimpleSyllabusReporterWeb.Plugs.RefreshToken do
 
   defp attempt_refresh(conn) do
     refresh_token = get_session(conn, "refresh_token")
-    oidc_sub = get_session(conn, "oidc_sub")
+    claims = get_session(conn, "oidc_claims")
+    oidc_sub = claims && Map.get(claims, "sub")
 
     if is_binary(refresh_token) and is_binary(oidc_sub) do
       oidc_config = Application.fetch_env!(:simple_syllabus_reporter, :oidc)
@@ -45,13 +49,9 @@ defmodule SimpleSyllabusReporterWeb.Plugs.RefreshToken do
              %{expected_subject: oidc_sub}
            ) do
         {:ok, new_token} ->
-          Logger.info("Refreshed OIDC access token for sub=#{oidc_sub}")
-
-          new_expires_at =
-            case new_token.access do
-              %{expires: exp} when is_integer(exp) -> exp
-              _ -> nil
-            end
+          new_expires_at = Map.get(new_token.id.claims, "exp")
+          now = System.system_time(:second)
+          Logger.info("RefreshToken plug: refresh success sub=#{oidc_sub} new_exp=#{new_expires_at} ttl=#{new_expires_at - now}s")
 
           new_refresh_token =
             case new_token.refresh do
@@ -60,17 +60,15 @@ defmodule SimpleSyllabusReporterWeb.Plugs.RefreshToken do
             end
 
           conn
-          |> put_session("token_expires_at", new_expires_at)
+          |> put_session("session_expires_at", new_expires_at)
           |> put_session("refresh_token", new_refresh_token)
 
         {:error, reason} ->
-          Logger.warning("OIDC token refresh failed, clearing session reason=#{inspect(reason)}")
+          Logger.warning("RefreshToken plug: refresh failed, clearing session sub=#{oidc_sub} reason=#{inspect(reason)}")
           clear_session(conn)
       end
     else
-      # No refresh token or sub claim in session – access token expired with no way
-      # to renew. Clear the session; downstream auth guards will redirect to login.
-      Logger.info("Access token expired with no refresh token, clearing session")
+      Logger.info("RefreshToken plug: token expired with no refresh token or sub, clearing session")
       clear_session(conn)
     end
   end

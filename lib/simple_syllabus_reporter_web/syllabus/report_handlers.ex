@@ -91,6 +91,28 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportHandlers do
     {:noreply, socket}
   end
 
+  def handle_event("regenerate_non_met", %{"code" => code}, socket) do
+    elements = socket.assigns.elements
+
+    Task.start(fn ->
+      with {:ok, full_doc} <- SimpleSyllabusApi.get_syllabus_details(code),
+           {:ok, report} <- GeneratedReport.get_latest_for_syllabus(code),
+           {:ok, items_map} <- GeneratedReportItem.list_for_report_as_map(report["id"]) do
+        non_met_element_ids =
+          items_map
+          |> Enum.filter(fn {_id, item} -> item["status"] in ["not_met", "partially_met"] end)
+          |> Enum.map(fn {id, _} -> id end)
+          |> MapSet.new()
+
+        elements
+        |> Enum.filter(fn e -> MapSet.member?(non_met_element_ids, e["id"]) end)
+        |> Enum.each(fn element -> ReportGenerator.generate_async(full_doc, element) end)
+      end
+    end)
+
+    {:noreply, socket}
+  end
+
   def handle_event("generate_all_missing", _params, socket) do
     elements = socket.assigns.elements
     syllabi_docs = socket.assigns.syllabi_docs
