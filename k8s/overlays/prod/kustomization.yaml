@@ -17,7 +17,7 @@ patches:
               - name: webapp
                 env:
                   - name: PHX_HOST
-                    value: "simplesyllabuscheck.snowse.io"
+                    value: "alexsimplesyllabuscheck.snowse.io"
 
     target:
       kind: Deployment
@@ -32,7 +32,7 @@ patches:
           - name: main-gateway
             namespace: istio-system
         hostnames:
-          - "simplesyllabuscheck.snowse.io"
+          - "alexsimplesyllabuscheck.snowse.io"
     target:
       kind: HTTPRoute
       name: simple-syllabus
