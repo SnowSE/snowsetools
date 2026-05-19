@@ -66,7 +66,7 @@ defmodule SimpleSyllabusReporter.MixProject do
       {:bandit, "~> 1.5"},
       {:ecto_sql, "~> 3.11"},
       {:postgrex, ">= 0.22.0"},
-      {:zoi, "~> 0.17"},
+      {:zoi, "~> 0.18"},
       {:dotenvy, "~> 1.1.1"},
       {:oidcc_plug, "~> 0.4.0"}
     ]
