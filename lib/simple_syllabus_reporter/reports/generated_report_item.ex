@@ -61,6 +61,24 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportItem do
     end
   end
 
+  def get_by_report_and_element(generated_report_id, required_element_id) do
+    sql = """
+    SELECT id, generated_report_id, required_element_id, status, description, evidence, additional_considerations
+    FROM generated_report_items
+    WHERE generated_report_id = $(generated_report_id)
+      AND required_element_id = $(required_element_id)
+    """
+
+    case DbHelpers.run_sql(sql, %{
+           "generated_report_id" => generated_report_id,
+           "required_element_id" => required_element_id
+         }) do
+      {:error, _} = err -> err
+      [row | _] -> {:ok, row}
+      [] -> {:error, :not_found}
+    end
+  end
+
   def upsert(generated_report_id, required_element_id, attrs) do
     case validate(attrs) do
       {:ok, d} ->
@@ -142,6 +160,59 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportItem do
     end
   end
 
+  def item_counts_for_element(element_id) do
+    sql = """
+    WITH latest_reports AS (
+      SELECT DISTINCT ON (syllabus_code) id
+      FROM generated_reports
+      ORDER BY syllabus_code, inserted_at DESC
+    )
+    SELECT
+      COUNT(gri.id) FILTER (WHERE gri.status = 'met')::integer           AS met,
+      COUNT(gri.id) FILTER (WHERE gri.status = 'not_met')::integer       AS not_met,
+      COUNT(gri.id) FILTER (WHERE gri.status = 'partially_met')::integer AS partially_met
+    FROM latest_reports lr
+    LEFT JOIN generated_report_items gri
+      ON gri.generated_report_id = lr.id
+      AND gri.required_element_id = $(element_id)
+    """
+
+    case DbHelpers.run_sql(sql, %{"element_id" => element_id}) do
+      {:error, _} = err ->
+        err
+
+      [row] ->
+        {:ok, row}
+
+      [] ->
+        {:ok, %{"met" => 0, "not_met" => 0, "partially_met" => 0}}
+    end
+  end
+
+  def all_element_coverage_counts do
+    sql = """
+    WITH latest_reports AS (
+      SELECT DISTINCT ON (syllabus_code) id
+      FROM generated_reports
+      ORDER BY syllabus_code, inserted_at DESC
+    )
+    SELECT
+      gri.required_element_id                                             AS element_id,
+      COUNT(gri.id) FILTER (WHERE gri.status = 'met')::integer           AS met,
+      COUNT(gri.id) FILTER (WHERE gri.status = 'not_met')::integer       AS not_met,
+      COUNT(gri.id) FILTER (WHERE gri.status = 'partially_met')::integer AS partially_met
+    FROM latest_reports lr
+    LEFT JOIN generated_report_items gri ON gri.generated_report_id = lr.id
+    WHERE gri.required_element_id IS NOT NULL
+    GROUP BY gri.required_element_id
+    """
+
+    case DbHelpers.run_sql(sql, %{}) do
+      {:error, _} = err -> err
+      rows -> {:ok, rows}
+    end
+  end
+
   def list_unmet_for_element(required_element_id) do
     sql = """
     SELECT
@@ -160,6 +231,32 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportItem do
     case DbHelpers.run_sql(sql, %{"required_element_id" => required_element_id}) do
       {:error, _} = err -> err
       rows -> {:ok, rows}
+    end
+  end
+
+  def list_not_generated_for_element(element_id, all_codes) when is_list(all_codes) do
+    sql = """
+    WITH latest_reports AS (
+      SELECT DISTINCT ON (syllabus_code) id, syllabus_code
+      FROM generated_reports
+      WHERE syllabus_code = ANY($(codes))
+      ORDER BY syllabus_code, inserted_at DESC
+    ),
+    covered AS (
+      SELECT lr.syllabus_code
+      FROM latest_reports lr
+      JOIN generated_report_items gri
+        ON gri.generated_report_id = lr.id
+        AND gri.required_element_id = $(element_id)
+    )
+    SELECT code
+    FROM UNNEST($(codes)::text[]) AS t(code)
+    WHERE code NOT IN (SELECT syllabus_code FROM covered)
+    """
+
+    case DbHelpers.run_sql(sql, %{"element_id" => element_id, "codes" => all_codes}) do
+      {:error, _} = err -> err
+      rows -> {:ok, Enum.map(rows, & &1["code"])}
     end
   end
 end

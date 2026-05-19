@@ -7,6 +7,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   alias SimpleSyllabusReporter.Reports.GeneratedReportItem
   alias SimpleSyllabusReporter.Reports.ReportInstruction
   alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
+  alias SimpleSyllabusReporter.Reports.RequiredReportElementCoverageCache
   alias SimpleSyllabusReporter.SimpleSyllabusApi
 
   @pubsub SimpleSyllabusReporter.PubSub
@@ -52,6 +53,14 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   """
   def generate_async_all_unmet(required_element, exclude_code) do
     GenServer.cast(__MODULE__, {:generate_all_unmet, required_element, exclude_code})
+  end
+
+  @doc """
+  Enqueues async generation for every syllabus that has been reported on
+  but has no report item for `required_element` in its latest report.
+  """
+  def generate_async_all_missing(required_element, all_codes) when is_list(all_codes) do
+    GenServer.cast(__MODULE__, {:generate_all_missing, required_element, all_codes})
   end
 
   @doc """
@@ -130,6 +139,31 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   end
 
   @impl true
+  def handle_cast({:generate_all_missing, element, all_codes}, state) do
+    Task.start(fn ->
+      case GeneratedReportItem.list_not_generated_for_element(element["id"], all_codes) do
+        {:ok, codes} ->
+          Enum.each(codes, fn code ->
+            case SimpleSyllabusApi.get_syllabus_details(code) do
+              {:ok, syllabus_doc} ->
+                generate_async(syllabus_doc, element)
+
+              {:error, reason} ->
+                Logger.error(
+                  "generate_all_missing: failed to fetch syllabus code=#{code} reason=#{inspect(reason)}"
+                )
+            end
+          end)
+
+        {:error, reason} ->
+          Logger.error("generate_all_missing: failed to list codes reason=#{inspect(reason)}")
+      end
+    end)
+
+    {:noreply, state}
+  end
+
+  @impl true
   def handle_cast({:request_pending, codes}, state) do
     Enum.each(codes, fn code -> broadcast_pending_update(code, state.pending) end)
     {:noreply, state}
@@ -197,7 +231,8 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   def handle_info({{code, element_id, report_id}, {:ok, ai_result}}, state) do
     result =
       case GeneratedReportItem.upsert(report_id, element_id, ai_result) do
-        {:ok, _item} = ok ->
+        {:ok, item} = ok ->
+          RequiredReportElementCoverageCache.notify_item_saved(element_id)
           ok
 
         {:error, reason} = err ->

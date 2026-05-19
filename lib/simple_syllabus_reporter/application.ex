@@ -41,6 +41,7 @@ defmodule SimpleSyllabusReporter.Application do
       {Phoenix.PubSub, name: SimpleSyllabusReporter.PubSub},
       SimpleSyllabusReporter.AI.AsyncCompletions,
       SimpleSyllabusReporter.Cache,
+      SimpleSyllabusReporter.Reports.RequiredReportElementCoverageCache,
       SimpleSyllabusReporter.Reports.ReportGenerator,
       SimpleSyllabusReporterWeb.Endpoint
     ]

@@ -3,6 +3,8 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
 
   alias SimpleSyllabusReporter.Reports.RequiredElement
   alias SimpleSyllabusReporter.Reports.ReportInstruction
+  alias SimpleSyllabusReporter.Reports.RequiredReportElementCoverageCache
+  alias SimpleSyllabusReporter.Reports.ReportGenerator
 
   import SimpleSyllabusReporterWeb.Reports.ElementsList
   import SimpleSyllabusReporterWeb.Reports.ElementDetail
@@ -21,9 +23,35 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
       |> assign(:editing_instruction, nil)
       |> assign(:instruction_errors, %{})
       |> assign(:confirm_delete_instruction, nil)
+      |> assign(:element_counts, nil)
       |> load_elements()
 
     {:ok, socket}
+  end
+
+  def handle_event("generate_missing_for_element", %{"id" => element_id}, socket) do
+    case RequiredElement.get(element_id) do
+      {:ok, element} ->
+        all_codes = RequiredReportElementCoverageCache.get_syllabi_codes()
+        ReportGenerator.generate_async_all_missing(element, all_codes)
+        {:noreply, put_flash(socket, :info, "Queued generation for missing syllabi.")}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Element not found.")}
+    end
+  end
+
+  def handle_event("regenerate_unmet_for_element", %{"id" => element_id}, socket) do
+    case RequiredElement.get(element_id) do
+      {:ok, element} ->
+        ReportGenerator.generate_async_all_unmet(element, nil)
+
+        {:noreply,
+         put_flash(socket, :info, "Queued regeneration for unmet/partially met syllabi.")}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Element not found.")}
+    end
   end
 
   def handle_event("new", _params, socket) do
@@ -97,12 +125,17 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
        assign(socket,
          expanded_id: nil,
          instructions: [],
+         element_counts: nil,
          editing_instruction: nil,
          instruction_errors: %{},
          confirm_delete_instruction: nil
        )}
     else
-      socket = load_instructions(socket, id)
+      socket =
+        socket
+        |> load_instructions(id)
+        |> load_element_counts(id)
+        |> subscribe_element_coverage(id)
 
       {:noreply,
        assign(socket,
@@ -186,11 +219,32 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
     end
   end
 
+  def handle_info({:element_coverage_updated, element_id, counts}, socket) do
+    socket =
+      if socket.assigns.expanded_id == element_id do
+        assign(socket, :element_counts, counts)
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
   defp load_instructions(socket, element_id) do
     case ReportInstruction.list_for_element(element_id) do
       {:ok, items} -> assign(socket, :instructions, items)
       {:error, _} -> assign(socket, :instructions, [])
     end
+  end
+
+  defp load_element_counts(socket, element_id) do
+    counts = RequiredReportElementCoverageCache.get(element_id)
+    assign(socket, :element_counts, counts)
+  end
+
+  defp subscribe_element_coverage(socket, element_id) do
+    RequiredReportElementCoverageCache.subscribe(element_id)
+    socket
   end
 
   defp format_errors(errors) when is_list(errors) do
@@ -234,6 +288,7 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
             editing_instruction={@editing_instruction}
             instruction_errors={@instruction_errors}
             confirm_delete_instruction={@confirm_delete_instruction}
+            element_counts={@element_counts}
           />
         </div>
       </div>

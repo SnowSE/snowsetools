@@ -1,6 +1,8 @@
 defmodule SimpleSyllabusReporterWeb.Syllabus.ProfessorSyllabusListItems do
   use SimpleSyllabusReporterWeb, :html
 
+  import SimpleSyllabusReporterWeb.Components.ReportCompletionBar
+
   attr :professor, :string, required: true
   attr :syllabi, :list, required: true
   attr :selected, :map, default: nil
@@ -54,27 +56,15 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ProfessorSyllabusListItems do
           {@professor}
         </span>
         <%= if @total_elements > 0 && @total_possible > 0 do %>
-          <div class="flex items-center gap-1.5 shrink-0">
-            <%= if @any_generating? do %>
-              <span class="hero-arrow-path size-2.5 animate-spin inline-block ml-0.5 text-indigo-400" />
-            <% end %>
-            <span class="text-[10px] text-slate-600 tabular-nums text-end">
-              {@total_run}/{@total_possible}
-            </span>
-            <div class="w-16 h-1 bg-slate-700/60 rounded-full overflow-hidden flex">
-              <div
-                class="h-full transition-all duration-500 bg-[#3d6b52]"
-                style={"width: #{@total_met / @total_possible * 100}%"}
-              />
-              <div
-                class="h-full transition-all duration-500 bg-[#7a6a3a]"
-                style={"width: #{@total_partial / @total_possible * 100}%"}
-              />
-              <div
-                class="h-full transition-all duration-500 bg-[#7a4040]"
-                style={"width: #{@total_not_met / @total_possible * 100}%"}
-              />
-            </div>
+          <div class="shrink-0">
+            <.report_completion_bar
+              met={@total_met}
+              not_met={@total_not_met}
+              partially_met={@total_partial}
+              total={@total_possible}
+              generating?={@any_generating?}
+              bar_class="w-16"
+            />
           </div>
         <% end %>
       </div>
@@ -159,28 +149,13 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ProfessorSyllabusListItems do
         </span>
       </div>
       <%= if @total_elements > 0 do %>
-        <div class="flex items-center gap-2">
-          <div class="flex-1 h-1.5 bg-slate-700/60 rounded-full overflow-hidden flex">
-            <div
-              class="h-full transition-all duration-500 bg-[#79C59B]"
-              style={"width: #{met / @total_elements * 100}%"}
-            />
-            <div
-              class="h-full transition-all duration-500 bg-[#7a6a3a]"
-              style={"width: #{partially_met / @total_elements * 100}%"}
-            />
-            <div
-              class="h-full transition-all duration-500 bg-[#7a4040]"
-              style={"width: #{not_met / @total_elements * 100}%"}
-            />
-          </div>
-          <span class="text-xs text-slate-500 shrink-0 tabular-nums">
-            {total_run}/{@total_elements}
-            <%= if item_generating? do %>
-              <span class="hero-arrow-path size-3 animate-spin inline-block ml-0.5 text-indigo-400" />
-            <% end %>
-          </span>
-        </div>
+        <.report_completion_bar
+          met={met}
+          not_met={not_met}
+          partially_met={partially_met}
+          total={@total_elements}
+          generating?={item_generating?}
+        />
         <%= if total_run == @total_elements && (not_met + partially_met > 0) && !item_generating? do %>
           <button
             id={"regen-non-met-#{@doc["code"]}"}

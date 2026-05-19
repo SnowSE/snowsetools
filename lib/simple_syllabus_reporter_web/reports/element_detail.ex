@@ -1,6 +1,7 @@
 defmodule SimpleSyllabusReporterWeb.Reports.ElementDetail do
   use SimpleSyllabusReporterWeb, :html
 
+  import SimpleSyllabusReporterWeb.Components.ReportCompletionBar
   import SimpleSyllabusReporterWeb.Reports.ElementForm
   import SimpleSyllabusReporterWeb.Reports.RequirementsPanel
 
@@ -12,6 +13,7 @@ defmodule SimpleSyllabusReporterWeb.Reports.ElementDetail do
   attr :editing_instruction, :any, required: true
   attr :instruction_errors, :map, required: true
   attr :confirm_delete_instruction, :any, required: true
+  attr :element_counts, :any, default: nil
 
   def element_detail(assigns) do
     ~H"""
@@ -28,6 +30,47 @@ defmodule SimpleSyllabusReporterWeb.Reports.ElementDetail do
                   <p class="text-slate-400 text-sm mt-1">{@selected["description"]}</p>
                 <% else %>
                   <p class="text-slate-600 text-sm mt-1 italic">No description.</p>
+                <% end %>
+                <%= if @element_counts && @element_counts["total_syllabi"] > 0 do %>
+                  <div class="mt-3">
+                    <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                      Coverage across all syllabi
+                    </p>
+                    <.report_completion_bar
+                      met={@element_counts["met"]}
+                      not_met={@element_counts["not_met"]}
+                      partially_met={@element_counts["partially_met"]}
+                      not_generated={@element_counts["not_generated"]}
+                      total={@element_counts["total_syllabi"]}
+                    />
+                    <div class="flex items-center gap-2 mt-2.5">
+                      <%= if @element_counts["not_generated"] && @element_counts["not_generated"] > 0 do %>
+                        <button
+                          id={"generate-missing-#{@selected["id"]}"}
+                          type="button"
+                          phx-click="generate_missing_for_element"
+                          phx-value-id={@selected["id"]}
+                          class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 rounded-md transition-colors"
+                        >
+                          <span class="hero-play size-3.5" />
+                          Generate missing ({@element_counts["not_generated"]})
+                        </button>
+                      <% end %>
+                      <%= if (@element_counts["not_met"] || 0) + (@element_counts["partially_met"] || 0) > 0 do %>
+                        <button
+                          id={"regen-unmet-#{@selected["id"]}"}
+                          type="button"
+                          phx-click="regenerate_unmet_for_element"
+                          phx-value-id={@selected["id"]}
+                          class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs text-slate-400 hover:text-amber-300 border border-slate-700 hover:border-amber-900 rounded-md transition-colors"
+                        >
+                          <span class="hero-arrow-path size-3.5" />
+                          Re-generate unmet/partial ({(@element_counts["not_met"] || 0) +
+                            (@element_counts["partially_met"] || 0)})
+                        </button>
+                      <% end %>
+                    </div>
+                  </div>
                 <% end %>
               </div>
               <div class="flex items-center gap-2 shrink-0">

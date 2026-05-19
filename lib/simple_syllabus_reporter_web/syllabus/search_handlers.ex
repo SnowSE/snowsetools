@@ -8,6 +8,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
   alias SimpleSyllabusReporter.Reports.GeneratedReport
   alias SimpleSyllabusReporter.Reports.GeneratedReportItem
   alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
+  alias SimpleSyllabusReporter.Reports.RequiredReportElementCoverageCache
 
   def handle_params(%{"q" => query} = params, socket) when byte_size(query) > 0 do
     code = params["code"]
@@ -166,6 +167,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
     if connected?(socket) do
       Enum.each(codes, fn code -> ReportGenerationStatus.subscribe(code) end)
       ReportGenerationStatus.request_pending(codes)
+      RequiredReportElementCoverageCache.set_syllabi_codes(codes)
     end
 
     socket =
