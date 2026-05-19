@@ -41,7 +41,7 @@ end
 
 if config_env() == :prod do
   secret_key_base = env!("SECRET_KEY_BASE", :string!)
-  host = env!("PHX_HOST", :string, "example.com")
+  host = env!("PHX_HOST", :string!)
 
   config :simple_syllabus_reporter, SimpleSyllabusReporterWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
