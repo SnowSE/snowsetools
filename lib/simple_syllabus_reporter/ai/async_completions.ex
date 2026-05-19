@@ -43,6 +43,8 @@ defmodule SimpleSyllabusReporter.AI.AsyncCompletions do
 
   @impl true
   def init(_opts) do
+    send(self(), :recover_pending)
+
     {:ok,
      %{
        queue: :queue.new(),
@@ -60,21 +62,42 @@ defmodule SimpleSyllabusReporter.AI.AsyncCompletions do
 
   @impl true
   def handle_cast({:enqueue, topic, event, messages, opts}, state) do
-    new_state =
-      if state.in_flight < state.max_concurrent do
-        ref = spawn_completion(topic, event, messages, opts)
+    case CompletionLog.record_pending(topic, event, messages, opts) do
+      {:ok, pending_id} ->
+        new_state = enqueue_item(state, pending_id, topic, event, messages, opts)
+        broadcast_status(new_state)
+        {:noreply, new_state}
 
-        %{
-          state
-          | in_flight: state.in_flight + 1,
-            monitors: Map.put(state.monitors, ref, {topic, event})
-        }
-      else
-        %{state | queue: :queue.in({topic, event, messages, opts}, state.queue)}
-      end
+      {:error, reason} ->
+        Logger.error("Failed to record pending completion: #{inspect(reason)}")
+        {:noreply, state}
+    end
+  end
 
-    broadcast_status(new_state)
-    {:noreply, new_state}
+  @impl true
+  def handle_info(:recover_pending, state) do
+    case CompletionLog.list_pending() do
+      {:ok, []} ->
+        {:noreply, state}
+
+      {:ok, pending} ->
+        Logger.info("Recovering #{length(pending)} pending AI completions")
+
+        new_state =
+          Enum.reduce(pending, state, fn item, acc ->
+            event = item["event_term"] |> Base.decode64!() |> :erlang.binary_to_term([:safe])
+            messages = item["messages"]
+            opts = CompletionLog.decode_opts(item["recovery_opts"])
+            enqueue_item(acc, item["id"], item["topic"], event, messages, opts)
+          end)
+
+        broadcast_status(new_state)
+        {:noreply, new_state}
+
+      {:error, reason} ->
+        Logger.error("Failed to recover pending completions: #{inspect(reason)}")
+        {:noreply, state}
+    end
   end
 
   @impl true
@@ -127,7 +150,7 @@ defmodule SimpleSyllabusReporter.AI.AsyncCompletions do
     queued_items =
       state.queue
       |> :queue.to_list()
-      |> Enum.map(fn {topic, event, _messages, _opts} -> {topic, event} end)
+      |> Enum.map(fn {_pending_id, topic, event, _messages, _opts} -> {topic, event} end)
 
     %{
       in_flight: state.in_flight,
@@ -144,10 +167,24 @@ defmodule SimpleSyllabusReporter.AI.AsyncCompletions do
 
   defp worker_error(reason), do: {:worker_crashed, reason}
 
+  defp enqueue_item(state, pending_id, topic, event, messages, opts) do
+    if state.in_flight < state.max_concurrent do
+      ref = spawn_completion(pending_id, topic, event, messages, opts)
+
+      %{
+        state
+        | in_flight: state.in_flight + 1,
+          monitors: Map.put(state.monitors, ref, {topic, event})
+      }
+    else
+      %{state | queue: :queue.in({pending_id, topic, event, messages, opts}, state.queue)}
+    end
+  end
+
   defp drain_queue(state) do
     case :queue.out(state.queue) do
-      {{:value, {topic, event, messages, opts}}, queue} ->
-        ref = spawn_completion(topic, event, messages, opts)
+      {{:value, {pending_id, topic, event, messages, opts}}, queue} ->
+        ref = spawn_completion(pending_id, topic, event, messages, opts)
         %{state | queue: queue, monitors: Map.put(state.monitors, ref, {topic, event})}
 
       {:empty, _} ->
@@ -155,18 +192,16 @@ defmodule SimpleSyllabusReporter.AI.AsyncCompletions do
     end
   end
 
-  defp spawn_completion(topic, event, messages, opts) do
+  defp spawn_completion(pending_id, topic, event, messages, opts) do
     {_pid, ref} =
       spawn_monitor(fn ->
         {result, thinking} = complete_sync(messages, opts)
         config = Application.fetch_env!(:simple_syllabus_reporter, :ai)
 
-        CompletionLog.record(
-          topic,
-          event,
+        CompletionLog.mark_completed(
+          pending_id,
           config[:model],
           config[:endpoint],
-          messages,
           result,
           thinking
         )

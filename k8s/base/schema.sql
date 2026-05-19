@@ -56,16 +56,25 @@ CREATE TABLE IF NOT EXISTS generated_report_items (
 );
 
 CREATE TABLE IF NOT EXISTS ai_completions (
-  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  topic       TEXT        NOT NULL,
-  event       TEXT        NOT NULL,
-  model       TEXT        NOT NULL DEFAULT '',
-  endpoint    TEXT        NOT NULL DEFAULT '',
-  messages    JSONB       NOT NULL DEFAULT '[]',
-  status      TEXT        NOT NULL CHECK (status IN ('ok', 'error')),
-  result      TEXT        NOT NULL DEFAULT '',
-  thinking    TEXT        NOT NULL DEFAULT '',
-  inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  topic         TEXT        NOT NULL,
+  event         TEXT        NOT NULL,
+  event_term    TEXT        NOT NULL DEFAULT '',
+  model         TEXT        NOT NULL DEFAULT '',
+  endpoint      TEXT        NOT NULL DEFAULT '',
+  messages      JSONB       NOT NULL DEFAULT '[]',
+  recovery_opts JSONB,
+  status        TEXT        NOT NULL CHECK (status IN ('pending', 'ok', 'error')),
+  result        TEXT        NOT NULL DEFAULT '',
+  thinking      TEXT        NOT NULL DEFAULT '',
+  inserted_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Idempotent migrations for existing databases:
+ALTER TABLE ai_completions ADD COLUMN IF NOT EXISTS event_term    TEXT NOT NULL DEFAULT '';
+ALTER TABLE ai_completions ADD COLUMN IF NOT EXISTS recovery_opts JSONB;
+ALTER TABLE ai_completions DROP CONSTRAINT IF EXISTS ai_completions_status_check;
+ALTER TABLE ai_completions ADD  CONSTRAINT ai_completions_status_check
+  CHECK (status IN ('pending', 'ok', 'error'));
 
 CREATE INDEX IF NOT EXISTS ai_completions_inserted_at_idx ON ai_completions (inserted_at DESC);
