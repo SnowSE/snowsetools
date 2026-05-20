@@ -224,7 +224,11 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
   def handle_info({:term_changed, _term_id}, socket) do
     socket =
       if socket.assigns.expanded_id do
-        assign(socket, :element_counts, ReportGeneratorDomainManger.get_element_coverage(socket.assigns.expanded_id))
+        assign(
+          socket,
+          :element_counts,
+          ReportGeneratorDomainManger.get_element_coverage(socket.assigns.expanded_id)
+        )
       else
         socket
       end
