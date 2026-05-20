@@ -4,6 +4,7 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
   alias SimpleSyllabusReporter.Reports.RequiredElementDB
   alias SimpleSyllabusReporter.Reports.ReportInstructionDB
   alias SimpleSyllabusReporter.Reports.ReportGeneratorDomainManger
+  alias SimpleSyllabusReporter.ConfigDB
 
   import SimpleSyllabusReporterWeb.Reports.ElementsList
   import SimpleSyllabusReporterWeb.Reports.ElementDetail
@@ -11,6 +12,8 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
   on_mount {SimpleSyllabusReporterWeb.UserAuth, :ensure_authenticated}
 
   def mount(_params, _session, socket) do
+    if connected?(socket), do: ConfigDB.subscribe()
+
     socket =
       socket
       |> assign(:page_title, "Required Elements")
@@ -216,6 +219,17 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
       {:ok, elements} -> assign(socket, :elements, elements)
       {:error, _} -> assign(socket, :elements, [])
     end
+  end
+
+  def handle_info({:term_changed, _term_id}, socket) do
+    socket =
+      if socket.assigns.expanded_id do
+        assign(socket, :element_counts, ReportGeneratorDomainManger.get_element_coverage(socket.assigns.expanded_id))
+      else
+        socket
+      end
+
+    {:noreply, socket}
   end
 
   def handle_info({:element_coverage_updated, element_id, counts}, socket) do

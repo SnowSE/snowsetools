@@ -3,6 +3,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGeneratorDomainManger do
   require Logger
 
   alias SimpleSyllabusReporter.AI.AsyncCompletions
+  alias SimpleSyllabusReporter.ConfigDB
   alias SimpleSyllabusReporter.Reports.GeneratedReportDB
   alias SimpleSyllabusReporter.Reports.GeneratedReportItemDB
   alias SimpleSyllabusReporter.Reports.ReportGenerationMessages
@@ -107,6 +108,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGeneratorDomainManger do
   @impl true
   def init(state) do
     Phoenix.PubSub.subscribe(@pubsub, @ai_topic)
+    ConfigDB.subscribe()
     send(self(), :recover_pending_reports)
     send(self(), :hydrate_coverage)
     {:ok, state}
@@ -309,6 +311,12 @@ defmodule SimpleSyllabusReporter.Reports.ReportGeneratorDomainManger do
   end
 
   @impl true
+  def handle_info({:term_changed, _term_id}, state) do
+    send(self(), :hydrate_coverage)
+    {:noreply, state}
+  end
+
+  @impl true
   def handle_info(:hydrate_coverage, state) do
     counts =
       case GeneratedReportItemDB.all_element_coverage_counts() do
@@ -322,6 +330,13 @@ defmodule SimpleSyllabusReporter.Reports.ReportGeneratorDomainManger do
 
           %{}
       end
+
+    Enum.each(counts, fn {element_id, raw} ->
+      CoverageCacheUtils.broadcast_element(
+        element_id,
+        CoverageCacheUtils.with_not_generated(raw)
+      )
+    end)
 
     {:noreply, %{state | counts: counts}}
   end

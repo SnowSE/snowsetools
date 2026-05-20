@@ -66,15 +66,6 @@ defmodule SimpleSyllabusReporterWeb.Home.HomeLive do
     {:noreply, socket}
   end
 
-  def handle_async(:fetch_departments, {:ok, {:ok, departments}}, socket) do
-    dept_map = Map.new(departments, fn d -> {d["entity_id"], d["name"]} end)
-    {:noreply, assign(socket, :departments, dept_map)}
-  end
-
-  def handle_async(:fetch_departments, _result, socket) do
-    {:noreply, socket}
-  end
-
   def handle_info({:term_changed, term_id}, socket) do
     terms = ConfigDB.list_available_terms()
 
@@ -89,6 +80,15 @@ defmodule SimpleSyllabusReporterWeb.Home.HomeLive do
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  def handle_async(:fetch_departments, {:ok, {:ok, departments}}, socket) do
+    dept_map = Map.new(departments, fn d -> {d["entity_id"], d["name"]} end)
+    {:noreply, assign(socket, :departments, dept_map)}
+  end
+
+  def handle_async(:fetch_departments, _result, socket) do
+    {:noreply, socket}
+  end
 
   defp push_chart_event(socket, nil), do: socket
 

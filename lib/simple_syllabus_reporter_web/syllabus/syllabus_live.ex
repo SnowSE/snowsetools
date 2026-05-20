@@ -8,13 +8,17 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
   alias SimpleSyllabusReporterWeb.Syllabus.SearchQuickNavigation
   alias SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchForm
   alias SimpleSyllabusReporter.Syllabi.SyllabusDomainManager
+  alias SimpleSyllabusReporter.ConfigDB
   alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
   alias SimpleSyllabusReporter.Reports.ReportGeneratorDomainManger
 
   on_mount {SimpleSyllabusReporterWeb.UserAuth, :ensure_authenticated}
 
   def mount(_params, _session, socket) do
-    if connected?(socket), do: ReportGenerationStatus.subscribe()
+    if connected?(socket) do
+      ReportGenerationStatus.subscribe()
+      ConfigDB.subscribe()
+    end
 
     socket =
       socket
@@ -150,6 +154,19 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
     )
 
     ReportHandlers.handle_info(msg, socket)
+  end
+
+  def handle_info({:term_changed, _term_id}, socket) do
+    query = socket.assigns.query
+
+    next =
+      if byte_size(query) > 0 do
+        ~p"/syllabi?q=#{query}"
+      else
+        ~p"/syllabi"
+      end
+
+    {:noreply, push_patch(socket, to: next)}
   end
 
   def handle_info(message, socket) do
