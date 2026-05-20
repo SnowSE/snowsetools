@@ -5,6 +5,10 @@
     {
       "matchUpdateTypes": ["patch", "minor"],
       "automerge": true
+    },
+    {
+      "matchFileNames": ["k8s/base/app.yaml"],
+      "automerge": true
     }
   ],
   "kubernetes": {
