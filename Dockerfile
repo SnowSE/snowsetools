@@ -18,6 +18,7 @@ COPY config config
 COPY lib lib
 COPY priv priv
 
+RUN cd assets && npm install
 RUN mix compile
 RUN mix assets.deploy
 RUN mix release
