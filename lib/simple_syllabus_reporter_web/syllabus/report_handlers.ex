@@ -4,10 +4,10 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportHandlers do
 
   use SimpleSyllabusReporterWeb, :verified_routes
 
-  alias SimpleSyllabusReporter.SimpleSyllabusApi
+  alias SimpleSyllabusReporter.Syllabi.SyllabusManager
   alias SimpleSyllabusReporter.Reports.RequiredElement
-  alias SimpleSyllabusReporter.Reports.GeneratedReport
-  alias SimpleSyllabusReporter.Reports.GeneratedReportItem
+  alias SimpleSyllabusReporter.Reports.GeneratedReportDB
+  alias SimpleSyllabusReporter.Reports.GeneratedReportItemDB
   alias SimpleSyllabusReporter.Reports.ReportGenerator
   alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
   alias SimpleSyllabusReporterWeb.Syllabus.ReportCorrection
@@ -75,7 +75,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportHandlers do
 
     for code <- codes_with_missing do
       Task.start(fn ->
-        case SimpleSyllabusApi.get_syllabus_details(code) do
+        case SyllabusManager.get_detail(code) do
           {:ok, full_doc} ->
             existing_ids = existing_element_ids_for_code(code)
             missing = Enum.reject(elements, fn e -> MapSet.member?(existing_ids, e["id"]) end)
@@ -88,16 +88,16 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportHandlers do
       end)
     end
 
-    {:noreply, socket}
+    {:noreply, assign(socket, :generating_all, true)}
   end
 
   def handle_event("regenerate_non_met", %{"code" => code}, socket) do
     elements = socket.assigns.elements
 
     Task.start(fn ->
-      with {:ok, full_doc} <- SimpleSyllabusApi.get_syllabus_details(code),
-           {:ok, report} <- GeneratedReport.get_latest_for_syllabus(code),
-           {:ok, items_map} <- GeneratedReportItem.list_for_report_as_map(report["id"]) do
+      with {:ok, full_doc} <- SyllabusManager.get_detail(code),
+           {:ok, report} <- GeneratedReportDB.get_latest_for_syllabus(code),
+           {:ok, items_map} <- GeneratedReportItemDB.list_for_report_as_map(report["id"]) do
         non_met_element_ids =
           items_map
           |> Enum.filter(fn {_id, item} -> item["status"] in ["not_met", "partially_met"] end)
@@ -134,7 +134,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportHandlers do
 
     for code <- codes_with_missing do
       Task.start(fn ->
-        case SimpleSyllabusApi.get_syllabus_details(code) do
+        case SyllabusManager.get_detail(code) do
           {:ok, full_doc} ->
             existing_ids = existing_element_ids_for_code(code)
             missing = Enum.reject(elements, fn e -> MapSet.member?(existing_ids, e["id"]) end)
@@ -171,33 +171,34 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportHandlers do
   end
 
   def handle_info(
-        %ReportGenerationStatus.PendingUpdate{code: code, element_ids: element_ids},
+        %ReportGenerationStatus.PendingUpdate{pending: pending},
         socket
       ) do
-    if Map.has_key?(socket.assigns.syllabi_docs, code) do
-      generating_per_code = Map.put(socket.assigns.generating_per_code, code, element_ids)
+    syllabi_codes = socket.assigns.syllabi_docs |> Map.keys() |> MapSet.new()
 
-      generating_all =
-        Enum.any?(generating_per_code, fn {_, ids} -> not MapSet.equal?(ids, MapSet.new()) end)
-
-      socket =
-        if socket.assigns.selected && socket.assigns.selected["code"] == code do
-          assign(socket, :generating, element_ids)
+    generating_per_code =
+      Enum.reduce(pending, %{}, fn {code, element_id}, acc ->
+        if MapSet.member?(syllabi_codes, code) do
+          Map.update(acc, code, MapSet.new([element_id]), &MapSet.put(&1, element_id))
         else
-          socket
+          acc
         end
+      end)
 
-      {:noreply,
-       socket
-       |> assign(:generating_per_code, generating_per_code)
-       |> assign(:generating_all, generating_all)
-       |> SimpleSyllabusReporterWeb.Syllabus.SearchHandlers.reinsert_syllabus(
-         socket.assigns.syllabi_docs,
-         code
-       )}
-    else
-      {:noreply, socket}
-    end
+    generating_all = map_size(generating_per_code) > 0
+
+    socket =
+      if socket.assigns.selected do
+        code = socket.assigns.selected["code"]
+        assign(socket, :generating, Map.get(generating_per_code, code, MapSet.new()))
+      else
+        socket
+      end
+
+    {:noreply,
+     socket
+     |> assign(:generating_per_code, generating_per_code)
+     |> assign(:generating_all, generating_all)}
   end
 
   def handle_info(
@@ -238,11 +239,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportHandlers do
 
     {:noreply,
      socket
-     |> assign(:report_counts, report_counts)
-     |> SimpleSyllabusReporterWeb.Syllabus.SearchHandlers.reinsert_syllabus(
-       socket.assigns.syllabi_docs,
-       code
-     )}
+     |> assign(:report_counts, report_counts)}
   end
 
   def handle_info(%ReportGenerationStatus.ItemResult{result: {:error, _reason}}, socket) do
@@ -250,8 +247,8 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportHandlers do
   end
 
   defp existing_element_ids_for_code(code) do
-    with {:ok, report} <- GeneratedReport.get_latest_for_syllabus(code),
-         {:ok, items_map} <- GeneratedReportItem.list_for_report_as_map(report["id"]) do
+    with {:ok, report} <- GeneratedReportDB.get_latest_for_syllabus(code),
+         {:ok, items_map} <- GeneratedReportItemDB.list_for_report_as_map(report["id"]) do
       MapSet.new(Map.keys(items_map))
     else
       _ -> MapSet.new()

@@ -1,4 +1,4 @@
-defmodule SimpleSyllabusReporter.Reports.GeneratedReportItem do
+defmodule SimpleSyllabusReporter.Reports.GeneratedReportItemDB do
   require Logger
   alias SimpleSyllabusReporter.Data.DbHelpers
 
@@ -163,9 +163,12 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportItem do
   def item_counts_for_element(element_id) do
     sql = """
     WITH latest_reports AS (
-      SELECT DISTINCT ON (syllabus_code) id
-      FROM generated_reports
-      ORDER BY syllabus_code, inserted_at DESC
+      SELECT DISTINCT ON (gr.syllabus_code) gr.id
+      FROM generated_reports gr
+      JOIN syllabi s ON s.code = gr.syllabus_code
+      LEFT JOIN site_config sc ON sc.key = 'selected_term_id'
+      WHERE sc.value IS NULL OR s.term_id = sc.value
+      ORDER BY gr.syllabus_code, gr.inserted_at DESC
     )
     SELECT
       COUNT(gri.id) FILTER (WHERE gri.status = 'met')::integer           AS met,
@@ -192,9 +195,12 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportItem do
   def all_element_coverage_counts do
     sql = """
     WITH latest_reports AS (
-      SELECT DISTINCT ON (syllabus_code) id
-      FROM generated_reports
-      ORDER BY syllabus_code, inserted_at DESC
+      SELECT DISTINCT ON (gr.syllabus_code) gr.id
+      FROM generated_reports gr
+      JOIN syllabi s ON s.code = gr.syllabus_code
+      LEFT JOIN site_config sc ON sc.key = 'selected_term_id'
+      WHERE sc.value IS NULL OR s.term_id = sc.value
+      ORDER BY gr.syllabus_code, gr.inserted_at DESC
     )
     SELECT
       gri.required_element_id                                             AS element_id,
@@ -223,8 +229,11 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportItem do
     FROM generated_report_items gri
     JOIN generated_reports gr ON gr.id = gri.generated_report_id
     JOIN required_elements re ON re.id = gri.required_element_id
+    JOIN syllabi s ON s.code = gr.syllabus_code
+    LEFT JOIN site_config sc ON sc.key = 'selected_term_id'
     WHERE gri.required_element_id = $(required_element_id)
       AND gri.status IN ('not_met', 'partially_met')
+      AND (sc.value IS NULL OR s.term_id = sc.value)
     ORDER BY gr.inserted_at ASC
     """
 

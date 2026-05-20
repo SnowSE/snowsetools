@@ -4,9 +4,9 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
 
   use SimpleSyllabusReporterWeb, :verified_routes
 
-  alias SimpleSyllabusReporter.SimpleSyllabusApi
-  alias SimpleSyllabusReporter.Reports.GeneratedReport
-  alias SimpleSyllabusReporter.Reports.GeneratedReportItem
+  alias SimpleSyllabusReporter.Syllabi.SyllabusManager
+  alias SimpleSyllabusReporter.Reports.GeneratedReportDB
+  alias SimpleSyllabusReporter.Reports.GeneratedReportItemDB
   alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
   alias SimpleSyllabusReporter.Reports.RequiredReportElementCoverageCache
 
@@ -28,7 +28,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
         email?(query) ->
           socket
           |> reset_for_search(query, nil)
-          |> start_async(:search, fn -> SimpleSyllabusApi.search_syllabi_by_email(query) end)
+          |> start_async(:search, fn -> SyllabusManager.search_by_email(query) end)
 
         socket.assigns.departments == [] ->
           socket
@@ -40,7 +40,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
 
           socket
           |> reset_for_search(query, org_id)
-          |> start_async(:search, fn -> SimpleSyllabusApi.search_syllabi(org_id) end)
+          |> start_async(:search, fn -> SyllabusManager.search_by_org(org_id) end)
 
         true ->
           assign(socket,
@@ -54,8 +54,6 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
       cond do
         code && code_changed? ->
           socket
-          |> reinsert_syllabus(socket.assigns.syllabi_docs, prev_code)
-          |> reinsert_syllabus(socket.assigns.syllabi_docs, code)
           |> clear_detail()
           |> assign(:loading_detail, true)
           |> assign(:detail_error, nil)
@@ -65,12 +63,11 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
             "term" => term
           })
           |> assign(:generating, Map.get(socket.assigns.generating_per_code, code, MapSet.new()))
-          |> start_async(:fetch_detail, fn -> SimpleSyllabusApi.get_syllabus_details(code) end)
+          |> start_async(:fetch_detail, fn -> SyllabusManager.get_detail(code) end)
           |> start_async(:fetch_existing_items, fn -> existing_items_for_code(code) end)
 
         is_nil(code) && code_changed? ->
           socket
-          |> reinsert_syllabus(socket.assigns.syllabi_docs, prev_code)
           |> clear_detail()
 
         true ->
@@ -151,7 +148,6 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
     |> assign(:search_pending?, false)
     |> assign(:loading_search, true)
     |> assign(:search_error, nil)
-    |> stream(:syllabi, [], reset: true)
     |> assign(:syllabi_empty?, true)
   end
 
@@ -161,11 +157,10 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
 
   defp email?(query), do: Regex.match?(~r/^[^\s@]+@[^\s@]+\.[^\s@]+$/, query)
 
-  def handle_async(:search, {:ok, {:ok, %{items: docs}}}, socket) do
+  def handle_async(:search, {:ok, {:ok, %{items: docs, cached_at: cached_at}}}, socket) do
     codes = Enum.map(docs, & &1["code"])
 
     if connected?(socket) do
-      Enum.each(codes, fn code -> ReportGenerationStatus.subscribe(code) end)
       ReportGenerationStatus.request_pending(codes)
       RequiredReportElementCoverageCache.set_syllabi_codes(codes)
     end
@@ -173,11 +168,11 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
     socket =
       socket
       |> assign(:loading_search, false)
+      |> assign(:search_cached_at, cached_at)
       |> assign(:syllabi_empty?, docs == [])
       |> assign(:syllabi_docs, Map.new(docs, &{&1["code"], &1}))
-      |> stream(:syllabi, docs, reset: true)
       |> start_async(:fetch_report_counts, fn ->
-        GeneratedReportItem.item_counts_for_syllabi(codes)
+        GeneratedReportItemDB.item_counts_for_syllabi(codes)
       end)
 
     {:noreply, socket}
@@ -228,14 +223,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
   end
 
   def handle_async(:fetch_report_counts, {:ok, {:ok, counts}}, socket) do
-    socket =
-      socket.assigns.syllabi_docs
-      |> Map.values()
-      |> Enum.reduce(assign(socket, :report_counts, counts), fn doc, acc ->
-        stream_insert(acc, :syllabi, doc)
-      end)
-
-    {:noreply, socket}
+    {:noreply, assign(socket, :report_counts, counts)}
   end
 
   def handle_async(:fetch_report_counts, _result, socket) do
@@ -263,7 +251,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
             socket
             |> assign(:org_id, org_id)
             |> assign(:search_pending?, false)
-            |> start_async(:search, fn -> SimpleSyllabusApi.search_syllabi(org_id) end)
+            |> start_async(:search, fn -> SyllabusManager.search_by_org(org_id) end)
         end
       else
         socket
@@ -276,18 +264,9 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchHandlers do
     {:noreply, socket}
   end
 
-  def reinsert_syllabus(socket, _docs_by_code, nil), do: socket
-
-  def reinsert_syllabus(socket, docs_by_code, code) do
-    case Map.get(docs_by_code, code) do
-      nil -> socket
-      doc -> stream_insert(socket, :syllabi, doc)
-    end
-  end
-
   defp existing_items_for_code(code) do
-    case GeneratedReport.get_latest_for_syllabus(code) do
-      {:ok, report} -> GeneratedReportItem.list_for_report_as_map(report["id"])
+    case GeneratedReportDB.get_latest_for_syllabus(code) do
+      {:ok, report} -> GeneratedReportItemDB.list_for_report_as_map(report["id"])
       {:error, :not_found} -> {:ok, %{}}
       {:error, _} = err -> err
     end

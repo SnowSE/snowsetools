@@ -7,6 +7,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList do
   attr :syllabi_empty?, :boolean, required: true
   attr :query, :string, required: true
   attr :loading_search, :boolean, required: true
+  attr :search_cached_at, :any, default: nil
   attr :selected, :map, default: nil
   attr :total_elements, :integer, required: true
   attr :syllabi_count, :integer, required: true
@@ -86,6 +87,16 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList do
         <span class="hero-arrow-path size-6 animate-spin text-indigo-400" />
         <span class="text-sm">Loading syllabi…</span>
       </div>
+
+      <%= if @search_cached_at do %>
+        <div
+          id="cache-indicator"
+          class="mb-2 shrink-0 flex items-center gap-1.5 text-xs text-slate-500"
+        >
+          <span class="hero-clock size-3" />
+          Cached {@search_cached_at |> Calendar.strftime("%b %d at %H:%M")}
+        </div>
+      <% end %>
 
       <div
         id="syllabi-list"

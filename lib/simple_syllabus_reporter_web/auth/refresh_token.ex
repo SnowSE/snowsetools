@@ -25,7 +25,11 @@ defmodule SimpleSyllabusReporterWeb.Plugs.RefreshToken do
          expires_at when is_integer(expires_at) <- get_session(conn, "session_expires_at"),
          true <- System.system_time(:second) >= expires_at - @refresh_before_seconds do
       ttl = expires_at - System.system_time(:second)
-      Logger.info("RefreshToken plug: token expiring in #{ttl}s, attempting refresh path=#{conn.request_path}")
+
+      Logger.info(
+        "RefreshToken plug: token expiring in #{ttl}s, attempting refresh path=#{conn.request_path}"
+      )
+
       attempt_refresh(conn)
     else
       _ -> conn
@@ -51,7 +55,10 @@ defmodule SimpleSyllabusReporterWeb.Plugs.RefreshToken do
         {:ok, new_token} ->
           new_expires_at = Map.get(new_token.id.claims, "exp")
           now = System.system_time(:second)
-          Logger.info("RefreshToken plug: refresh success sub=#{oidc_sub} new_exp=#{new_expires_at} ttl=#{new_expires_at - now}s")
+
+          Logger.info(
+            "RefreshToken plug: refresh success sub=#{oidc_sub} new_exp=#{new_expires_at} ttl=#{new_expires_at - now}s"
+          )
 
           new_refresh_token =
             case new_token.refresh do
@@ -64,11 +71,17 @@ defmodule SimpleSyllabusReporterWeb.Plugs.RefreshToken do
           |> put_session("refresh_token", new_refresh_token)
 
         {:error, reason} ->
-          Logger.warning("RefreshToken plug: refresh failed, clearing session sub=#{oidc_sub} reason=#{inspect(reason)}")
+          Logger.warning(
+            "RefreshToken plug: refresh failed, clearing session sub=#{oidc_sub} reason=#{inspect(reason)}"
+          )
+
           clear_session(conn)
       end
     else
-      Logger.info("RefreshToken plug: token expired with no refresh token or sub, clearing session")
+      Logger.info(
+        "RefreshToken plug: token expired with no refresh token or sub, clearing session"
+      )
+
       clear_session(conn)
     end
   end

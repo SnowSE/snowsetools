@@ -3,6 +3,7 @@ defmodule SimpleSyllabusReporterWeb.CacheController do
 
   def clear(conn, _params) do
     SimpleSyllabusReporter.Cache.clear()
+    SimpleSyllabusReporter.Syllabi.SyllabusSync.sync_all()
 
     redirect_path = safe_referer_path(conn) || ~p"/"
 

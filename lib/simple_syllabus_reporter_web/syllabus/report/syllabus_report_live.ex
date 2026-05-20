@@ -1,10 +1,10 @@
 defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
   use SimpleSyllabusReporterWeb, :live_view
 
-  alias SimpleSyllabusReporter.SimpleSyllabusApi
+  alias SimpleSyllabusReporter.Syllabi.SyllabusManager
   alias SimpleSyllabusReporter.Reports.RequiredElement
-  alias SimpleSyllabusReporter.Reports.GeneratedReport
-  alias SimpleSyllabusReporter.Reports.GeneratedReportItem
+  alias SimpleSyllabusReporter.Reports.GeneratedReportDB
+  alias SimpleSyllabusReporter.Reports.GeneratedReportItemDB
   alias SimpleSyllabusReporter.Reports.ReportGenerator
   alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
   alias SimpleSyllabusReporterWeb.Syllabus.ReportCorrection
@@ -14,6 +14,8 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
   on_mount {SimpleSyllabusReporterWeb.UserAuth, :ensure_authenticated}
 
   def mount(_params, _session, socket) do
+    if connected?(socket), do: ReportGenerationStatus.subscribe()
+
     {:ok,
      socket
      |> assign(:page_title, "Syllabus Report")
@@ -33,7 +35,6 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
 
   def handle_params(%{"code" => code}, _uri, socket) when byte_size(code) > 0 do
     if connected?(socket) do
-      ReportGenerationStatus.subscribe(code)
       ReportGenerationStatus.request_pending([code])
     end
 
@@ -47,7 +48,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
      |> assign(:report_items, %{})
      |> assign(:generation_errors, %{})
      |> assign(:generating, MapSet.new())
-     |> start_async(:fetch_syllabus, fn -> SimpleSyllabusApi.get_syllabus_details(code) end)
+     |> start_async(:fetch_syllabus, fn -> SyllabusManager.get_detail(code) end)
      |> start_async(:fetch_existing_items, fn -> existing_items_for_code(code) end)}
   end
 
@@ -82,14 +83,17 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
   end
 
   def handle_info(
-        %ReportGenerationStatus.PendingUpdate{code: code, element_ids: element_ids},
+        %ReportGenerationStatus.PendingUpdate{pending: pending},
         socket
       ) do
-    if socket.assigns.code == code do
-      {:noreply, assign(socket, :generating, element_ids)}
-    else
-      {:noreply, socket}
-    end
+    code = socket.assigns.code
+
+    element_ids =
+      Enum.reduce(pending, MapSet.new(), fn {c, id}, acc ->
+        if c == code, do: MapSet.put(acc, id), else: acc
+      end)
+
+    {:noreply, assign(socket, :generating, element_ids)}
   end
 
   def handle_info(
@@ -146,8 +150,8 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
   end
 
   defp existing_items_for_code(code) do
-    case GeneratedReport.get_latest_for_syllabus(code) do
-      {:ok, report} -> GeneratedReportItem.list_for_report_as_map(report["id"])
+    case GeneratedReportDB.get_latest_for_syllabus(code) do
+      {:ok, report} -> GeneratedReportItemDB.list_for_report_as_map(report["id"])
       {:error, :not_found} -> {:ok, %{}}
       {:error, _} = err -> err
     end

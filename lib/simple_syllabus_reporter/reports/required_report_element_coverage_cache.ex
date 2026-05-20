@@ -2,7 +2,7 @@ defmodule SimpleSyllabusReporter.Reports.RequiredReportElementCoverageCache do
   use GenServer
   require Logger
 
-  alias SimpleSyllabusReporter.Reports.GeneratedReportItem
+  alias SimpleSyllabusReporter.Reports.GeneratedReportItemDB
 
   @pubsub SimpleSyllabusReporter.PubSub
 
@@ -61,7 +61,7 @@ defmodule SimpleSyllabusReporter.Reports.RequiredReportElementCoverageCache do
   @impl true
   def handle_cast({:refresh, element_id}, state) do
     state =
-      case GeneratedReportItem.item_counts_for_element(element_id) do
+      case GeneratedReportItemDB.item_counts_for_element(element_id) do
         {:ok, raw} ->
           counts = Map.put(state.counts, element_id, raw)
           broadcast(element_id, with_not_generated(raw, length(state.syllabi_codes)))
@@ -81,7 +81,7 @@ defmodule SimpleSyllabusReporter.Reports.RequiredReportElementCoverageCache do
   @impl true
   def handle_info(:hydrate, state) do
     counts =
-      case GeneratedReportItem.all_element_coverage_counts() do
+      case GeneratedReportItemDB.all_element_coverage_counts() do
         {:ok, rows} ->
           Map.new(rows, fn row ->
             {row["element_id"],

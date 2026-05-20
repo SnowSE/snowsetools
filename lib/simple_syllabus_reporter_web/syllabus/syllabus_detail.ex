@@ -59,7 +59,8 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusDetail do
             "shrink-0 inline-flex items-center gap-1 text-indigo-200  px-1 rounded border border-indigo-800
                disabled:cursor-not-allowed disabled:cursor-none transition-colors ",
             missing_count <= 0 && " text-slate-500 cursor-default",
-            missing_count > 0 && "bg-indigo-950/50 py-1 px-2 rounded text-xs cursor-pointer hover:text-indigo-100 hover:bg-indigo-950"
+            missing_count > 0 &&
+              "bg-indigo-950/50 py-1 px-2 rounded text-xs cursor-pointer hover:text-indigo-100 hover:bg-indigo-950"
           ]}
           title="Generate missing reports for this syllabus"
         >

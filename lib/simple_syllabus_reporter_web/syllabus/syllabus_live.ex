@@ -7,6 +7,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
   alias SimpleSyllabusReporterWeb.Syllabus.SearchQuickNavigation
   alias SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchForm
   alias SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList
+  alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
 
   on_mount {SimpleSyllabusReporterWeb.UserAuth, :ensure_authenticated}
 
@@ -20,20 +21,21 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
       |> assign(:search_error, nil)
       |> assign(:detail_error, nil)
       |> assign(:selected, nil)
-      |> stream_configure(:syllabi, dom_id: fn item -> item["code"] end)
-      |> stream(:syllabi, [])
       |> assign(:syllabi_empty?, true)
       |> assign(:syllabi_docs, %{})
       |> assign(:report_counts, %{})
       |> assign(:departments, [])
       |> assign(:org_id, nil)
+      |> assign(:search_cached_at, nil)
       |> assign(:search_pending?, false)
       |> ReportHandlers.mount_assigns()
 
     socket =
       if connected?(socket) do
+        ReportGenerationStatus.subscribe()
+
         start_async(socket, :fetch_departments, fn ->
-          SimpleSyllabusReporter.SimpleSyllabusApi.get_departments()
+          SimpleSyllabusReporter.Syllabi.SyllabusManager.get_departments()
         end)
       else
         socket
@@ -132,6 +134,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
             report_counts={@report_counts}
             generating_per_code={@generating_per_code}
             generating_all={@generating_all}
+            search_cached_at={@search_cached_at}
           />
 
           <%= if @selected do %>

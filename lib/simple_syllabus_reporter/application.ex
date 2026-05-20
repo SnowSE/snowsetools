@@ -43,6 +43,7 @@ defmodule SimpleSyllabusReporter.Application do
       SimpleSyllabusReporter.Cache,
       SimpleSyllabusReporter.Reports.RequiredReportElementCoverageCache,
       SimpleSyllabusReporter.Reports.ReportGenerator,
+      SimpleSyllabusReporter.Syllabi.SyllabusSync,
       SimpleSyllabusReporterWeb.Endpoint
     ]
 

@@ -39,6 +39,12 @@ defmodule SimpleSyllabusReporterWeb.AppHeader do
           >
             AI History
           </.link>
+          <.link
+            navigate={~p"/config"}
+            class={nav_link_class(@current_path, ~p"/config")}
+          >
+            Settings
+          </.link>
           <form action={~p"/cache/clear"} method="post" class="flex items-center">
             <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
             <button

@@ -3,12 +3,12 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   require Logger
 
   alias SimpleSyllabusReporter.AI.AsyncCompletions
-  alias SimpleSyllabusReporter.Reports.GeneratedReport
-  alias SimpleSyllabusReporter.Reports.GeneratedReportItem
+  alias SimpleSyllabusReporter.Reports.GeneratedReportDB
+  alias SimpleSyllabusReporter.Reports.GeneratedReportItemDB
   alias SimpleSyllabusReporter.Reports.ReportInstruction
   alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
   alias SimpleSyllabusReporter.Reports.RequiredReportElementCoverageCache
-  alias SimpleSyllabusReporter.SimpleSyllabusApi
+  alias SimpleSyllabusReporter.Syllabi.SyllabusManager
 
   @pubsub SimpleSyllabusReporter.PubSub
   @ai_topic "report_generator:ai"
@@ -26,14 +26,12 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   }
 
   def start_link(_opts) do
-    GenServer.start_link(__MODULE__, %{pending: MapSet.new(), report_ids: %{}}, name: __MODULE__)
+    GenServer.start_link(
+      __MODULE__,
+      %{pending: MapSet.new(), report_ids: %{}, broadcast_timer: nil},
+      name: __MODULE__
+    )
   end
-
-  @doc "PubSub topic for a given syllabus code."
-  def report_topic(code), do: "syllabus_report:#{code}"
-
-  @doc "PubSub topic for pending-state updates for a given syllabus code."
-  def pending_topic(code), do: "report_generator:pending:#{code}"
 
   @doc """
   Enqueues async generation for the given syllabus + element. If the same
@@ -113,13 +111,13 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   @impl true
   def handle_cast({:generate_all_unmet, element, exclude_code}, state) do
     Task.start(fn ->
-      case GeneratedReportItem.list_unmet_for_element(element["id"]) do
+      case GeneratedReportItemDB.list_unmet_for_element(element["id"]) do
         {:ok, rows} ->
           rows
           |> Enum.reject(fn row -> row["code"] == exclude_code end)
           |> Enum.group_by(& &1["code"])
           |> Enum.each(fn {code, _} ->
-            case SimpleSyllabusApi.get_syllabus_details(code) do
+            case SyllabusManager.get_detail(code) do
               {:ok, syllabus_doc} ->
                 generate_async(syllabus_doc, element)
 
@@ -141,10 +139,10 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   @impl true
   def handle_cast({:generate_all_missing, element, all_codes}, state) do
     Task.start(fn ->
-      case GeneratedReportItem.list_not_generated_for_element(element["id"], all_codes) do
+      case GeneratedReportItemDB.list_not_generated_for_element(element["id"], all_codes) do
         {:ok, codes} ->
           Enum.each(codes, fn code ->
-            case SimpleSyllabusApi.get_syllabus_details(code) do
+            case SyllabusManager.get_detail(code) do
               {:ok, syllabus_doc} ->
                 generate_async(syllabus_doc, element)
 
@@ -164,14 +162,19 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   end
 
   @impl true
-  def handle_cast({:request_pending, codes}, state) do
-    Enum.each(codes, fn code -> broadcast_pending_update(code, state.pending) end)
+  def handle_cast({:request_pending, _codes}, state) do
+    ReportGenerationStatus.publish_pending_update(state.pending)
     {:noreply, state}
+  end
+
+  def handle_info(:flush_pending_broadcast, state) do
+    ReportGenerationStatus.publish_pending_update(state.pending)
+    {:noreply, %{state | broadcast_timer: nil}}
   end
 
   @impl true
   def handle_info(:recover_pending_reports, state) do
-    case GeneratedReport.list_pending_with_incomplete_elements() do
+    case GeneratedReportDB.list_pending_with_incomplete_elements() do
       {:ok, []} ->
         {:noreply, state}
 
@@ -182,7 +185,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
         |> Enum.group_by(& &1["code"])
         |> Enum.each(fn {code, elements} ->
           Task.start(fn ->
-            case SimpleSyllabusApi.get_syllabus_details(code) do
+            case SyllabusManager.get_detail(code) do
               {:ok, syllabus_doc} ->
                 Enum.each(elements, fn row ->
                   element = %{
@@ -230,8 +233,8 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
 
   def handle_info({{code, element_id, report_id}, {:ok, ai_result}}, state) do
     result =
-      case GeneratedReportItem.upsert(report_id, element_id, ai_result) do
-        {:ok, item} = ok ->
+      case GeneratedReportItemDB.upsert(report_id, element_id, ai_result) do
+        {:ok, _item} = ok ->
           RequiredReportElementCoverageCache.notify_item_saved(element_id)
           ok
 
@@ -258,20 +261,17 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
     ReportGenerationStatus.publish_item_result(code, element_id, result)
   end
 
-  defp broadcast_pending_update(code, pending) do
-    element_ids =
-      pending
-      |> Enum.filter(fn {c, _} -> c == code end)
-      |> Enum.map(fn {_, id} -> id end)
-      |> MapSet.new()
-
-    ReportGenerationStatus.publish_pending_update(code, element_ids)
+  defp schedule_pending_broadcast(%{broadcast_timer: nil} = state) do
+    timer = Process.send_after(self(), :flush_pending_broadcast, 200)
+    %{state | broadcast_timer: timer}
   end
+
+  defp schedule_pending_broadcast(state), do: state
 
   defp ensure_report_id(code, syllabus_doc, report_ids) do
     case Map.get(report_ids, code) do
       nil ->
-        case GeneratedReport.get_or_create_for_syllabus(
+        case GeneratedReportDB.get_or_create_for_syllabus(
                syllabus_doc["code"],
                syllabus_doc["title"] || syllabus_doc["code"],
                primary_instructor_name(syllabus_doc)
@@ -308,13 +308,18 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
 
   defp add_pending(state, code, element_id, report_id) do
     new_pending = MapSet.put(state.pending, {code, element_id})
-    broadcast_pending_update(code, new_pending)
-    %{state | pending: new_pending, report_ids: Map.put(state.report_ids, code, report_id)}
+
+    new_state = %{
+      state
+      | pending: new_pending,
+        report_ids: Map.put(state.report_ids, code, report_id)
+    }
+
+    schedule_pending_broadcast(new_state)
   end
 
   defp drop_pending(state, code, element_id) do
     new_pending = MapSet.delete(state.pending, {code, element_id})
-    broadcast_pending_update(code, new_pending)
 
     new_report_ids =
       if Enum.any?(new_pending, fn {c, _} -> c == code end) do
@@ -323,7 +328,8 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
         Map.delete(state.report_ids, code)
       end
 
-    %{state | pending: new_pending, report_ids: new_report_ids}
+    new_state = %{state | pending: new_pending, report_ids: new_report_ids}
+    schedule_pending_broadcast(new_state)
   end
 
   defp build_messages_for(syllabus_doc, required_element) do

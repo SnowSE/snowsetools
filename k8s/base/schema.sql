@@ -69,3 +69,30 @@ CREATE TABLE IF NOT EXISTS ai_completions (
 );
 
 CREATE INDEX IF NOT EXISTS ai_completions_inserted_at_idx ON ai_completions (inserted_at DESC);
+
+CREATE TABLE IF NOT EXISTS syllabi (
+  code              TEXT        PRIMARY KEY,
+  title             TEXT,
+  course_name       TEXT,
+  term_name         TEXT,
+  term_id           TEXT,
+  org_id            TEXT,
+  linked_emails     TEXT[]      NOT NULL DEFAULT '{}',
+  editors           JSONB       NOT NULL DEFAULT '[]',
+  list_data         JSONB       NOT NULL DEFAULT '{}',
+  detail_data       JSONB,
+  list_cached_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  detail_cached_at  TIMESTAMPTZ,
+  inserted_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS syllabi_org_id_idx ON syllabi (org_id);
+CREATE INDEX IF NOT EXISTS syllabi_linked_emails_idx ON syllabi USING GIN (linked_emails);
+
+CREATE TABLE IF NOT EXISTS site_config (
+  key         TEXT        PRIMARY KEY,
+  value       TEXT        NOT NULL,
+  inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
