@@ -1,12 +1,12 @@
 defmodule SimpleSyllabusReporterWeb.Syllabus.SearchQuickNavigation do
   use SimpleSyllabusReporterWeb, :live_component
 
-  alias SimpleSyllabusReporter.Syllabi.SyllabusManager
+  alias SimpleSyllabusReporter.Syllabi.SyllabusDomainManager
 
   def mount(socket) do
     socket =
       if connected?(socket) do
-        start_async(socket, :fetch_departments, fn -> SyllabusManager.get_departments() end)
+        start_async(socket, :fetch_departments, fn -> SyllabusDomainManager.get_departments() end)
       else
         socket
       end

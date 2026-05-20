@@ -7,9 +7,9 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
   alias SimpleSyllabusReporterWeb.Syllabus.SyllabusDetail
   alias SimpleSyllabusReporterWeb.Syllabus.SearchQuickNavigation
   alias SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchForm
-  alias SimpleSyllabusReporter.Syllabi.SyllabusManager
+  alias SimpleSyllabusReporter.Syllabi.SyllabusDomainManager
   alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
-  alias SimpleSyllabusReporter.Reports.ReportGenerator
+  alias SimpleSyllabusReporter.Reports.ReportGeneratorDomainManger
 
   on_mount {SimpleSyllabusReporterWeb.UserAuth, :ensure_authenticated}
 
@@ -41,7 +41,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
     socket =
       cond do
         code && code_changed? ->
-          ReportGenerator.request_items_for_code(code, self())
+          ReportGeneratorDomainManger.request_items_for_code(code, self())
 
           socket
           |> ReportHandlers.clear_detail()
@@ -53,7 +53,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
             "term" => term
           })
           |> assign(:generating, MapSet.new())
-          |> start_async(:fetch_detail, fn -> SyllabusManager.get_detail(code) end)
+          |> start_async(:fetch_detail, fn -> SyllabusDomainManager.get_detail(code) end)
 
         is_nil(code) && code_changed? ->
           ReportHandlers.clear_detail(socket)

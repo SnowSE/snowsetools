@@ -24,7 +24,7 @@ defmodule SimpleSyllabusReporterWeb.Components.ReportCompletionBar do
           style={"width: #{safe_pct(@partially_met, @total)}%"}
         />
         <div
-          class="h-full transition-all duration-500 bg-[#7a4040]"
+          class="h-full transition-all duration-500 bg-[#3D2020]"
           style={"width: #{safe_pct(@not_met, @total)}%"}
         />
         <%= if @not_generated do %>
@@ -34,11 +34,12 @@ defmodule SimpleSyllabusReporterWeb.Components.ReportCompletionBar do
           />
         <% end %>
       </div>
-      <span class="text-xs text-slate-500 shrink-0 tabular-nums">
-        {@run}/{@total}
-        <%= if @generating? do %>
-          <span class="hero-arrow-path size-3 animate-spin inline-block ml-0.5 text-indigo-400" />
-        <% end %>
+      <span class="text-xs text-slate-500 shrink-0 tabular-nums flex items-center">
+        <span class="inline-block text-right min-w-[3ch]">{@run}</span>/<span class="inline-block min-w-[3ch]">{@total}</span>
+        <span class={[
+          "hero-arrow-path size-3 inline-block ml-0.5 text-indigo-400",
+          if(@generating?, do: "animate-spin", else: "invisible")
+        ]} />
       </span>
     </div>
     """

@@ -4,7 +4,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportHandlers do
 
   use SimpleSyllabusReporterWeb, :verified_routes
 
-  alias SimpleSyllabusReporter.Reports.ReportGenerator
+  alias SimpleSyllabusReporter.Reports.ReportGeneratorDomainManger
   alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
   alias SimpleSyllabusReporterWeb.Syllabus.ReportCorrection
 
@@ -30,7 +30,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportHandlers do
     report_items = socket.assigns.report_items
 
     missing = Enum.reject(elements, fn e -> Map.has_key?(report_items, e["id"]) end)
-    Enum.each(missing, fn element -> ReportGenerator.generate_async(selected, element) end)
+    Enum.each(missing, fn element -> ReportGeneratorDomainManger.generate_async(selected, element) end)
 
     missing_ids = MapSet.new(missing, & &1["id"])
 
@@ -39,7 +39,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportHandlers do
 
   def handle_event("generate_report", %{"id" => element_id}, socket) do
     element = Enum.find(socket.assigns.elements, fn e -> e["id"] == element_id end)
-    ReportGenerator.generate_async(socket.assigns.selected, element)
+    ReportGeneratorDomainManger.generate_async(socket.assigns.selected, element)
 
     {:noreply,
      socket
@@ -127,7 +127,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportHandlers do
   end
 
   def mount_assigns(socket) do
-    ReportGenerator.request_elements(self())
+    ReportGeneratorDomainManger.request_elements(self())
 
     socket
     |> assign(:elements, [])

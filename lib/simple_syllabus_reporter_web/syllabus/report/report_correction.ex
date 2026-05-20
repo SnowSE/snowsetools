@@ -4,7 +4,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportCorrection do
   import Phoenix.LiveView
   import Phoenix.Component
 
-  alias SimpleSyllabusReporter.Reports.ReportGenerator
+  alias SimpleSyllabusReporter.Reports.ReportGeneratorDomainManger
   alias SimpleSyllabusReporter.Reports.ReportInstructionDB
 
   attr :element_id, :string, required: true
@@ -90,8 +90,8 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportCorrection do
     case ReportInstructionDB.create(element_id, %{"content" => full_content}) do
       {:ok, _} ->
         element = Enum.find(socket.assigns.elements, fn e -> e["id"] == element_id end)
-        ReportGenerator.generate_async(syllabus, element)
-        ReportGenerator.generate_async_all_unmet(element, syllabus["code"])
+        ReportGeneratorDomainManger.generate_async(syllabus, element)
+        ReportGeneratorDomainManger.generate_async_all_unmet(element, syllabus["code"])
 
         {:noreply,
          socket

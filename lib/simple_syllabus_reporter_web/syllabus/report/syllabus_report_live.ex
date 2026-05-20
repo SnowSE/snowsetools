@@ -1,8 +1,8 @@
 defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
   use SimpleSyllabusReporterWeb, :live_view
 
-  alias SimpleSyllabusReporter.Syllabi.SyllabusManager
-  alias SimpleSyllabusReporter.Reports.ReportGenerator
+  alias SimpleSyllabusReporter.Syllabi.SyllabusDomainManager
+  alias SimpleSyllabusReporter.Reports.ReportGeneratorDomainManger
   alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
   alias SimpleSyllabusReporterWeb.Syllabus.ReportCorrection
   alias SimpleSyllabusReporterWeb.Syllabus.ReportDetail
@@ -12,7 +12,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
 
   def mount(_params, _session, socket) do
     if connected?(socket), do: ReportGenerationStatus.subscribe()
-    if connected?(socket), do: ReportGenerator.request_elements(self())
+    if connected?(socket), do: ReportGeneratorDomainManger.request_elements(self())
 
     {:ok,
      socket
@@ -35,7 +35,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
       ReportGenerationStatus.request_pending([code])
     end
 
-    if connected?(socket), do: ReportGenerator.request_items_for_code(code, self())
+    if connected?(socket), do: ReportGeneratorDomainManger.request_items_for_code(code, self())
 
     {:noreply,
      socket
@@ -47,7 +47,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
      |> assign(:report_items, %{})
      |> assign(:generation_errors, %{})
      |> assign(:generating, MapSet.new())
-     |> start_async(:fetch_syllabus, fn -> SyllabusManager.get_detail(code) end)}
+     |> start_async(:fetch_syllabus, fn -> SyllabusDomainManager.get_detail(code) end)}
   end
 
   def handle_params(_params, _uri, socket) do
@@ -72,7 +72,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
 
   def handle_event("generate_report", %{"id" => element_id}, socket) do
     element = Enum.find(socket.assigns.elements, fn e -> e["id"] == element_id end)
-    ReportGenerator.generate_async(socket.assigns.syllabus, element)
+    ReportGeneratorDomainManger.generate_async(socket.assigns.syllabus, element)
 
     {:noreply,
      socket

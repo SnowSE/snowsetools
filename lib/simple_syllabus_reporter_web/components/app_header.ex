@@ -10,7 +10,7 @@ defmodule SimpleSyllabusReporterWeb.AppHeader do
     <header class="shrink-0 flex justify-between px-3 h-10 border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm">
       <div class="flex items-center">
         <.link
-          navigate={~p"/"}
+          navigate={if @current_user, do: ~p"/home", else: ~p"/"}
           class="text-sm font-semibold text-slate-200 hover:text-white transition-colors"
         >
           Simple Syllabus Reporter
@@ -21,6 +21,12 @@ defmodule SimpleSyllabusReporterWeb.AppHeader do
 
       <nav class="flex items-center gap-2 justify-end">
         <%= if @current_user do %>
+          <.link
+            navigate={~p"/home"}
+            class={nav_link_class(@current_path, ~p"/home")}
+          >
+            Home
+          </.link>
           <.link
             navigate={~p"/syllabi"}
             class={nav_link_class(@current_path, ~p"/syllabi")}
@@ -79,7 +85,7 @@ defmodule SimpleSyllabusReporterWeb.AppHeader do
   end
 
   defp nav_link_class(current_path, path) do
-    active = is_binary(current_path) and String.starts_with?(current_path, path)
+    active = is_binary(current_path) and (current_path == path or String.starts_with?(current_path, path <> "/"))
 
     [
       " px-3 py-1.5 transition-all",

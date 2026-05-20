@@ -1,15 +1,15 @@
-defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
+defmodule SimpleSyllabusReporter.Reports.ReportGeneratorDomainManger do
   use GenServer
   require Logger
 
   alias SimpleSyllabusReporter.AI.AsyncCompletions
   alias SimpleSyllabusReporter.Reports.GeneratedReportDB
   alias SimpleSyllabusReporter.Reports.GeneratedReportItemDB
-  alias SimpleSyllabusReporter.Reports.ReportInstructionDB
+  alias SimpleSyllabusReporter.Reports.ReportGenerationMessages
   alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
   alias SimpleSyllabusReporter.Reports.RequiredElementDB
-  alias SimpleSyllabusReporter.Reports.RequiredReportElementCoverageCache
-  alias SimpleSyllabusReporter.Syllabi.SyllabusManager
+  alias SimpleSyllabusReporter.Reports.CoverageCacheUtils
+  alias SimpleSyllabusReporter.Syllabi.SyllabusDomainManager
 
   @pubsub SimpleSyllabusReporter.PubSub
   @ai_topic "report_generator:ai"
@@ -29,69 +29,77 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   def start_link(_opts) do
     GenServer.start_link(
       __MODULE__,
-      %{pending: MapSet.new(), report_ids: %{}, broadcast_timer: nil},
+      %{
+        pending: MapSet.new(),
+        report_ids: %{},
+        broadcast_timer: nil,
+        counts: %{},
+        syllabi_codes: []
+      },
       name: __MODULE__
     )
   end
 
-  @doc """
-  Enqueues async generation for the given syllabus + element. If the same
-  (code, element_id) pair is already in-flight this is a no-op. The result
-  is broadcast to `report_topic(code)` as:
-
-      {:report_item_result, code, element_id, {:ok, item} | {:error, reason}}
-  """
   def generate_async(syllabus_doc, required_element) do
     GenServer.cast(__MODULE__, {:generate, syllabus_doc, required_element})
   end
 
-  @doc """
-  Enqueues async regeneration for every syllabus that has an unmet or
-  partially_met item for `required_element`, excluding `exclude_code`
-  (which is expected to already be re-queued by the caller).
-  """
+  # --- Coverage cache public API ---
+
+  def element_coverage_topic(element_id), do: CoverageCacheUtils.element_topic(element_id)
+
+  def subscribe_element_coverage(element_id) do
+    Phoenix.PubSub.subscribe(@pubsub, element_coverage_topic(element_id))
+  end
+
+  def unsubscribe_element_coverage(element_id) do
+    Phoenix.PubSub.unsubscribe(@pubsub, element_coverage_topic(element_id))
+  end
+
+  def get_element_coverage(element_id) do
+    GenServer.call(__MODULE__, {:get_coverage, element_id})
+  end
+
+  def get_syllabi_codes do
+    GenServer.call(__MODULE__, :get_syllabi_codes)
+  end
+
+  def set_syllabi_codes(codes) when is_list(codes) do
+    GenServer.cast(__MODULE__, {:set_syllabi_codes, codes})
+  end
+
+  def request_totals(pid) do
+    GenServer.cast(__MODULE__, {:request_totals, pid})
+  end
+
   def generate_async_all_unmet(required_element, exclude_code) do
     GenServer.cast(__MODULE__, {:generate_all_unmet, required_element, exclude_code})
   end
 
-  @doc """
-  Enqueues async generation for every syllabus that has been reported on
-  but has no report item for `required_element` in its latest report.
-  """
   def generate_async_all_missing(required_element, all_codes) when is_list(all_codes) do
     GenServer.cast(__MODULE__, {:generate_all_missing, required_element, all_codes})
   end
 
-  @doc """
-  Requests an immediate broadcast of the current pending element_ids for each
-  given code to `pending_topic(code)`. Call this after subscribing to ensure
-  you receive the current state.
-  """
   def request_pending(codes) when is_list(codes) do
     GenServer.cast(__MODULE__, {:request_pending, codes})
   end
 
-  @doc "Async: fetches report items for a code and sends {:report_items_loaded, result} to pid."
   def request_items_for_code(code, pid) do
     GenServer.cast(__MODULE__, {:request_items_for_code, code, pid})
   end
 
-  @doc "Async: fetches report counts for codes and sends {:report_counts_loaded, result} to pid."
   def request_report_counts(codes, pid) when is_list(codes) do
     GenServer.cast(__MODULE__, {:request_report_counts, codes, pid})
   end
 
-  @doc "Async: fetches all required elements and sends {:elements_loaded, result} to pid."
   def request_elements(pid) do
     GenServer.cast(__MODULE__, {:request_elements, pid})
   end
 
-  @doc "Async: generates missing report items for each code in the list."
   def generate_missing_for_codes(codes, elements) when is_list(codes) do
     GenServer.cast(__MODULE__, {:generate_missing_for_codes, codes, elements})
   end
 
-  @doc "Async: regenerates not_met/partially_met items for a single code."
   def regenerate_non_met_for_code(code, elements) do
     GenServer.cast(__MODULE__, {:regenerate_non_met_for_code, code, elements})
   end
@@ -100,7 +108,48 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   def init(state) do
     Phoenix.PubSub.subscribe(@pubsub, @ai_topic)
     send(self(), :recover_pending_reports)
+    send(self(), :hydrate_coverage)
     {:ok, state}
+  end
+
+  @impl true
+  def handle_call({:get_coverage, element_id}, _from, state) do
+    counts = Map.get(state.counts, element_id)
+    {:reply, CoverageCacheUtils.with_not_generated(counts), state}
+  end
+
+  @impl true
+  def handle_call(:get_syllabi_codes, _from, state) do
+    {:reply, state.syllabi_codes, state}
+  end
+
+  @impl true
+  def handle_cast({:set_syllabi_codes, codes}, state) do
+    {:noreply, %{state | syllabi_codes: codes}}
+  end
+
+  @impl true
+  def handle_cast({:request_totals, pid}, state) do
+    Task.start(fn ->
+      case GeneratedReportItemDB.totals_by_school() do
+        {:ok, by_school} ->
+          school_rows = Enum.map(by_school, &with_not_generated_for_school/1)
+          grand_total = sum_school_totals(school_rows)
+          send(pid, {:totals_loaded, %{"totals" => grand_total, "by_school" => school_rows}})
+
+        {:error, reason} ->
+          Logger.error(
+            "ReportGeneratorDomainManger request_totals failed reason=#{inspect(reason)}"
+          )
+      end
+    end)
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast({:refresh_coverage, element_id}, state) do
+    {:noreply, refresh_coverage(state, element_id)}
   end
 
   @impl true
@@ -117,7 +166,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
           server = self()
 
           Task.start(fn ->
-            prepare_and_send(server, syllabus_doc, element, code, report_id)
+            ReportGenerationMessages.prepare_and_send(server, syllabus_doc, element, code, report_id)
           end)
 
           {:noreply,
@@ -125,7 +174,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
 
         {:error, reason} ->
           Logger.error(
-            "ReportGenerator could not resolve report code=#{code} reason=#{inspect(reason)}"
+            "ReportGeneratorDomainManger could not resolve report code=#{code} reason=#{inspect(reason)}"
           )
 
           broadcast_result(code, element_id, {:error, reason})
@@ -143,7 +192,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
           |> Enum.reject(fn row -> row["code"] == exclude_code end)
           |> Enum.group_by(& &1["code"])
           |> Enum.each(fn {code, _} ->
-            case SyllabusManager.get_detail(code) do
+            case SyllabusDomainManager.get_detail(code) do
               {:ok, syllabus_doc} ->
                 generate_async(syllabus_doc, element)
 
@@ -168,7 +217,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
       case GeneratedReportItemDB.list_not_generated_for_element(element["id"], all_codes) do
         {:ok, codes} ->
           Enum.each(codes, fn code ->
-            case SyllabusManager.get_detail(code) do
+            case SyllabusDomainManager.get_detail(code) do
               {:ok, syllabus_doc} ->
                 generate_async(syllabus_doc, element)
 
@@ -214,7 +263,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   def handle_cast({:generate_missing_for_codes, codes, elements}, state) do
     Task.start(fn ->
       Enum.each(codes, fn code ->
-        with {:ok, full_doc} <- SyllabusManager.get_detail(code),
+        with {:ok, full_doc} <- SyllabusDomainManager.get_detail(code),
              {:ok, items_map} <- fetch_items_for_code(code) do
           existing_ids = MapSet.new(Map.keys(items_map))
           missing = Enum.reject(elements, fn e -> MapSet.member?(existing_ids, e["id"]) end)
@@ -233,7 +282,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
 
   def handle_cast({:regenerate_non_met_for_code, code, elements}, state) do
     Task.start(fn ->
-      with {:ok, full_doc} <- SyllabusManager.get_detail(code),
+      with {:ok, full_doc} <- SyllabusDomainManager.get_detail(code),
            {:ok, items_map} <- fetch_items_for_code(code) do
         non_met_ids =
           items_map
@@ -260,6 +309,24 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   end
 
   @impl true
+  def handle_info(:hydrate_coverage, state) do
+    counts =
+      case GeneratedReportItemDB.all_element_coverage_counts() do
+        {:ok, rows} ->
+          CoverageCacheUtils.hydrate_counts(rows)
+
+        {:error, reason} ->
+          Logger.error(
+            "ReportGeneratorDomainManger coverage hydration failed: #{inspect(reason)}"
+          )
+
+          %{}
+      end
+
+    {:noreply, %{state | counts: counts}}
+  end
+
+  @impl true
   def handle_info(:recover_pending_reports, state) do
     case GeneratedReportDB.list_pending_with_incomplete_elements() do
       {:ok, []} ->
@@ -272,7 +339,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
         |> Enum.group_by(& &1["code"])
         |> Enum.each(fn {code, elements} ->
           Task.start(fn ->
-            case SyllabusManager.get_detail(code) do
+            case SyllabusDomainManager.get_detail(code) do
               {:ok, syllabus_doc} ->
                 Enum.each(elements, fn row ->
                   element = %{
@@ -311,7 +378,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
 
   def handle_info({:generation_failed, code, element_id, reason}, state) do
     Logger.error(
-      "ReportGenerator prepare failed element_id=#{element_id} reason=#{inspect(reason)}"
+      "ReportGeneratorDomainManger prepare failed element_id=#{element_id} reason=#{inspect(reason)}"
     )
 
     broadcast_result(code, element_id, {:error, reason})
@@ -319,18 +386,17 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   end
 
   def handle_info({{code, element_id, report_id}, {:ok, ai_result}}, state) do
-    result =
+    {result, state} =
       case GeneratedReportItemDB.upsert(report_id, element_id, ai_result) do
         {:ok, _item} = ok ->
-          RequiredReportElementCoverageCache.notify_item_saved(element_id)
-          ok
+          {ok, refresh_coverage(state, element_id)}
 
         {:error, reason} = err ->
           Logger.error(
-            "ReportGenerator upsert failed element_id=#{element_id} reason=#{inspect(reason)}"
+            "ReportGeneratorDomainManger upsert failed element_id=#{element_id} reason=#{inspect(reason)}"
           )
 
-          err
+          {err, state}
       end
 
     broadcast_result(code, element_id, result)
@@ -338,10 +404,31 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   end
 
   def handle_info({{code, element_id, _report_id}, {:error, reason}}, state) do
-    Logger.error("ReportGenerator AI failed element_id=#{element_id} reason=#{inspect(reason)}")
+    Logger.error(
+      "ReportGeneratorDomainManger AI failed element_id=#{element_id} reason=#{inspect(reason)}"
+    )
 
     broadcast_result(code, element_id, {:error, reason})
     {:noreply, drop_pending(state, code, element_id)}
+  end
+
+  defp refresh_coverage(state, element_id) do
+    case GeneratedReportItemDB.item_counts_for_element(element_id) do
+      {:ok, raw} ->
+        CoverageCacheUtils.broadcast_element(
+          element_id,
+          CoverageCacheUtils.with_not_generated(raw)
+        )
+
+        %{state | counts: Map.put(state.counts, element_id, raw)}
+
+      {:error, reason} ->
+        Logger.error(
+          "ReportGeneratorDomainManger coverage refresh failed element_id=#{element_id} reason=#{inspect(reason)}"
+        )
+
+        state
+    end
   end
 
   defp broadcast_result(code, element_id, result) do
@@ -369,7 +456,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
         case GeneratedReportDB.get_or_create_for_syllabus(
                syllabus_doc["code"],
                syllabus_doc["title"] || syllabus_doc["code"],
-               primary_instructor_name(syllabus_doc)
+               ReportGenerationMessages.primary_instructor_name(syllabus_doc)
              ) do
           {:ok, report} -> {:ok, report["id"], Map.put(report_ids, code, report["id"])}
           {:error, _} = err -> err
@@ -377,27 +464,6 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
 
       report_id ->
         {:ok, report_id, report_ids}
-    end
-  end
-
-  defp prepare_and_send(server, syllabus_doc, element, code, report_id) do
-    element_id = element["id"]
-
-    result =
-      try do
-        build_messages_for(syllabus_doc, element)
-      rescue
-        e -> {:error, {:exception, Exception.message(e)}}
-      catch
-        kind, reason -> {:error, {kind, reason}}
-      end
-
-    case result do
-      {:ok, messages} ->
-        send(server, {:generation_prepared, code, element_id, report_id, messages})
-
-      {:error, reason} ->
-        send(server, {:generation_failed, code, element_id, reason})
     end
   end
 
@@ -427,78 +493,20 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
     schedule_pending_broadcast(new_state)
   end
 
-  defp build_messages_for(syllabus_doc, required_element) do
-    with {:ok, instructions} <- ReportInstructionDB.list_for_element(required_element["id"]) do
-      syllabus_text = extract_syllabus_text(syllabus_doc)
-      {:ok, build_messages(required_element, instructions, syllabus_text)}
-    end
+  defp with_not_generated_for_school(row) do
+    not_generated = max(0, row["total_syllabi"] - row["syllabi_with_reports"])
+    Map.put(row, "not_generated", not_generated)
   end
 
-  defp build_messages(element, instructions, syllabus_text) do
-    instruction_block =
-      case instructions do
-        [] ->
-          ""
-
-        _ ->
-          lines = Enum.map_join(instructions, "\n", fn i -> "- #{i["content"]}" end)
-
-          """
-
-          <mandatory_evaluation_rules>
-          The following rules MUST be applied when evaluating this element. They take precedence over your general judgment. If any rule conflicts with a standard finding, follow the rule.
-          When a rule includes an example referencing a specific course, that example illustrates the pattern — the rule applies equally to ALL courses, including the one you are evaluating now. Never treat a course-specific example as evidence that the rule is limited to that course.
-          #{lines}
-          </mandatory_evaluation_rules>
-          """
-      end
-
-    system = """
-    You are an academic compliance reviewer evaluating whether a college course syllabus satisfies a specific required element policy.
-    #{instruction_block}
-    Analyze the provided syllabus content carefully and respond with:
-    - status: "met", "not_met", or "partially_met"
-    - description: a clear and short explanation of your finding
-    - evidence: a verbatim excerpt from the syllabus that supports your finding (empty string if none found)
-    - additional_considerations: any caveats, edge-cases, or notes for the reviewer, shorter is better (empty string if none)
-    """
-
-    user = """
-    <required_element>
-    <name>#{element["name"]}</name>
-    <description>#{element["description"]}</description>
-    </required_element>
-
-    <syllabus_content>
-    #{syllabus_text}
-    </syllabus_content>
-    """
-
-    [
-      %{role: "system", content: String.trim(system)},
-      %{role: "user", content: String.trim(user)}
-    ]
-  end
-
-  defp extract_syllabus_text(doc) do
-    (doc["components"] || [])
-    |> Enum.sort_by(& &1["sort_order"])
-    |> Enum.map_join("\n\n", fn component ->
-      name = component["name"] || ""
-      text = (component["html"] || "") |> HtmlSanitizeEx.strip_tags() |> String.trim()
-      if name != "", do: "## #{name}\n#{text}", else: text
+  defp sum_school_totals(school_rows) do
+    Enum.reduce(school_rows, %{"met" => 0, "not_met" => 0, "partially_met" => 0, "total_syllabi" => 0, "not_generated" => 0}, fn row, acc ->
+      %{
+        "met" => acc["met"] + row["met"],
+        "not_met" => acc["not_met"] + row["not_met"],
+        "partially_met" => acc["partially_met"] + row["partially_met"],
+        "total_syllabi" => acc["total_syllabi"] + row["total_syllabi"],
+        "not_generated" => acc["not_generated"] + row["not_generated"]
+      }
     end)
-  end
-
-  defp primary_instructor_name(doc) do
-    name =
-      (doc["editors"] || [])
-      |> Enum.filter(fn editor ->
-        "instructor" in (get_in(editor, ["role", "role_types"]) || [])
-      end)
-      |> Enum.flat_map(fn editor -> editor["accounts"] || [] end)
-      |> Enum.map_join(", ", fn account -> account["email"] || "" end)
-
-    if name == "", do: "Unknown", else: name
   end
 end

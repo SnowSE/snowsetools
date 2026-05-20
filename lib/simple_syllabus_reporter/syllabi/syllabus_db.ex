@@ -173,4 +173,19 @@ defmodule SimpleSyllabusReporter.Syllabi.SyllabusDB do
     end)
     |> Map.get("list_cached_at")
   end
+
+  @doc "Counts syllabi in scope (scoped to selected term, or all if none set)."
+  def count_in_scope do
+    sql = """
+    SELECT COUNT(*)::integer AS total
+    FROM syllabi s
+    LEFT JOIN site_config sc ON sc.key = 'selected_term_id'
+    WHERE sc.value IS NULL OR s.term_id = sc.value
+    """
+
+    case DbHelpers.run_sql(sql, %{}) do
+      [%{"total" => total}] -> {:ok, total}
+      {:error, _} = err -> err
+    end
+  end
 end

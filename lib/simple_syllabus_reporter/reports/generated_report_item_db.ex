@@ -174,6 +174,7 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportItemDB do
       ORDER BY gr.syllabus_code, gr.inserted_at DESC
     )
     SELECT
+      COUNT(DISTINCT lr.id)::integer                                     AS total_syllabi,
       COUNT(gri.id) FILTER (WHERE gri.status = 'met')::integer           AS met,
       COUNT(gri.id) FILTER (WHERE gri.status = 'not_met')::integer       AS not_met,
       COUNT(gri.id) FILTER (WHERE gri.status = 'partially_met')::integer AS partially_met
@@ -191,7 +192,7 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportItemDB do
         {:ok, row}
 
       [] ->
-        {:ok, %{"met" => 0, "not_met" => 0, "partially_met" => 0}}
+        {:ok, %{"met" => 0, "not_met" => 0, "partially_met" => 0, "total_syllabi" => 0}}
     end
   end
 
@@ -204,16 +205,55 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportItemDB do
       LEFT JOIN site_config sc ON sc.key = 'selected_term_id'
       WHERE sc.value IS NULL OR s.term_id = sc.value
       ORDER BY gr.syllabus_code, gr.inserted_at DESC
+    ),
+    total AS (
+      SELECT COUNT(*)::integer AS total_syllabi FROM latest_reports
     )
     SELECT
       gri.required_element_id                                             AS element_id,
+      total.total_syllabi                                                 AS total_syllabi,
       COUNT(gri.id) FILTER (WHERE gri.status = 'met')::integer           AS met,
       COUNT(gri.id) FILTER (WHERE gri.status = 'not_met')::integer       AS not_met,
       COUNT(gri.id) FILTER (WHERE gri.status = 'partially_met')::integer AS partially_met
     FROM latest_reports lr
+    CROSS JOIN total
     LEFT JOIN generated_report_items gri ON gri.generated_report_id = lr.id
     WHERE gri.required_element_id IS NOT NULL
-    GROUP BY gri.required_element_id
+    GROUP BY gri.required_element_id, total.total_syllabi
+    """
+
+    case DbHelpers.run_sql(sql, %{}) do
+      {:error, _} = err -> err
+      rows -> {:ok, rows}
+    end
+  end
+
+  def totals_by_school do
+    sql = """
+    WITH scoped_syllabi AS (
+      SELECT s.code, s.org_id
+      FROM syllabi s
+      LEFT JOIN site_config sc ON sc.key = 'selected_term_id'
+      WHERE s.org_id IS NOT NULL
+        AND (sc.value IS NULL OR s.term_id = sc.value)
+    ),
+    latest_reports AS (
+      SELECT DISTINCT ON (gr.syllabus_code) gr.id, gr.syllabus_code
+      FROM generated_reports gr
+      JOIN scoped_syllabi ss ON ss.code = gr.syllabus_code
+      ORDER BY gr.syllabus_code, gr.inserted_at DESC
+    )
+    SELECT
+      ss.org_id,
+      COUNT(DISTINCT ss.code)::integer                                    AS total_syllabi,
+      COUNT(DISTINCT lr.id)::integer                                      AS syllabi_with_reports,
+      COUNT(gri.id) FILTER (WHERE gri.status = 'met')::integer           AS met,
+      COUNT(gri.id) FILTER (WHERE gri.status = 'not_met')::integer       AS not_met,
+      COUNT(gri.id) FILTER (WHERE gri.status = 'partially_met')::integer AS partially_met
+    FROM scoped_syllabi ss
+    LEFT JOIN latest_reports lr ON lr.syllabus_code = ss.code
+    LEFT JOIN generated_report_items gri ON gri.generated_report_id = lr.id
+    GROUP BY ss.org_id
     """
 
     case DbHelpers.run_sql(sql, %{}) do

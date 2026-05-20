@@ -1,5 +1,5 @@
 defmodule SimpleSyllabusReporter.Reports.ReportGenerationStatus do
-  alias SimpleSyllabusReporter.Reports.ReportGenerator
+  alias SimpleSyllabusReporter.Reports.ReportGeneratorDomainManger
 
   defmodule ItemResult do
     @enforce_keys [:code, :element_id, :result]
@@ -23,7 +23,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerationStatus do
   end
 
   def request_pending(codes) when is_list(codes) do
-    ReportGenerator.request_pending(codes)
+    ReportGeneratorDomainManger.request_pending(codes)
   end
 
   def publish_item_result(code, element_id, result) do

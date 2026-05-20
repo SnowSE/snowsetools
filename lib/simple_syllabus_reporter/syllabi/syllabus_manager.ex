@@ -1,4 +1,4 @@
-defmodule SimpleSyllabusReporter.Syllabi.SyllabusManager do
+defmodule SimpleSyllabusReporter.Syllabi.SyllabusDomainManager do
   @moduledoc """
   Orchestration layer for syllabus data. Serves cached results from the
   database when available and falls back to the SimpleSyllabus API,
@@ -25,7 +25,7 @@ defmodule SimpleSyllabusReporter.Syllabi.SyllabusManager do
 
       {:error, reason} ->
         Logger.warning(
-          "SyllabusManager.search_by_org DB read failed, falling back to API reason=#{inspect(reason)}"
+          "SyllabusDomainManager.search_by_org DB read failed, falling back to API reason=#{inspect(reason)}"
         )
 
         fetch_and_persist_by_org(org_id)
@@ -48,7 +48,7 @@ defmodule SimpleSyllabusReporter.Syllabi.SyllabusManager do
 
       {:error, reason} ->
         Logger.warning(
-          "SyllabusManager.search_by_email DB read failed, falling back to API reason=#{inspect(reason)}"
+          "SyllabusDomainManager.search_by_email DB read failed, falling back to API reason=#{inspect(reason)}"
         )
 
         fetch_and_persist_by_email(email)
@@ -71,7 +71,7 @@ defmodule SimpleSyllabusReporter.Syllabi.SyllabusManager do
 
       {:error, reason} ->
         Logger.warning(
-          "SyllabusManager.get_detail DB read failed, falling back to API code=#{code} reason=#{inspect(reason)}"
+          "SyllabusDomainManager.get_detail DB read failed, falling back to API code=#{code} reason=#{inspect(reason)}"
         )
 
         fetch_and_persist_detail(code)

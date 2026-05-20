@@ -4,17 +4,17 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList do
 
   import SimpleSyllabusReporterWeb.Syllabus.ProfessorSyllabusListItems
 
-  alias SimpleSyllabusReporter.Syllabi.SyllabusManager
-  alias SimpleSyllabusReporter.Reports.ReportGenerator
+  alias SimpleSyllabusReporter.Syllabi.SyllabusDomainManager
+  alias SimpleSyllabusReporter.Reports.ReportGeneratorDomainManger
   alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
-  alias SimpleSyllabusReporter.Reports.RequiredReportElementCoverageCache
+  alias SimpleSyllabusReporter.Reports.ReportGeneratorDomainManger
 
   # ----- mount -----
 
   def mount(socket) do
     socket =
       if connected?(socket) do
-        start_async(socket, :fetch_departments, fn -> SyllabusManager.get_departments() end)
+        start_async(socket, :fetch_departments, fn -> SyllabusDomainManager.get_departments() end)
       else
         socket
       end
@@ -139,7 +139,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList do
         socket.assigns.total_elements
       )
 
-    ReportGenerator.generate_missing_for_codes(codes, socket.assigns.elements)
+    ReportGeneratorDomainManger.generate_missing_for_codes(codes, socket.assigns.elements)
     {:noreply, assign(socket, :generating_all, true)}
   end
 
@@ -157,12 +157,16 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList do
         socket.assigns.total_elements
       )
 
-    ReportGenerator.generate_missing_for_codes(codes_with_missing, socket.assigns.elements)
+    ReportGeneratorDomainManger.generate_missing_for_codes(
+      codes_with_missing,
+      socket.assigns.elements
+    )
+
     {:noreply, assign(socket, :generating_all, true)}
   end
 
   def handle_event("regenerate_non_met", %{"code" => code}, socket) do
-    ReportGenerator.regenerate_non_met_for_code(code, socket.assigns.elements)
+    ReportGeneratorDomainManger.regenerate_non_met_for_code(code, socket.assigns.elements)
     {:noreply, socket}
   end
 
@@ -188,13 +192,13 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList do
 
     if connected?(socket) do
       ReportGenerationStatus.request_pending(codes)
-      RequiredReportElementCoverageCache.set_syllabi_codes(codes)
+      ReportGeneratorDomainManger.set_syllabi_codes(codes)
     end
 
     syllabi_docs = Map.new(docs, &{&1["code"], &1})
     {code_to_slug, professors_meta, stream_items} = build_professor_groups(syllabi_docs)
 
-    ReportGenerator.request_report_counts(codes, self())
+    ReportGeneratorDomainManger.request_report_counts(codes, self())
 
     {:noreply,
      socket
@@ -378,7 +382,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList do
         |> assign(:loading_search, true)
         |> assign(:syllabi_empty?, true)
         |> assign(:search_pending?, false)
-        |> start_async(:search, fn -> SyllabusManager.search_by_email(query) end)
+        |> start_async(:search, fn -> SyllabusDomainManager.search_by_email(query) end)
 
       socket.assigns.departments == [] ->
         socket
@@ -391,7 +395,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList do
         |> assign(:loading_search, true)
         |> assign(:syllabi_empty?, true)
         |> assign(:search_pending?, false)
-        |> start_async(:search, fn -> SyllabusManager.search_by_org(dept["entity_id"]) end)
+        |> start_async(:search, fn -> SyllabusDomainManager.search_by_org(dept["entity_id"]) end)
 
       true ->
         assign(socket, loading_search: false, search_error: "No matching department found")

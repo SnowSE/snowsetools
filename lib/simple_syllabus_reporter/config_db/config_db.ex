@@ -2,6 +2,11 @@ defmodule SimpleSyllabusReporter.ConfigDB do
   alias SimpleSyllabusReporter.Data.DbHelpers
 
   @current_term_key "selected_term_id"
+  @pubsub SimpleSyllabusReporter.PubSub
+  @topic "config:term_changed"
+
+  def subscribe, do: Phoenix.PubSub.subscribe(@pubsub, @topic)
+  def unsubscribe, do: Phoenix.PubSub.unsubscribe(@pubsub, @topic)
 
   @doc "Returns the currently selected term_id, or nil if none is set."
   def get_current_term do
@@ -20,7 +25,9 @@ defmodule SimpleSyllabusReporter.ConfigDB do
 
     case DbHelpers.run_sql(sql, %{"key" => @current_term_key}) do
       {:error, _} = err -> err
-      _ -> :ok
+      _ ->
+        Phoenix.PubSub.broadcast(@pubsub, @topic, {:term_changed, nil})
+        :ok
     end
   end
 
@@ -33,7 +40,9 @@ defmodule SimpleSyllabusReporter.ConfigDB do
 
     case DbHelpers.run_sql(sql, %{"key" => @current_term_key, "value" => term_id}) do
       {:error, _} = err -> err
-      _ -> :ok
+      _ ->
+        Phoenix.PubSub.broadcast(@pubsub, @topic, {:term_changed, term_id})
+        :ok
     end
   end
 

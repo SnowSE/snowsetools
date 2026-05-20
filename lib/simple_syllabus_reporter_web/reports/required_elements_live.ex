@@ -3,8 +3,7 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
 
   alias SimpleSyllabusReporter.Reports.RequiredElementDB
   alias SimpleSyllabusReporter.Reports.ReportInstructionDB
-  alias SimpleSyllabusReporter.Reports.RequiredReportElementCoverageCache
-  alias SimpleSyllabusReporter.Reports.ReportGenerator
+  alias SimpleSyllabusReporter.Reports.ReportGeneratorDomainManger
 
   import SimpleSyllabusReporterWeb.Reports.ElementsList
   import SimpleSyllabusReporterWeb.Reports.ElementDetail
@@ -32,8 +31,8 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
   def handle_event("generate_missing_for_element", %{"id" => element_id}, socket) do
     case RequiredElementDB.get(element_id) do
       {:ok, element} ->
-        all_codes = RequiredReportElementCoverageCache.get_syllabi_codes()
-        ReportGenerator.generate_async_all_missing(element, all_codes)
+        all_codes = ReportGeneratorDomainManger.get_syllabi_codes()
+        ReportGeneratorDomainManger.generate_async_all_missing(element, all_codes)
         {:noreply, put_flash(socket, :info, "Queued generation for missing syllabi.")}
 
       _ ->
@@ -44,7 +43,7 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
   def handle_event("regenerate_unmet_for_element", %{"id" => element_id}, socket) do
     case RequiredElementDB.get(element_id) do
       {:ok, element} ->
-        ReportGenerator.generate_async_all_unmet(element, nil)
+        ReportGeneratorDomainManger.generate_async_all_unmet(element, nil)
 
         {:noreply,
          put_flash(socket, :info, "Queued regeneration for unmet/partially met syllabi.")}
@@ -238,12 +237,12 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
   end
 
   defp load_element_counts(socket, element_id) do
-    counts = RequiredReportElementCoverageCache.get(element_id)
+    counts = ReportGeneratorDomainManger.get_element_coverage(element_id)
     assign(socket, :element_counts, counts)
   end
 
   defp subscribe_element_coverage(socket, element_id) do
-    RequiredReportElementCoverageCache.subscribe(element_id)
+    ReportGeneratorDomainManger.subscribe_element_coverage(element_id)
     socket
   end
 

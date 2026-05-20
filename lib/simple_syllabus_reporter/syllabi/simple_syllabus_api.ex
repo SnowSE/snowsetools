@@ -3,7 +3,7 @@ defmodule SimpleSyllabusReporter.SimpleSyllabusApi do
   Pure HTTP service layer for the SimpleSyllabus API.
 
   Does not perform any caching — callers are responsible for caching.
-  See `SimpleSyllabusReporter.Syllabi.SyllabusManager` for the caching layer.
+  See `SimpleSyllabusReporter.Syllabi.SyllabusDomainManager` for the caching layer.
   """
   require Logger
   import SimpleSyllabusReporter.Cache

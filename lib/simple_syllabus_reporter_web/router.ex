@@ -28,6 +28,7 @@ defmodule SimpleSyllabusReporterWeb.Router do
   scope "/", SimpleSyllabusReporterWeb do
     pipe_through [:browser, :require_authenticated]
 
+    live "/home", Home.HomeLive
     live "/syllabi", Syllabus.SyllabusLive
     live "/syllabi/report", Syllabus.SyllabusReportLive
     live "/reports/required-elements", Reports.RequiredElementsLive
