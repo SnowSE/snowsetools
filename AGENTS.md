@@ -38,6 +38,14 @@ you can read current logs with `docker logs simplesyllabusreporter-app-1` be sur
 when checking if changes compile use `mix compile` on the terminal (not in container)
 
 
+## Data Flows
+
+The UI layer (in the simple_syllabus_reporter_web folder) should only communicate with the domain manager agents to get data. Never let a liveview talk directly to the database or service layers.
+
+All UI communication with domain managers should be asyncronous through Genserver.Cast data will flow back through pubsub or response messages.
+
+Use the asyncronous model to leverage Phoenix Streams when rendering and updating large amounts of data.
+
 --- Phoenix guidelines below ---
 
 ## Project guidelines

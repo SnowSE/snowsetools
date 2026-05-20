@@ -1,8 +1,8 @@
 defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
   use SimpleSyllabusReporterWeb, :live_view
 
-  alias SimpleSyllabusReporter.Reports.RequiredElement
-  alias SimpleSyllabusReporter.Reports.ReportInstruction
+  alias SimpleSyllabusReporter.Reports.RequiredElementDB
+  alias SimpleSyllabusReporter.Reports.ReportInstructionDB
   alias SimpleSyllabusReporter.Reports.RequiredReportElementCoverageCache
   alias SimpleSyllabusReporter.Reports.ReportGenerator
 
@@ -30,7 +30,7 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
   end
 
   def handle_event("generate_missing_for_element", %{"id" => element_id}, socket) do
-    case RequiredElement.get(element_id) do
+    case RequiredElementDB.get(element_id) do
       {:ok, element} ->
         all_codes = RequiredReportElementCoverageCache.get_syllabi_codes()
         ReportGenerator.generate_async_all_missing(element, all_codes)
@@ -42,7 +42,7 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
   end
 
   def handle_event("regenerate_unmet_for_element", %{"id" => element_id}, socket) do
-    case RequiredElement.get(element_id) do
+    case RequiredElementDB.get(element_id) do
       {:ok, element} ->
         ReportGenerator.generate_async_all_unmet(element, nil)
 
@@ -59,7 +59,7 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
   end
 
   def handle_event("edit", %{"id" => id}, socket) do
-    case RequiredElement.get(id) do
+    case RequiredElementDB.get(id) do
       {:ok, element} -> {:noreply, assign(socket, editing: element, form_errors: %{})}
       _ -> {:noreply, put_flash(socket, :error, "Element not found.")}
     end
@@ -72,8 +72,8 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
   def handle_event("save", %{"element" => attrs}, socket) do
     result =
       case socket.assigns.editing do
-        :new -> RequiredElement.create(attrs)
-        element -> RequiredElement.update(element["id"], attrs)
+        :new -> RequiredElementDB.create(attrs)
+        element -> RequiredElementDB.update(element["id"], attrs)
       end
 
     case result do
@@ -101,7 +101,7 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
-    case RequiredElement.delete(id) do
+    case RequiredElementDB.delete(id) do
       :ok ->
         {:noreply,
          socket
@@ -152,7 +152,7 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
   end
 
   def handle_event("edit_req", %{"id" => id}, socket) do
-    case ReportInstruction.get(id) do
+    case ReportInstructionDB.get(id) do
       {:ok, req} -> {:noreply, assign(socket, editing_instruction: req, instruction_errors: %{})}
       _ -> {:noreply, put_flash(socket, :error, "Instruction not found.")}
     end
@@ -167,8 +167,8 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
 
     result =
       case socket.assigns.editing_instruction do
-        :new -> ReportInstruction.create(element_id, attrs)
-        req -> ReportInstruction.update(req["id"], attrs)
+        :new -> ReportInstructionDB.create(element_id, attrs)
+        req -> ReportInstructionDB.update(req["id"], attrs)
       end
 
     case result do
@@ -197,7 +197,7 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
   def handle_event("delete_req", %{"id" => id}, socket) do
     element_id = socket.assigns.expanded_id
 
-    case ReportInstruction.delete(id) do
+    case ReportInstructionDB.delete(id) do
       :ok ->
         {:noreply,
          socket
@@ -213,7 +213,7 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
   end
 
   defp load_elements(socket) do
-    case RequiredElement.list_all() do
+    case RequiredElementDB.list_all() do
       {:ok, elements} -> assign(socket, :elements, elements)
       {:error, _} -> assign(socket, :elements, [])
     end
@@ -231,7 +231,7 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
   end
 
   defp load_instructions(socket, element_id) do
-    case ReportInstruction.list_for_element(element_id) do
+    case ReportInstructionDB.list_for_element(element_id) do
       {:ok, items} -> assign(socket, :instructions, items)
       {:error, _} -> assign(socket, :instructions, [])
     end

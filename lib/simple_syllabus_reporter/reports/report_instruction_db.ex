@@ -1,10 +1,9 @@
-defmodule SimpleSyllabusReporter.Reports.RequiredElement do
+defmodule SimpleSyllabusReporter.Reports.ReportInstructionDB do
   require Logger
   alias SimpleSyllabusReporter.Data.DbHelpers
 
   @schema Zoi.object(%{
-            "name" => Zoi.string(),
-            "description" => Zoi.default(Zoi.optional(Zoi.string()), "")
+            "content" => Zoi.string()
           })
 
   defp validate(attrs) do
@@ -12,18 +11,15 @@ defmodule SimpleSyllabusReporter.Reports.RequiredElement do
     Zoi.parse(@schema, string_attrs)
   end
 
-  # ---------------------------------------------------------------------------
-  # Public CRUD
-  # ---------------------------------------------------------------------------
-
-  def list_all do
+  def list_for_element(required_element_id) do
     sql = """
-    SELECT id, name, description
-    FROM required_elements
-    ORDER BY name ASC
+    SELECT id, required_element_id, content
+    FROM required_element_report_instructions
+    WHERE required_element_id = $(required_element_id)
+    ORDER BY inserted_at ASC
     """
 
-    case DbHelpers.run_sql(sql, %{}) do
+    case DbHelpers.run_sql(sql, %{"required_element_id" => required_element_id}) do
       {:error, _} = err -> err
       rows -> {:ok, rows}
     end
@@ -31,8 +27,8 @@ defmodule SimpleSyllabusReporter.Reports.RequiredElement do
 
   def get(id) do
     sql = """
-    SELECT id, name, description
-    FROM required_elements
+    SELECT id, required_element_id, content
+    FROM required_element_report_instructions
     WHERE id = $(id)
     """
 
@@ -43,18 +39,18 @@ defmodule SimpleSyllabusReporter.Reports.RequiredElement do
     end
   end
 
-  def create(attrs) do
+  def create(required_element_id, attrs) do
     case validate(attrs) do
       {:ok, d} ->
         sql = """
-        INSERT INTO required_elements (name, description)
-        VALUES ($(name), $(description))
-        RETURNING id, name, description
+        INSERT INTO required_element_report_instructions (required_element_id, content)
+        VALUES ($(required_element_id), $(content))
+        RETURNING id, required_element_id, content
         """
 
         case DbHelpers.run_sql(sql, %{
-               "name" => d["name"],
-               "description" => d["description"]
+               "required_element_id" => required_element_id,
+               "content" => d["content"]
              }) do
           {:error, _} = err -> err
           [row | _] -> {:ok, row}
@@ -70,18 +66,16 @@ defmodule SimpleSyllabusReporter.Reports.RequiredElement do
     case validate(attrs) do
       {:ok, d} ->
         sql = """
-        UPDATE required_elements
-        SET name        = $(name),
-            description = $(description),
-            updated_at  = NOW()
+        UPDATE required_element_report_instructions
+        SET content    = $(content),
+            updated_at = NOW()
         WHERE id = $(id)
-        RETURNING id, name, description
+        RETURNING id, required_element_id, content
         """
 
         case DbHelpers.run_sql(sql, %{
                "id" => id,
-               "name" => d["name"],
-               "description" => d["description"]
+               "content" => d["content"]
              }) do
           {:error, _} = err -> err
           [row | _] -> {:ok, row}
@@ -94,14 +88,11 @@ defmodule SimpleSyllabusReporter.Reports.RequiredElement do
   end
 
   def delete(id) do
-    DbHelpers.transaction(fn ->
-      DbHelpers.run_sql(
-        "DELETE FROM generated_report_items WHERE required_element_id = $(id)",
-        %{"id" => id}
-      )
+    sql = "DELETE FROM required_element_report_instructions WHERE id = $(id)"
 
-      DbHelpers.run_sql("DELETE FROM required_elements WHERE id = $(id)", %{"id" => id})
-      :ok
-    end)
+    case DbHelpers.run_sql(sql, %{"id" => id}) do
+      {:error, _} = err -> err
+      _ -> :ok
+    end
   end
 end

@@ -10,6 +10,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ProfessorSyllabusListItems do
   attr :report_counts, :map, required: true
   attr :generating_per_code, :map, required: true
   attr :generating_all, :boolean, default: false
+  attr :target, :any, default: nil
 
   def professor_syllabi_items(assigns) do
     prof_slug = professor_slug(assigns.professor)
@@ -77,6 +78,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ProfessorSyllabusListItems do
               type="button"
               phx-click="generate_missing_for_professor"
               phx-value-codes={@syllabus_codes}
+              phx-target={@target}
               class={[
                 "ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-lg self-end",
                 "text-xs font-medium text-indigo-400 bg-indigo-950/30",
@@ -96,6 +98,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ProfessorSyllabusListItems do
               total_elements={@total_elements}
               report_counts={@report_counts}
               generating_per_code={@generating_per_code}
+              target={@target}
             />
           <% end %>
         </div>
@@ -110,6 +113,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ProfessorSyllabusListItems do
   attr :total_elements, :integer, required: true
   attr :report_counts, :map, required: true
   attr :generating_per_code, :map, required: true
+  attr :target, :any, default: nil
 
   defp syllabus_item(assigns) do
     selected? = assigns.selected && assigns.selected["code"] == assigns.doc["code"]
@@ -129,6 +133,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ProfessorSyllabusListItems do
       phx-value-code={@doc["code"]}
       phx-value-title={@doc["title"] || @doc["course_name"] || "Untitled"}
       phx-value-term={@doc["term_name"] || ""}
+      phx-target={@target}
       class={[
         "group flex flex-col gap-0.5 p-2 rounded-lg cursor-pointer border transition-all relative",
         if(@selected?,
@@ -162,6 +167,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ProfessorSyllabusListItems do
             type="button"
             phx-click="regenerate_non_met"
             phx-value-code={@doc["code"]}
+            phx-target={@target}
             class={[
               "mt-1 self-end inline-flex items-center gap-1 px-2 py-0.5 rounded-md",
               "text-xs font-medium text-amber-200 bg-amber-950/30 border border-amber-700/10",

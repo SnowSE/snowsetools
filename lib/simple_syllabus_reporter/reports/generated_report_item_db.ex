@@ -128,10 +128,13 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportItemDB do
   def item_counts_for_syllabi(codes) when is_list(codes) do
     sql = """
     WITH latest_reports AS (
-      SELECT DISTINCT ON (syllabus_code) id, syllabus_code
-      FROM generated_reports
-      WHERE syllabus_code = ANY($(codes))
-      ORDER BY syllabus_code, inserted_at DESC
+      SELECT DISTINCT ON (gr.syllabus_code) gr.id, gr.syllabus_code
+      FROM generated_reports gr
+      JOIN syllabi s ON s.code = gr.syllabus_code
+      LEFT JOIN site_config sc ON sc.key = 'selected_term_id'
+      WHERE gr.syllabus_code = ANY($(codes))
+        AND (sc.value IS NULL OR s.term_id = sc.value)
+      ORDER BY gr.syllabus_code, gr.inserted_at DESC
     )
     SELECT
       lr.syllabus_code,
@@ -246,10 +249,13 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportItemDB do
   def list_not_generated_for_element(element_id, all_codes) when is_list(all_codes) do
     sql = """
     WITH latest_reports AS (
-      SELECT DISTINCT ON (syllabus_code) id, syllabus_code
-      FROM generated_reports
-      WHERE syllabus_code = ANY($(codes))
-      ORDER BY syllabus_code, inserted_at DESC
+      SELECT DISTINCT ON (gr.syllabus_code) gr.id, gr.syllabus_code
+      FROM generated_reports gr
+      JOIN syllabi s ON s.code = gr.syllabus_code
+      LEFT JOIN site_config sc ON sc.key = 'selected_term_id'
+      WHERE gr.syllabus_code = ANY($(codes))
+        AND (sc.value IS NULL OR s.term_id = sc.value)
+      ORDER BY gr.syllabus_code, gr.inserted_at DESC
     ),
     covered AS (
       SELECT lr.syllabus_code

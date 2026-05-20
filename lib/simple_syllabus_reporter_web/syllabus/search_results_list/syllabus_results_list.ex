@@ -1,46 +1,251 @@
 defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList do
-  use SimpleSyllabusReporterWeb, :html
+  use SimpleSyllabusReporterWeb, :live_component
+  require Logger
 
   import SimpleSyllabusReporterWeb.Syllabus.ProfessorSyllabusListItems
 
-  attr :syllabi_docs, :map, required: true
-  attr :syllabi_empty?, :boolean, required: true
-  attr :query, :string, required: true
-  attr :loading_search, :boolean, required: true
-  attr :search_cached_at, :any, default: nil
-  attr :selected, :map, default: nil
-  attr :total_elements, :integer, required: true
-  attr :syllabi_count, :integer, required: true
-  attr :report_counts, :map, required: true
-  attr :generating_per_code, :map, required: true
-  attr :generating_all, :boolean, required: true
+  alias SimpleSyllabusReporter.Syllabi.SyllabusManager
+  alias SimpleSyllabusReporter.Reports.ReportGenerator
+  alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
+  alias SimpleSyllabusReporter.Reports.RequiredReportElementCoverageCache
 
-  def results_list(assigns) do
-    total_generated =
-      assigns.report_counts
-      |> Map.values()
-      |> Enum.flat_map(&Map.values/1)
-      |> Enum.sum()
+  # ----- mount -----
 
-    total_possible = assigns.syllabi_count * assigns.total_elements
+  def mount(socket) do
+    socket =
+      if connected?(socket) do
+        start_async(socket, :fetch_departments, fn -> SyllabusManager.get_departments() end)
+      else
+        socket
+      end
 
-    assigns =
-      assign(assigns,
-        total_generated: total_generated,
-        total_possible: total_possible,
-        professors_grouped: group_by_professor(assigns.syllabi_docs)
+    {:ok,
+     socket
+     |> assign(:query, "")
+     |> assign(:departments, [])
+     |> assign(:selected, nil)
+     |> assign(:elements, [])
+     |> assign(:total_elements, 0)
+     |> assign(:loading_search, false)
+     |> assign(:search_error, nil)
+     |> assign(:search_cached_at, nil)
+     |> assign(:syllabi_empty?, true)
+     |> assign(:syllabi_docs, %{})
+     |> assign(:report_counts, %{})
+     |> assign(:generating_per_code, %{})
+     |> assign(:generating_all, false)
+     |> assign(:search_pending?, false)
+     |> assign(:code_to_slug, %{})
+     |> assign(:professors_meta, %{})
+     |> stream(:professor_groups, [])}
+  end
+
+  # ----- update/2 -----
+
+  # Forwarded from parent: generation pending update
+  def update(%{pending_update: pending}, socket) do
+    syllabi_codes = socket.assigns.syllabi_docs |> Map.keys() |> MapSet.new()
+
+    generating_per_code =
+      Enum.reduce(pending, %{}, fn {code, element_id}, acc ->
+        if MapSet.member?(syllabi_codes, code) do
+          Map.update(acc, code, MapSet.new([element_id]), &MapSet.put(&1, element_id))
+        else
+          acc
+        end
+      end)
+
+    prev_generating_codes = Map.keys(socket.assigns.generating_per_code)
+    all_affected = Enum.uniq(Map.keys(generating_per_code) ++ prev_generating_codes)
+
+    {:ok,
+     socket
+     |> assign(:generating_per_code, generating_per_code)
+     |> assign(:generating_all, map_size(generating_per_code) > 0)
+     |> restream_professors_for_codes(all_affected)}
+  end
+
+  # Forwarded from parent: incremental counts update from a single ItemResult
+  def update(%{report_counts_update: {code, old_status, new_status}}, socket) do
+    report_counts =
+      Map.update(
+        socket.assigns.report_counts,
+        code,
+        %{new_status => 1},
+        fn counts ->
+          counts
+          |> then(fn c ->
+            if old_status, do: Map.update(c, old_status, 0, &max(0, &1 - 1)), else: c
+          end)
+          |> Map.update(new_status, 1, &(&1 + 1))
+        end
       )
 
+    {:ok,
+     socket
+     |> assign(:report_counts, report_counts)
+     |> restream_professors_for_codes([code])}
+  end
+
+  # Forwarded from parent: batch counts loaded after search
+  def update(%{report_counts_loaded: {:ok, counts}}, socket) do
+    codes = Map.keys(counts)
+
+    {:ok,
+     socket
+     |> assign(:report_counts, Map.merge(socket.assigns.report_counts, counts))
+     |> restream_professors_for_codes(codes)}
+  end
+
+  def update(%{report_counts_loaded: _error}, socket), do: {:ok, socket}
+
+  # Normal prop update from parent re-render
+  def update(assigns, socket) do
+    prev_query = socket.assigns.query
+    query = Map.get(assigns, :query, prev_query)
+    query_changed? = is_binary(query) and query != prev_query
+
+    elements = Map.get(assigns, :elements, socket.assigns.elements)
+
+    socket =
+      socket
+      |> assign(:selected, Map.get(assigns, :selected, socket.assigns.selected))
+      |> assign(:query, query)
+      |> assign(:elements, elements)
+      |> assign(:total_elements, length(elements))
+
+    socket = if query_changed?, do: trigger_search(socket, query), else: socket
+    {:ok, socket}
+  end
+
+  # ----- handle_event -----
+
+  def handle_event("select", %{"code" => code, "title" => title, "term" => term}, socket) do
+    {:noreply,
+     push_patch(socket,
+       to: ~p"/syllabi?q=#{socket.assigns.query}&code=#{code}&title=#{title}&term=#{term}"
+     )}
+  end
+
+  def handle_event("close_detail", _params, socket) do
+    {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{socket.assigns.query}")}
+  end
+
+  def handle_event("generate_all_missing", _params, socket) do
+    codes =
+      missing_codes(
+        socket.assigns.syllabi_docs,
+        socket.assigns.report_counts,
+        socket.assigns.total_elements
+      )
+
+    ReportGenerator.generate_missing_for_codes(codes, socket.assigns.elements)
+    {:noreply, assign(socket, :generating_all, true)}
+  end
+
+  def handle_event("generate_missing_for_professor", %{"codes" => codes_json}, socket) do
+    codes =
+      case Jason.decode(codes_json) do
+        {:ok, list} -> list
+        _ -> []
+      end
+
+    codes_with_missing =
+      missing_codes_from_list(
+        codes,
+        socket.assigns.report_counts,
+        socket.assigns.total_elements
+      )
+
+    ReportGenerator.generate_missing_for_codes(codes_with_missing, socket.assigns.elements)
+    {:noreply, assign(socket, :generating_all, true)}
+  end
+
+  def handle_event("regenerate_non_met", %{"code" => code}, socket) do
+    ReportGenerator.regenerate_non_met_for_code(code, socket.assigns.elements)
+    {:noreply, socket}
+  end
+
+  # ----- handle_async -----
+
+  def handle_async(:fetch_departments, {:ok, {:ok, departments}}, socket) do
+    socket = assign(socket, :departments, departments)
+
+    socket =
+      if socket.assigns.search_pending? do
+        trigger_search(socket, socket.assigns.query)
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_async(:fetch_departments, _result, socket), do: {:noreply, socket}
+
+  def handle_async(:search, {:ok, {:ok, %{items: docs, cached_at: cached_at}}}, socket) do
+    codes = Enum.map(docs, & &1["code"])
+
+    if connected?(socket) do
+      ReportGenerationStatus.request_pending(codes)
+      RequiredReportElementCoverageCache.set_syllabi_codes(codes)
+    end
+
+    syllabi_docs = Map.new(docs, &{&1["code"], &1})
+    {code_to_slug, professors_meta, stream_items} = build_professor_groups(syllabi_docs)
+
+    ReportGenerator.request_report_counts(codes, self())
+
+    {:noreply,
+     socket
+     |> assign(:loading_search, false)
+     |> assign(:search_cached_at, cached_at)
+     |> assign(:syllabi_empty?, docs == [])
+     |> assign(:syllabi_docs, syllabi_docs)
+     |> assign(:report_counts, %{})
+     |> assign(:generating_per_code, %{})
+     |> assign(:generating_all, false)
+     |> assign(:code_to_slug, code_to_slug)
+     |> assign(:professors_meta, professors_meta)
+     |> stream(:professor_groups, stream_items, reset: true)}
+  end
+
+  def handle_async(:search, {:ok, {:error, reason}}, socket) do
+    {:noreply, socket |> assign(:loading_search, false) |> assign(:search_error, reason)}
+  end
+
+  def handle_async(:search, {:exit, reason}, socket) do
+    {:noreply, socket |> assign(:loading_search, false) |> assign(:search_error, inspect(reason))}
+  end
+
+  # ----- render -----
+
+  def render(assigns) do
     ~H"""
-    <div class={[
-      "flex flex-col min-h-0 w-[400px] "
-    ]}>
+    <div class="flex flex-col min-h-0 w-[400px] shrink-0">
+      <%= if @search_error do %>
+        <div
+          id="search-error"
+          class="mb-3 rounded-lg bg-red-900/40 border border-red-700 px-4 py-3 text-red-300 text-sm"
+        >
+          {@search_error}
+        </div>
+      <% end %>
+
+      <%
+        total_generated =
+          @report_counts |> Map.values() |> Enum.flat_map(&Map.values/1) |> Enum.sum()
+
+        total_possible = map_size(@syllabi_docs) * @total_elements
+      %>
+
       <%= if not @syllabi_empty? && @total_elements > 0 && !@loading_search do %>
         <div class="mb-3 shrink-0">
           <button
             id="generate-all-btn"
             type="button"
             phx-click="generate_all_missing"
+            phx-target={@myself}
             disabled={@generating_all}
             class={[
               "w-full flex flex-col gap-1 px-4 py-2 rounded-lg text-sm font-medium border transition-all",
@@ -60,10 +265,10 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList do
             </div>
             <div id="report-summary" class="w-full mt-1.5 flex items-center justify-between">
               <span class="text-xs text-slate-400">
-                <span class="font-semibold text-slate-200">{@total_generated}</span>
-                / {@total_possible} reports generated
+                <span class="font-semibold text-slate-200">{total_generated}</span>
+                / {total_possible} reports generated
               </span>
-              <%= if @total_generated == @total_possible && @total_possible > 0 do %>
+              <%= if total_generated == total_possible && total_possible > 0 do %>
                 <span class="text-xs text-green-400 font-medium">All complete</span>
               <% end %>
             </div>
@@ -103,83 +308,183 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList do
         phx-hook=".ProfessorExpansion"
         class={["overflow-y-auto flex-1 min-h-0", @loading_search && "hidden"]}
       >
-        <%= for {professor, syllabi} <- @professors_grouped do %>
-          <.professor_syllabi_items
-            professor={professor}
-            syllabi={syllabi}
-            selected={@selected}
-            total_elements={@total_elements}
-            report_counts={@report_counts}
-            generating_per_code={@generating_per_code}
-            generating_all={@generating_all}
-          />
-        <% end %>
+        <div id="professor-groups" phx-update="stream">
+          <div :for={{dom_id, group} <- @streams.professor_groups} id={dom_id}>
+            <.professor_syllabi_items
+              professor={group.professor}
+              syllabi={Enum.map(group.codes, &@syllabi_docs[&1]) |> Enum.reject(&is_nil/1)}
+              selected={@selected}
+              total_elements={@total_elements}
+              report_counts={@report_counts}
+              generating_per_code={@generating_per_code}
+              generating_all={@generating_all}
+              target={@myself}
+            />
+          </div>
+        </div>
       </div>
-    </div>
-    <script :type={Phoenix.LiveView.ColocatedHook} name=".ProfessorExpansion">
-      const STORAGE_KEY = "professor_expanded";
 
-      function getExpanded() {
-        try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]")); }
-        catch { return new Set(); }
-      }
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".ProfessorExpansion">
+        const STORAGE_KEY = "professor_expanded";
 
-      function saveExpanded(expanded) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify([...expanded]));
-      }
-
-      export default {
-        mounted() {
-          this.applyExpanded();
-          this.el.addEventListener("click", e => {
-            const btn = e.target.closest("[data-prof-slug]");
-            if (!btn) return;
-            const slug = btn.dataset.profSlug;
-            const expanded = getExpanded();
-            if (expanded.has(slug)) expanded.delete(slug);
-            else expanded.add(slug);
-            saveExpanded(expanded);
-            this.applyExpanded();
-          });
-        },
-        updated() { this.applyExpanded(); },
-        applyExpanded() {
-          const expanded = getExpanded();
-          this.el.querySelectorAll("[data-prof-slug]").forEach(btn => {
-            const slug = btn.dataset.profSlug;
-            const listEl = document.getElementById(`prof-list-${slug}`);
-            const chevronEl = document.getElementById(`prof-chevron-${slug}`);
-            if (!listEl || !chevronEl) return;
-            const isExpanded = expanded.has(slug);
-            listEl.classList.toggle("hidden", !isExpanded);
-            chevronEl.classList.toggle("rotate-90", isExpanded);
-          });
+        function getExpanded() {
+          try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]")); }
+          catch { return new Set(); }
         }
-      };
-    </script>
+
+        function saveExpanded(expanded) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify([...expanded]));
+        }
+
+        export default {
+          mounted() {
+            this.applyExpanded();
+            this.el.addEventListener("click", e => {
+              const btn = e.target.closest("[data-prof-slug]");
+              if (!btn) return;
+              const slug = btn.dataset.profSlug;
+              const expanded = getExpanded();
+              if (expanded.has(slug)) expanded.delete(slug);
+              else expanded.add(slug);
+              saveExpanded(expanded);
+              this.applyExpanded();
+            });
+          },
+          updated() { this.applyExpanded(); },
+          applyExpanded() {
+            const expanded = getExpanded();
+            this.el.querySelectorAll("[data-prof-slug]").forEach(btn => {
+              const slug = btn.dataset.profSlug;
+              const listEl = document.getElementById(`prof-list-${slug}`);
+              const chevronEl = document.getElementById(`prof-chevron-${slug}`);
+              if (!listEl || !chevronEl) return;
+              const isExpanded = expanded.has(slug);
+              listEl.classList.toggle("hidden", !isExpanded);
+              chevronEl.classList.toggle("rotate-90", isExpanded);
+            });
+          }
+        };
+      </script>
+    </div>
     """
   end
 
-  defp group_by_professor(syllabi_docs) do
-    hidden_professors = [
-      "Chris Pinedo",
-      "Engineering ADA"
-    ]
+  # ----- private -----
 
-    syllabi_docs
-    |> Map.values()
-    |> Enum.flat_map(fn doc ->
-      case doc["editors"] || [] do
-        [] -> [{"Unknown", doc}]
-        editors -> Enum.map(editors, fn e -> {e["full_name"] || "Unknown", doc} end)
-      end
+  defp trigger_search(socket, query) do
+    cond do
+      email?(query) ->
+        socket
+        |> assign(:loading_search, true)
+        |> assign(:syllabi_empty?, true)
+        |> assign(:search_pending?, false)
+        |> start_async(:search, fn -> SyllabusManager.search_by_email(query) end)
+
+      socket.assigns.departments == [] ->
+        socket
+        |> assign(:loading_search, true)
+        |> assign(:syllabi_empty?, true)
+        |> assign(:search_pending?, true)
+
+      dept = find_department(socket.assigns.departments, query) ->
+        socket
+        |> assign(:loading_search, true)
+        |> assign(:syllabi_empty?, true)
+        |> assign(:search_pending?, false)
+        |> start_async(:search, fn -> SyllabusManager.search_by_org(dept["entity_id"]) end)
+
+      true ->
+        assign(socket, loading_search: false, search_error: "No matching department found")
+    end
+  end
+
+  defp find_department(departments, name) do
+    Enum.find(departments, &(String.downcase(&1["name"]) == String.downcase(name)))
+  end
+
+  defp email?(query), do: String.contains?(query, "@")
+
+  defp build_professor_groups(syllabi_docs) do
+    hidden_professors = ["Chris Pinedo", "Engineering ADA"]
+
+    groups =
+      syllabi_docs
+      |> Map.values()
+      |> Enum.flat_map(fn doc ->
+        case doc["editors"] || [] do
+          [] -> [{"Unknown", doc["code"]}]
+          editors -> Enum.map(editors, fn e -> {e["full_name"] || "Unknown", doc["code"]} end)
+        end
+      end)
+      |> Enum.reject(fn {name, _} ->
+        String.downcase(name) in Enum.map(hidden_professors, &String.downcase/1)
+      end)
+      |> Enum.group_by(fn {name, _} -> name end, fn {_, code} -> code end)
+      |> Enum.sort_by(fn {name, _} ->
+        if name == "Unknown", do: "zzz", else: String.downcase(name)
+      end)
+
+    code_to_slug =
+      Enum.flat_map(groups, fn {name, codes} ->
+        slug = professor_slug(name)
+        Enum.map(codes, &{&1, slug})
+      end)
+      |> Map.new()
+
+    professors_meta =
+      Map.new(groups, fn {name, codes} ->
+        slug = professor_slug(name)
+        {slug, %{professor: name, codes: codes}}
+      end)
+
+    stream_items =
+      Enum.map(groups, fn {name, codes} ->
+        slug = professor_slug(name)
+        %{id: "prof-#{slug}", slug: slug, professor: name, codes: codes}
+      end)
+
+    {code_to_slug, professors_meta, stream_items}
+  end
+
+  defp restream_professors_for_codes(socket, []), do: socket
+
+  defp restream_professors_for_codes(socket, codes) do
+    code_set = MapSet.new(codes)
+
+    socket.assigns.professors_meta
+    |> Enum.filter(fn {_slug, %{codes: prof_codes}} ->
+      Enum.any?(prof_codes, &MapSet.member?(code_set, &1))
     end)
-    |> Enum.reject(fn {name, _} ->
-      String.downcase(name) in Enum.map(hidden_professors, &String.downcase/1)
+    |> Enum.reduce(socket, fn {slug, %{professor: professor, codes: prof_codes}}, acc ->
+      stream_insert(acc, :professor_groups, %{
+        id: "prof-#{slug}",
+        slug: slug,
+        professor: professor,
+        codes: prof_codes
+      })
     end)
-    |> Enum.group_by(fn {name, _} -> name end, fn {_, doc} -> doc end)
-    |> Enum.sort_by(fn {name, _} ->
-      if name == "Unknown", do: "zzz", else: String.downcase(name)
+  end
+
+  defp missing_codes(syllabi_docs, report_counts, total_elements) do
+    syllabi_docs |> Map.keys() |> missing_codes_from_list(report_counts, total_elements)
+  end
+
+  defp missing_codes_from_list(codes, report_counts, total_elements) do
+    Enum.filter(codes, fn code ->
+      counts = Map.get(report_counts, code, %{})
+
+      run =
+        Map.get(counts, "met", 0) + Map.get(counts, "not_met", 0) +
+          Map.get(counts, "partially_met", 0)
+
+      run < total_elements
     end)
+  end
+
+  defp professor_slug(name) do
+    name
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "-")
+    |> String.trim("-")
   end
 end

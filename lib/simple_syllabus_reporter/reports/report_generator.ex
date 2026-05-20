@@ -5,8 +5,9 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   alias SimpleSyllabusReporter.AI.AsyncCompletions
   alias SimpleSyllabusReporter.Reports.GeneratedReportDB
   alias SimpleSyllabusReporter.Reports.GeneratedReportItemDB
-  alias SimpleSyllabusReporter.Reports.ReportInstruction
+  alias SimpleSyllabusReporter.Reports.ReportInstructionDB
   alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
+  alias SimpleSyllabusReporter.Reports.RequiredElementDB
   alias SimpleSyllabusReporter.Reports.RequiredReportElementCoverageCache
   alias SimpleSyllabusReporter.Syllabi.SyllabusManager
 
@@ -68,6 +69,31 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   """
   def request_pending(codes) when is_list(codes) do
     GenServer.cast(__MODULE__, {:request_pending, codes})
+  end
+
+  @doc "Async: fetches report items for a code and sends {:report_items_loaded, result} to pid."
+  def request_items_for_code(code, pid) do
+    GenServer.cast(__MODULE__, {:request_items_for_code, code, pid})
+  end
+
+  @doc "Async: fetches report counts for codes and sends {:report_counts_loaded, result} to pid."
+  def request_report_counts(codes, pid) when is_list(codes) do
+    GenServer.cast(__MODULE__, {:request_report_counts, codes, pid})
+  end
+
+  @doc "Async: fetches all required elements and sends {:elements_loaded, result} to pid."
+  def request_elements(pid) do
+    GenServer.cast(__MODULE__, {:request_elements, pid})
+  end
+
+  @doc "Async: generates missing report items for each code in the list."
+  def generate_missing_for_codes(codes, elements) when is_list(codes) do
+    GenServer.cast(__MODULE__, {:generate_missing_for_codes, codes, elements})
+  end
+
+  @doc "Async: regenerates not_met/partially_met items for a single code."
+  def regenerate_non_met_for_code(code, elements) do
+    GenServer.cast(__MODULE__, {:regenerate_non_met_for_code, code, elements})
   end
 
   @impl true
@@ -164,6 +190,67 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   @impl true
   def handle_cast({:request_pending, _codes}, state) do
     ReportGenerationStatus.publish_pending_update(state.pending)
+    {:noreply, state}
+  end
+
+  def handle_cast({:request_items_for_code, code, pid}, state) do
+    Task.start(fn -> send(pid, {:report_items_loaded, fetch_items_for_code(code)}) end)
+    {:noreply, state}
+  end
+
+  def handle_cast({:request_report_counts, codes, pid}, state) do
+    Task.start(fn ->
+      send(pid, {:report_counts_loaded, GeneratedReportItemDB.item_counts_for_syllabi(codes)})
+    end)
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:request_elements, pid}, state) do
+    Task.start(fn -> send(pid, {:elements_loaded, RequiredElementDB.list_all()}) end)
+    {:noreply, state}
+  end
+
+  def handle_cast({:generate_missing_for_codes, codes, elements}, state) do
+    Task.start(fn ->
+      Enum.each(codes, fn code ->
+        with {:ok, full_doc} <- SyllabusManager.get_detail(code),
+             {:ok, items_map} <- fetch_items_for_code(code) do
+          existing_ids = MapSet.new(Map.keys(items_map))
+          missing = Enum.reject(elements, fn e -> MapSet.member?(existing_ids, e["id"]) end)
+          Enum.each(missing, fn element -> generate_async(full_doc, element) end)
+        else
+          {:error, reason} ->
+            Logger.error(
+              "generate_missing_for_codes: failed for code=#{code} reason=#{inspect(reason)}"
+            )
+        end
+      end)
+    end)
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:regenerate_non_met_for_code, code, elements}, state) do
+    Task.start(fn ->
+      with {:ok, full_doc} <- SyllabusManager.get_detail(code),
+           {:ok, items_map} <- fetch_items_for_code(code) do
+        non_met_ids =
+          items_map
+          |> Enum.filter(fn {_id, item} -> item["status"] in ["not_met", "partially_met"] end)
+          |> MapSet.new(fn {id, _} -> id end)
+
+        elements
+        |> Enum.filter(fn e -> MapSet.member?(non_met_ids, e["id"]) end)
+        |> Enum.each(fn element -> generate_async(full_doc, element) end)
+      else
+        {:error, reason} ->
+          Logger.error(
+            "regenerate_non_met_for_code: failed for code=#{code} reason=#{inspect(reason)}"
+          )
+      end
+    end)
+
     {:noreply, state}
   end
 
@@ -268,6 +355,14 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
 
   defp schedule_pending_broadcast(state), do: state
 
+  defp fetch_items_for_code(code) do
+    case GeneratedReportDB.get_latest_for_syllabus(code) do
+      {:ok, report} -> GeneratedReportItemDB.list_for_report_as_map(report["id"])
+      {:error, :not_found} -> {:ok, %{}}
+      {:error, _} = err -> err
+    end
+  end
+
   defp ensure_report_id(code, syllabus_doc, report_ids) do
     case Map.get(report_ids, code) do
       nil ->
@@ -333,7 +428,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportGenerator do
   end
 
   defp build_messages_for(syllabus_doc, required_element) do
-    with {:ok, instructions} <- ReportInstruction.list_for_element(required_element["id"]) do
+    with {:ok, instructions} <- ReportInstructionDB.list_for_element(required_element["id"]) do
       syllabus_text = extract_syllabus_text(syllabus_doc)
       {:ok, build_messages(required_element, instructions, syllabus_text)}
     end

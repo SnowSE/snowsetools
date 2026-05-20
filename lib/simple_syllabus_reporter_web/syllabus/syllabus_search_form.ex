@@ -4,10 +4,11 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchForm do
   attr :query, :string, required: true
   attr :loading_search, :boolean, required: true
   attr :departments, :list, default: []
+  attr :target, :any, default: nil
 
   def search_form(assigns) do
     ~H"""
-    <form id="syllabus-search-form" phx-submit="search" class="flex gap-3 pb-3">
+    <form id="syllabus-search-form" phx-submit="search" phx-target={@target} class="flex gap-3 pb-3">
       <datalist id="departments-list">
         <%= for dept <- @departments do %>
           <option value={dept["name"]} />

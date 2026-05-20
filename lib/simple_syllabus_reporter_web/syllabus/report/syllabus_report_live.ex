@@ -2,9 +2,6 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
   use SimpleSyllabusReporterWeb, :live_view
 
   alias SimpleSyllabusReporter.Syllabi.SyllabusManager
-  alias SimpleSyllabusReporter.Reports.RequiredElement
-  alias SimpleSyllabusReporter.Reports.GeneratedReportDB
-  alias SimpleSyllabusReporter.Reports.GeneratedReportItemDB
   alias SimpleSyllabusReporter.Reports.ReportGenerator
   alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
   alias SimpleSyllabusReporterWeb.Syllabus.ReportCorrection
@@ -15,6 +12,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
 
   def mount(_params, _session, socket) do
     if connected?(socket), do: ReportGenerationStatus.subscribe()
+    if connected?(socket), do: ReportGenerator.request_elements(self())
 
     {:ok,
      socket
@@ -29,14 +27,15 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
      |> assign(:report_items, %{})
      |> assign(:generating, MapSet.new())
      |> assign(:generation_errors, %{})
-     |> assign(:correcting_element_id, nil)
-     |> start_async(:fetch_elements, fn -> RequiredElement.list_all() end)}
+     |> assign(:correcting_element_id, nil)}
   end
 
   def handle_params(%{"code" => code}, _uri, socket) when byte_size(code) > 0 do
     if connected?(socket) do
       ReportGenerationStatus.request_pending([code])
     end
+
+    if connected?(socket), do: ReportGenerator.request_items_for_code(code, self())
 
     {:noreply,
      socket
@@ -48,8 +47,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
      |> assign(:report_items, %{})
      |> assign(:generation_errors, %{})
      |> assign(:generating, MapSet.new())
-     |> start_async(:fetch_syllabus, fn -> SyllabusManager.get_detail(code) end)
-     |> start_async(:fetch_existing_items, fn -> existing_items_for_code(code) end)}
+     |> start_async(:fetch_syllabus, fn -> SyllabusManager.get_detail(code) end)}
   end
 
   def handle_params(_params, _uri, socket) do
@@ -119,6 +117,22 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
      )}
   end
 
+  def handle_info({:elements_loaded, {:ok, elements}}, socket) do
+    {:noreply, socket |> assign(:elements, elements) |> assign(:loading_elements, false)}
+  end
+
+  def handle_info({:elements_loaded, _error}, socket) do
+    {:noreply, assign(socket, :loading_elements, false)}
+  end
+
+  def handle_info({:report_items_loaded, {:ok, items_map}}, socket) do
+    {:noreply, assign(socket, :report_items, items_map)}
+  end
+
+  def handle_info({:report_items_loaded, _error}, socket) do
+    {:noreply, socket}
+  end
+
   def handle_async(:fetch_elements, {:ok, {:ok, elements}}, socket) do
     {:noreply, socket |> assign(:elements, elements) |> assign(:loading_elements, false)}
   end
@@ -139,22 +153,6 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusReportLive do
   def handle_async(:fetch_syllabus, {:exit, reason}, socket) do
     {:noreply,
      socket |> assign(:loading_syllabus, false) |> assign(:syllabus_error, inspect(reason))}
-  end
-
-  def handle_async(:fetch_existing_items, {:ok, {:ok, items_map}}, socket) do
-    {:noreply, assign(socket, :report_items, items_map)}
-  end
-
-  def handle_async(:fetch_existing_items, _result, socket) do
-    {:noreply, socket}
-  end
-
-  defp existing_items_for_code(code) do
-    case GeneratedReportDB.get_latest_for_syllabus(code) do
-      {:ok, report} -> GeneratedReportItemDB.list_for_report_as_map(report["id"])
-      {:error, :not_found} -> {:ok, %{}}
-      {:error, _} = err -> err
-    end
   end
 
   def render(assigns) do

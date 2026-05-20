@@ -1,92 +1,169 @@
 defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
   use SimpleSyllabusReporterWeb, :live_view
+  require Logger
 
-  alias SimpleSyllabusReporterWeb.Syllabus.SearchHandlers
   alias SimpleSyllabusReporterWeb.Syllabus.ReportHandlers
+  alias SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList
   alias SimpleSyllabusReporterWeb.Syllabus.SyllabusDetail
   alias SimpleSyllabusReporterWeb.Syllabus.SearchQuickNavigation
   alias SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchForm
-  alias SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList
+  alias SimpleSyllabusReporter.Syllabi.SyllabusManager
   alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
+  alias SimpleSyllabusReporter.Reports.ReportGenerator
 
   on_mount {SimpleSyllabusReporterWeb.UserAuth, :ensure_authenticated}
 
   def mount(_params, _session, socket) do
+    if connected?(socket), do: ReportGenerationStatus.subscribe()
+
     socket =
       socket
       |> assign(:page_title, "Syllabus Search")
       |> assign(:query, "")
-      |> assign(:loading_search, false)
-      |> assign(:loading_detail, false)
-      |> assign(:search_error, nil)
-      |> assign(:detail_error, nil)
       |> assign(:selected, nil)
-      |> assign(:syllabi_empty?, true)
-      |> assign(:syllabi_docs, %{})
-      |> assign(:report_counts, %{})
-      |> assign(:departments, [])
-      |> assign(:org_id, nil)
-      |> assign(:search_cached_at, nil)
-      |> assign(:search_pending?, false)
+      |> assign(:loading_detail, false)
+      |> assign(:detail_error, nil)
+      |> assign(:search_error, nil)
       |> ReportHandlers.mount_assigns()
-
-    socket =
-      if connected?(socket) do
-        ReportGenerationStatus.subscribe()
-
-        start_async(socket, :fetch_departments, fn ->
-          SimpleSyllabusReporter.Syllabi.SyllabusManager.get_departments()
-        end)
-      else
-        socket
-      end
 
     {:ok, socket}
   end
 
-  def handle_params(params, _uri, socket) do
-    SearchHandlers.handle_params(params, socket)
+  def handle_params(%{"q" => query} = params, _uri, socket) do
+    code = params["code"]
+    title = params["title"]
+    term = params["term"] || ""
+    prev_code = socket.assigns.selected && socket.assigns.selected["code"]
+    code_changed? = code != prev_code
+
+    socket = assign(socket, :query, query)
+
+    socket =
+      cond do
+        code && code_changed? ->
+          ReportGenerator.request_items_for_code(code, self())
+
+          socket
+          |> ReportHandlers.clear_detail()
+          |> assign(:loading_detail, true)
+          |> assign(:detail_error, nil)
+          |> assign(:selected, %{
+            "code" => code,
+            "title" => (socket.assigns.selected || %{})["title"] || title || code,
+            "term" => term
+          })
+          |> assign(:generating, MapSet.new())
+          |> start_async(:fetch_detail, fn -> SyllabusManager.get_detail(code) end)
+
+        is_nil(code) && code_changed? ->
+          ReportHandlers.clear_detail(socket)
+
+        true ->
+          socket
+      end
+
+    {:noreply, push_event(socket, "save_state", %{query: query})}
   end
 
-  @search_events ~w[
-    restore_state
-    quick_nav
-    search
-    select
-    close_detail
-  ]
-  @report_events ~w[
+  def handle_params(_params, _uri, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("restore_state", %{"query" => query}, socket)
+      when is_binary(query) and byte_size(query) > 0 do
+    {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}")}
+  end
+
+  def handle_event("restore_state", _params, socket), do: {:noreply, socket}
+
+  def handle_event("search", %{"query" => query}, socket) do
+    {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}")}
+  end
+
+  @detail_events ~w[
     select_element
     open_correction
     cancel_correction
     save_correction
     generate_report
     generate_missing_for_selected
-    generate_all_missing
-    generate_missing_for_professor
-    regenerate_non_met
   ]
 
-  def handle_event(event, params, socket) when event in @search_events do
-    SearchHandlers.handle_event(event, params, socket)
-  end
-
-  def handle_event(event, params, socket) when event in @report_events do
+  def handle_event(event, params, socket) when event in @detail_events do
     ReportHandlers.handle_event(event, params, socket)
   end
 
-  def handle_async(task, result, socket)
-      when task in [:search, :fetch_detail, :fetch_report_counts, :fetch_departments] do
-    SearchHandlers.handle_async(task, result, socket)
+  def handle_async(:fetch_detail, {:ok, {:ok, doc}}, socket) do
+    prev = socket.assigns.selected
+
+    merged =
+      Map.merge(doc, %{"code" => prev["code"], "title" => prev["title"], "term" => prev["term"]})
+
+    {:noreply, socket |> assign(:loading_detail, false) |> assign(:selected, merged)}
   end
 
-  def handle_async(task, result, socket)
-      when task in [:fetch_elements, :fetch_existing_items] do
-    ReportHandlers.handle_async(task, result, socket)
+  def handle_async(:fetch_detail, {:ok, {:error, reason}}, socket) do
+    {:noreply, socket |> assign(:loading_detail, false) |> assign(:detail_error, reason)}
+  end
+
+  def handle_async(:fetch_detail, {:exit, reason}, socket) do
+    {:noreply, socket |> assign(:loading_detail, false) |> assign(:detail_error, inspect(reason))}
+  end
+
+  def handle_info({:quick_nav, query}, socket) do
+    {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}")}
+  end
+
+  def handle_info({:report_counts_loaded, result}, socket) do
+    Phoenix.LiveView.send_update(SyllabusSearchResultsList,
+      id: "search-results",
+      report_counts_loaded: result
+    )
+
+    {:noreply, socket}
+  end
+
+  def handle_info(%ReportGenerationStatus.PendingUpdate{pending: pending} = msg, socket) do
+    Phoenix.LiveView.send_update(SyllabusSearchResultsList,
+      id: "search-results",
+      pending_update: pending
+    )
+
+    ReportHandlers.handle_info(msg, socket)
+  end
+
+  def handle_info(
+        %ReportGenerationStatus.ItemResult{
+          code: code,
+          element_id: element_id,
+          result: {:ok, item}
+        } =
+          msg,
+        socket
+      ) do
+    old_status = get_in(socket.assigns.report_items, [element_id, "status"])
+    new_status = item["status"]
+
+    Phoenix.LiveView.send_update(SyllabusSearchResultsList,
+      id: "search-results",
+      report_counts_update: {code, old_status, new_status}
+    )
+
+    ReportHandlers.handle_info(msg, socket)
   end
 
   def handle_info(message, socket) do
-    ReportHandlers.handle_info(message, socket)
+    case ReportHandlers.handle_info(message, socket) do
+      :unhandled ->
+        Logger.warning(
+          "SyllabusLive: completely unhandled handle_info message: #{inspect(message)}"
+        )
+
+        {:noreply, socket}
+
+      result ->
+        result
+    end
   end
 
   def render(assigns) do
@@ -102,39 +179,33 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusLive do
         phx-hook=".SyllabusState"
         class="flex flex-col h-full min-h-0 max-w-[2000px] mx-auto w-full p-4"
       >
-        <SearchQuickNavigation.quick_navigation
-          departments={@departments}
+        <.live_component
+          module={SearchQuickNavigation}
+          id="quick-navigation"
           current_user={@current_user}
           active_query={@query}
         />
         <SyllabusSearchForm.search_form
           query={@query}
-          loading_search={@loading_search}
-          departments={@departments}
+          loading_search={false}
         />
 
         <%= if @search_error do %>
           <div
             id="search-error"
-            class="mb-6 rounded-lg bg-red-900/40 border border-red-700 px-4 py-3 text-red-300 text-sm"
+            class="mb-3 rounded-lg bg-red-900/40 border border-red-700 px-4 py-3 text-red-300 text-sm"
           >
-            Error: {@search_error}
+            {@search_error}
           </div>
         <% end %>
 
         <div class="flex gap-6 min-h-0 flex-1 overflow-hidden">
-          <SyllabusSearchResultsList.results_list
-            syllabi_docs={@syllabi_docs}
-            syllabi_empty?={@syllabi_empty?}
+          <.live_component
+            module={SyllabusSearchResultsList}
+            id="search-results"
             query={@query}
-            loading_search={@loading_search}
             selected={@selected}
-            total_elements={@total_elements}
-            syllabi_count={map_size(@syllabi_docs)}
-            report_counts={@report_counts}
-            generating_per_code={@generating_per_code}
-            generating_all={@generating_all}
-            search_cached_at={@search_cached_at}
+            elements={@elements}
           />
 
           <%= if @selected do %>

@@ -1,13 +1,9 @@
 defmodule SimpleSyllabusReporterWeb.Syllabus.ReportHandlers do
-  import Phoenix.LiveView
+  require Logger
   import Phoenix.Component
 
   use SimpleSyllabusReporterWeb, :verified_routes
 
-  alias SimpleSyllabusReporter.Syllabi.SyllabusManager
-  alias SimpleSyllabusReporter.Reports.RequiredElement
-  alias SimpleSyllabusReporter.Reports.GeneratedReportDB
-  alias SimpleSyllabusReporter.Reports.GeneratedReportItemDB
   alias SimpleSyllabusReporter.Reports.ReportGenerator
   alias SimpleSyllabusReporter.Reports.ReportGenerationStatus
   alias SimpleSyllabusReporterWeb.Syllabus.ReportCorrection
@@ -51,156 +47,47 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportHandlers do
      |> assign(:generation_errors, Map.delete(socket.assigns.generation_errors, element_id))}
   end
 
-  def handle_event("generate_missing_for_professor", %{"codes" => codes_json}, socket) do
-    elements = socket.assigns.elements
-    report_counts = socket.assigns.report_counts
-    total = socket.assigns.total_elements
-
-    codes =
-      case Jason.decode(codes_json) do
-        {:ok, list} -> list
-        _ -> []
-      end
-
-    codes_with_missing =
-      Enum.filter(codes, fn code ->
-        counts = Map.get(report_counts, code, %{})
-
-        run =
-          Map.get(counts, "met", 0) + Map.get(counts, "not_met", 0) +
-            Map.get(counts, "partially_met", 0)
-
-        run < total
-      end)
-
-    for code <- codes_with_missing do
-      Task.start(fn ->
-        case SyllabusManager.get_detail(code) do
-          {:ok, full_doc} ->
-            existing_ids = existing_element_ids_for_code(code)
-            missing = Enum.reject(elements, fn e -> MapSet.member?(existing_ids, e["id"]) end)
-
-            Enum.each(missing, fn element -> ReportGenerator.generate_async(full_doc, element) end)
-
-          {:error, _} ->
-            :ok
-        end
-      end)
-    end
-
-    {:noreply, assign(socket, :generating_all, true)}
-  end
-
-  def handle_event("regenerate_non_met", %{"code" => code}, socket) do
-    elements = socket.assigns.elements
-
-    Task.start(fn ->
-      with {:ok, full_doc} <- SyllabusManager.get_detail(code),
-           {:ok, report} <- GeneratedReportDB.get_latest_for_syllabus(code),
-           {:ok, items_map} <- GeneratedReportItemDB.list_for_report_as_map(report["id"]) do
-        non_met_element_ids =
-          items_map
-          |> Enum.filter(fn {_id, item} -> item["status"] in ["not_met", "partially_met"] end)
-          |> Enum.map(fn {id, _} -> id end)
-          |> MapSet.new()
-
-        elements
-        |> Enum.filter(fn e -> MapSet.member?(non_met_element_ids, e["id"]) end)
-        |> Enum.each(fn element -> ReportGenerator.generate_async(full_doc, element) end)
-      end
-    end)
-
-    {:noreply, socket}
-  end
-
-  def handle_event("generate_all_missing", _params, socket) do
-    elements = socket.assigns.elements
-    syllabi_docs = socket.assigns.syllabi_docs
-    report_counts = socket.assigns.report_counts
-    total = socket.assigns.total_elements
-
-    codes_with_missing =
-      syllabi_docs
-      |> Map.keys()
-      |> Enum.filter(fn code ->
-        counts = Map.get(report_counts, code, %{})
-
-        total_run =
-          Map.get(counts, "met", 0) + Map.get(counts, "not_met", 0) +
-            Map.get(counts, "partially_met", 0)
-
-        total_run < total
-      end)
-
-    for code <- codes_with_missing do
-      Task.start(fn ->
-        case SyllabusManager.get_detail(code) do
-          {:ok, full_doc} ->
-            existing_ids = existing_element_ids_for_code(code)
-            missing = Enum.reject(elements, fn e -> MapSet.member?(existing_ids, e["id"]) end)
-
-            Enum.each(missing, fn element -> ReportGenerator.generate_async(full_doc, element) end)
-
-          {:error, _} ->
-            :ok
-        end
-      end)
-    end
-
-    {:noreply, assign(socket, :generating_all, true)}
-  end
-
-  def handle_async(:fetch_elements, {:ok, {:ok, elements}}, socket) do
+  def handle_info({:elements_loaded, {:ok, elements}}, socket) do
     {:noreply,
      socket
      |> assign(:elements, elements)
-     |> assign(:total_elements, length(elements))
      |> assign(:loading_elements, false)}
   end
 
-  def handle_async(:fetch_elements, _result, socket) do
+  def handle_info({:elements_loaded, _error}, socket) do
     {:noreply, assign(socket, :loading_elements, false)}
   end
 
-  def handle_async(:fetch_existing_items, {:ok, {:ok, items_map}}, socket) do
+  def handle_info({:report_items_loaded, {:ok, items_map}}, socket) do
     {:noreply, assign(socket, :report_items, items_map)}
   end
 
-  def handle_async(:fetch_existing_items, _result, socket) do
+  def handle_info({:report_items_loaded, _error}, socket) do
     {:noreply, socket}
   end
 
-  def handle_info(
-        %ReportGenerationStatus.PendingUpdate{pending: pending},
-        socket
-      ) do
-    syllabi_codes = socket.assigns.syllabi_docs |> Map.keys() |> MapSet.new()
-
-    generating_per_code =
-      Enum.reduce(pending, %{}, fn {code, element_id}, acc ->
-        if MapSet.member?(syllabi_codes, code) do
-          Map.update(acc, code, MapSet.new([element_id]), &MapSet.put(&1, element_id))
-        else
-          acc
-        end
-      end)
-
-    generating_all = map_size(generating_per_code) > 0
-
+  # Only manages the element-level generating state for the detail panel.
+  # generating_per_code/generating_all are owned by SyllabusSearchResultsList.
+  def handle_info(%ReportGenerationStatus.PendingUpdate{pending: pending}, socket) do
     socket =
       if socket.assigns.selected do
         code = socket.assigns.selected["code"]
-        assign(socket, :generating, Map.get(generating_per_code, code, MapSet.new()))
+
+        generating =
+          pending
+          |> Enum.filter(fn {c, _} -> c == code end)
+          |> Enum.map(fn {_, el_id} -> el_id end)
+          |> MapSet.new()
+
+        assign(socket, :generating, generating)
       else
         socket
       end
 
-    {:noreply,
-     socket
-     |> assign(:generating_per_code, generating_per_code)
-     |> assign(:generating_all, generating_all)}
+    {:noreply, socket}
   end
 
+  # Only manages detail panel state. report_counts are owned by SyllabusSearchResultsList.
   def handle_info(
         %ReportGenerationStatus.ItemResult{
           code: code,
@@ -209,25 +96,6 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportHandlers do
         },
         socket
       ) do
-    status = item["status"]
-    old_status = get_in(socket.assigns.report_items, [element_id, "status"])
-
-    report_counts =
-      Map.update(
-        socket.assigns.report_counts,
-        code,
-        %{status => 1},
-        fn counts ->
-          counts
-          |> then(fn c ->
-            if old_status,
-              do: Map.update(c, old_status, 0, &max(0, &1 - 1)),
-              else: c
-          end)
-          |> Map.update(status, 1, &(&1 + 1))
-        end
-      )
-
     socket =
       if socket.assigns.selected && socket.assigns.selected["code"] == code do
         socket
@@ -237,36 +105,39 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportHandlers do
         socket
       end
 
-    {:noreply,
-     socket
-     |> assign(:report_counts, report_counts)}
+    {:noreply, socket}
   end
 
   def handle_info(%ReportGenerationStatus.ItemResult{result: {:error, _reason}}, socket) do
     {:noreply, socket}
   end
 
-  defp existing_element_ids_for_code(code) do
-    with {:ok, report} <- GeneratedReportDB.get_latest_for_syllabus(code),
-         {:ok, items_map} <- GeneratedReportItemDB.list_for_report_as_map(report["id"]) do
-      MapSet.new(Map.keys(items_map))
-    else
-      _ -> MapSet.new()
-    end
+  def handle_info(message, _socket) do
+    Logger.warning("ReportHandlers: unhandled handle_info message: #{inspect(message)}")
+    :unhandled
+  end
+
+  def clear_detail(socket) do
+    socket
+    |> assign(:selected, nil)
+    |> assign(:selected_element_id, nil)
+    |> assign(:report_items, %{})
+    |> assign(:generating, MapSet.new())
+    |> assign(:generation_errors, %{})
   end
 
   def mount_assigns(socket) do
+    ReportGenerator.request_elements(self())
+
     socket
     |> assign(:elements, [])
-    |> assign(:total_elements, 0)
-    |> assign(:generating_per_code, %{})
-    |> assign(:generating_all, false)
+    |> assign(:loading_detail, false)
+    |> assign(:detail_error, nil)
     |> assign(:selected_element_id, nil)
     |> assign(:report_items, %{})
     |> assign(:generating, MapSet.new())
     |> assign(:generation_errors, %{})
     |> assign(:correcting_element_id, nil)
     |> assign(:loading_elements, true)
-    |> start_async(:fetch_elements, fn -> RequiredElement.list_all() end)
   end
 end
