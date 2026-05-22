@@ -57,6 +57,11 @@ if [ "$UPDATE_DB" = "true" ]; then
         --format yaml > "$DB_SEALED_SECRET_OUT"
 
   echo "Written db secrets to $DB_SEALED_SECRET_OUT"
+  echo ""
+  echo "After applying and restarting the postgres pod, run this to update the DB password:"
+  cat <<'EOF'
+  kubectl exec -n simple-syllabus postgres-0 -- sh -c 'escaped=$(printf "%s" "$POSTGRES_PASSWORD" | sed "s/'"'"'/'"'"''"'"'/g") && psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "ALTER USER \"$POSTGRES_USER\" WITH PASSWORD '"'"'$escaped'"'"'"'
+EOF
 else
   echo "Skipped db secret rotation."
 fi
