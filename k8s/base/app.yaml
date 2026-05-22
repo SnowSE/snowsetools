@@ -38,6 +38,8 @@ spec:
           envFrom:
             - secretRef:
                 name: app-secrets
+            - secretRef:
+                name: db-secrets
           env:
             - name: PHX_HOST
               value: "changed by kustomize"

@@ -6,6 +6,7 @@ namespace: simple-syllabus
 resources:
   - namespace.yaml
   - sealed-secret.yaml
+  - sealed-secret-db.yaml
   - postgres.yaml
   - app.yaml
   - http-route.yaml
