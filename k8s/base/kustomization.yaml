@@ -10,6 +10,7 @@ resources:
   - postgres.yaml
   - app.yaml
   - http-route.yaml
+  - pod-monitor.yaml
 
 configMapGenerator:
   - name: schema-sql
