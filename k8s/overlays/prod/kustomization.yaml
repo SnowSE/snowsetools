@@ -25,16 +25,15 @@ patches:
       kind: Deployment
       name: simple-syllabus-reporter
   - patch: |-
-      apiVersion: gateway.networking.k8s.io/v1
-      kind: HTTPRoute
+      apiVersion: networking.istio.io/v1beta1
+      kind: VirtualService
       metadata:
         name: simple-syllabus
       spec:
-        parentRefs:
-          - name: main-gateway
-            namespace: istio-system
-        hostnames:
+        gateways:
+          - istio-system/main-gateway
+        hosts:
           - "alexsimplesyllabuscheck.snowse.io"
     target:
-      kind: HTTPRoute
+      kind: VirtualService
       name: simple-syllabus

@@ -1,0 +1,16 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: simple-syllabus
+  namespace: simple-syllabus
+spec:
+  gateways:
+    - istio-system/changed-by-kustomize
+  hosts:
+    - "changed by kustomize"
+  http:
+    - route:
+        - destination:
+            host: webapp
+            port:
+              number: 4000
