@@ -9,7 +9,7 @@ resources:
   - sealed-secret-db.yaml
   - postgres.yaml
   - app.yaml
-  - virtual-service.yaml
+  - http-route.yaml
 
 configMapGenerator:
   - name: schema-sql
