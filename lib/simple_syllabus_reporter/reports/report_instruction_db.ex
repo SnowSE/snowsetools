@@ -1,6 +1,6 @@
 defmodule SimpleSyllabusReporter.Reports.ReportInstructionDB do
   require Logger
-  alias SimpleSyllabusReporter.Data.DbHelpers
+  alias SimpleSyllabusReporter.Data.{DbHelpers, Uuid}
 
   @schema Zoi.object(%{
             "content" => Zoi.string()
@@ -19,7 +19,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportInstructionDB do
     ORDER BY inserted_at ASC
     """
 
-    case DbHelpers.run_sql(sql, %{"required_element_id" => required_element_id}) do
+    case DbHelpers.run_sql(sql, %{"required_element_id" => Uuid.to_binary(required_element_id)}) do
       {:error, _} = err -> err
       rows -> {:ok, rows}
     end
@@ -32,7 +32,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportInstructionDB do
     WHERE id = $(id)
     """
 
-    case DbHelpers.run_sql(sql, %{"id" => id}) do
+    case DbHelpers.run_sql(sql, %{"id" => Uuid.to_binary(id)}) do
       {:error, _} = err -> err
       [row | _] -> {:ok, row}
       [] -> {:error, :not_found}
@@ -49,7 +49,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportInstructionDB do
         """
 
         case DbHelpers.run_sql(sql, %{
-               "required_element_id" => required_element_id,
+               "required_element_id" => Uuid.to_binary(required_element_id),
                "content" => d["content"]
              }) do
           {:error, _} = err -> err
@@ -74,7 +74,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportInstructionDB do
         """
 
         case DbHelpers.run_sql(sql, %{
-               "id" => id,
+               "id" => Uuid.to_binary(id),
                "content" => d["content"]
              }) do
           {:error, _} = err -> err
@@ -90,7 +90,7 @@ defmodule SimpleSyllabusReporter.Reports.ReportInstructionDB do
   def delete(id) do
     sql = "DELETE FROM required_element_report_instructions WHERE id = $(id)"
 
-    case DbHelpers.run_sql(sql, %{"id" => id}) do
+    case DbHelpers.run_sql(sql, %{"id" => Uuid.to_binary(id)}) do
       {:error, _} = err -> err
       _ -> :ok
     end

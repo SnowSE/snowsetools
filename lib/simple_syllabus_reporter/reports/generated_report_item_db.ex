@@ -1,6 +1,6 @@
 defmodule SimpleSyllabusReporter.Reports.GeneratedReportItemDB do
   require Logger
-  alias SimpleSyllabusReporter.Data.DbHelpers
+  alias SimpleSyllabusReporter.Data.{DbHelpers, Uuid}
 
   @schema Zoi.object(%{
             "status" => Zoi.enum(["met", "not_met", "partially_met"]),
@@ -31,7 +31,7 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportItemDB do
     ORDER BY re.name ASC
     """
 
-    case DbHelpers.run_sql(sql, %{"generated_report_id" => generated_report_id}) do
+    case DbHelpers.run_sql(sql, %{"generated_report_id" => Uuid.to_binary(generated_report_id)}) do
       {:error, _} = err -> err
       rows -> {:ok, rows}
     end
@@ -54,7 +54,7 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportItemDB do
     WHERE id = $(id)
     """
 
-    case DbHelpers.run_sql(sql, %{"id" => id}) do
+    case DbHelpers.run_sql(sql, %{"id" => Uuid.to_binary(id)}) do
       {:error, _} = err -> err
       [row | _] -> {:ok, row}
       [] -> {:error, :not_found}
@@ -70,8 +70,8 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportItemDB do
     """
 
     case DbHelpers.run_sql(sql, %{
-           "generated_report_id" => generated_report_id,
-           "required_element_id" => required_element_id
+           "generated_report_id" => Uuid.to_binary(generated_report_id),
+           "required_element_id" => Uuid.to_binary(required_element_id)
          }) do
       {:error, _} = err -> err
       [row | _] -> {:ok, row}
@@ -97,8 +97,8 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportItemDB do
         """
 
         case DbHelpers.run_sql(sql, %{
-               "generated_report_id" => generated_report_id,
-               "required_element_id" => required_element_id,
+               "generated_report_id" => Uuid.to_binary(generated_report_id),
+               "required_element_id" => Uuid.to_binary(required_element_id),
                "status" => d["status"],
                "description" => d["description"],
                "evidence" => d["evidence"],
@@ -117,7 +117,7 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportItemDB do
   def delete(id) do
     sql = "DELETE FROM generated_report_items WHERE id = $(id)"
 
-    case DbHelpers.run_sql(sql, %{"id" => id}) do
+    case DbHelpers.run_sql(sql, %{"id" => Uuid.to_binary(id)}) do
       {:error, _} = err -> err
       _ -> :ok
     end

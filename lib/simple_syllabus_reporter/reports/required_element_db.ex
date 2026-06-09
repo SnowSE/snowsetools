@@ -1,6 +1,6 @@
 defmodule SimpleSyllabusReporter.Reports.RequiredElementDB do
   require Logger
-  alias SimpleSyllabusReporter.Data.DbHelpers
+  alias SimpleSyllabusReporter.Data.{DbHelpers, Uuid}
 
   @schema Zoi.object(%{
             "name" => Zoi.string(),
@@ -36,7 +36,7 @@ defmodule SimpleSyllabusReporter.Reports.RequiredElementDB do
     WHERE id = $(id)
     """
 
-    case DbHelpers.run_sql(sql, %{"id" => id}) do
+    case DbHelpers.run_sql(sql, %{"id" => Uuid.to_binary(id)}) do
       {:error, _} = err -> err
       [row | _] -> {:ok, row}
       [] -> {:error, :not_found}
@@ -79,7 +79,7 @@ defmodule SimpleSyllabusReporter.Reports.RequiredElementDB do
         """
 
         case DbHelpers.run_sql(sql, %{
-               "id" => id,
+               "id" => Uuid.to_binary(id),
                "name" => d["name"],
                "description" => d["description"]
              }) do
@@ -97,10 +97,13 @@ defmodule SimpleSyllabusReporter.Reports.RequiredElementDB do
     DbHelpers.transaction(fn ->
       DbHelpers.run_sql(
         "DELETE FROM generated_report_items WHERE required_element_id = $(id)",
-        %{"id" => id}
+        %{"id" => Uuid.to_binary(id)}
       )
 
-      DbHelpers.run_sql("DELETE FROM required_elements WHERE id = $(id)", %{"id" => id})
+      DbHelpers.run_sql("DELETE FROM required_elements WHERE id = $(id)", %{
+        "id" => Uuid.to_binary(id)
+      })
+
       :ok
     end)
   end

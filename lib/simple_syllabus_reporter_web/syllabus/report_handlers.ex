@@ -51,10 +51,19 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportHandlers do
   end
 
   def handle_info({:elements_loaded, {:ok, elements}}, socket) do
+    # Auto-select first element if none selected
+    selected_element_id =
+      if is_nil(socket.assigns.selected_element_id) && elements != [] do
+        List.first(elements)["id"]
+      else
+        socket.assigns.selected_element_id
+      end
+
     {:noreply,
      socket
      |> assign(:elements, elements)
-     |> assign(:loading_elements, false)}
+     |> assign(:loading_elements, false)
+     |> assign(:selected_element_id, selected_element_id)}
   end
 
   def handle_info({:elements_loaded, _error}, socket) do

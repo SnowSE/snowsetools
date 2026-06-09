@@ -32,7 +32,7 @@ spec:
     spec:
       containers:
         - name: webapp
-          image: ghcr.io/alexmickelson/simple-syllabus-reporter:55
+          image: ghcr.io/alexmickelson/simple-syllabus-reporter:56
           ports:
             - containerPort: 4000
           envFrom:

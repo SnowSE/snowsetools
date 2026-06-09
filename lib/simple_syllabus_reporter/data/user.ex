@@ -1,6 +1,6 @@
 defmodule SimpleSyllabusReporter.Data.User do
   require Logger
-  alias SimpleSyllabusReporter.Data.DbHelpers
+  alias SimpleSyllabusReporter.Data.{DbHelpers, Uuid}
 
   def schema do
     Zoi.object(%{
@@ -33,12 +33,7 @@ defmodule SimpleSyllabusReporter.Data.User do
     WHERE id = $(user_id)
     """
 
-    user_id_binary =
-      user_id
-      |> String.replace("-", "")
-      |> Base.decode16!(case: :lower)
-
-    case DbHelpers.run_sql(sql, %{"user_id" => user_id_binary}, schema()) do
+    case DbHelpers.run_sql(sql, %{"user_id" => Uuid.to_binary(user_id)}, schema()) do
       [user | _] -> {:ok, user}
       [] -> {:error, :not_found}
       {:error, reason} -> {:error, reason}

@@ -1,6 +1,6 @@
 defmodule SimpleSyllabusReporter.Reports.GeneratedReportDB do
   require Logger
-  alias SimpleSyllabusReporter.Data.DbHelpers
+  alias SimpleSyllabusReporter.Data.{DbHelpers, Uuid}
 
   @schema Zoi.object(%{
             "syllabus_code" => Zoi.string(),
@@ -41,7 +41,7 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportDB do
     WHERE id = $(id)
     """
 
-    case DbHelpers.run_sql(sql, %{"id" => id}) do
+    case DbHelpers.run_sql(sql, %{"id" => Uuid.to_binary(id)}) do
       {:error, _} = err -> err
       [row | _] -> {:ok, row}
       [] -> {:error, :not_found}
@@ -82,7 +82,7 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportDB do
     RETURNING id, syllabus_code, syllabus_title, instructor_name, status
     """
 
-    case DbHelpers.run_sql(sql, %{"id" => id, "status" => status}) do
+    case DbHelpers.run_sql(sql, %{"id" => Uuid.to_binary(id), "status" => status}) do
       {:error, _} = err -> err
       [row | _] -> {:ok, row}
       [] -> {:error, :not_found}
