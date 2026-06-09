@@ -19,12 +19,15 @@ defmodule SimpleSyllabusReporter.Syllabi.SyllabusDB do
         org_id: org_id,
         linked_email: linked_email
       ) do
+    # Extract emails from detail_data if available
+    linked_emails = extract_linked_emails(detail_data, linked_email)
+
     sql = """
     INSERT INTO syllabi
       (code, title, course_name, term_name, term_id, org_id, linked_emails, editors, list_data, detail_data, list_cached_at, detail_cached_at, updated_at)
     VALUES
       ($(code), $(title), $(course_name), $(term_name), $(term_id), $(org_id),
-       CASE WHEN $(linked_email)::text IS NOT NULL THEN ARRAY[$(linked_email)] ELSE '{}'::text[] END,
+       $(linked_emails)::text[],
        $(editors)::jsonb, $(list_data)::jsonb, $(detail_data)::jsonb,
        NOW(), NOW(), NOW())
     ON CONFLICT (code) DO UPDATE SET
@@ -33,7 +36,7 @@ defmodule SimpleSyllabusReporter.Syllabi.SyllabusDB do
       term_name      = EXCLUDED.term_name,
       term_id        = EXCLUDED.term_id,
       org_id         = COALESCE(EXCLUDED.org_id, syllabi.org_id),
-      linked_emails  = (SELECT array(SELECT DISTINCT unnest(syllabi.linked_emails || EXCLUDED.linked_emails))),
+      linked_emails  = EXCLUDED.linked_emails,
       editors        = EXCLUDED.editors,
       list_data      = EXCLUDED.list_data,
       detail_data    = EXCLUDED.detail_data,
@@ -49,10 +52,10 @@ defmodule SimpleSyllabusReporter.Syllabi.SyllabusDB do
       "term_name" => doc["term_name"],
       "term_id" => doc["term_id"],
       "org_id" => org_id || doc["entity_id"],
-      "editors" => Jason.encode!(doc["editors"] || []),
-      "list_data" => Jason.encode!(doc["list_data"] || %{}),
-      "detail_data" => Jason.encode!(detail_data),
-      "linked_email" => linked_email
+      "editors" => doc["editors"] || [],
+      "list_data" => doc,
+      "detail_data" => detail_data,
+      "linked_emails" => linked_emails
     }
 
     case DbHelpers.run_sql(sql, params) do
@@ -83,7 +86,6 @@ defmodule SimpleSyllabusReporter.Syllabi.SyllabusDB do
     end
   end
 
-  @doc "Returns the distinct set of org_ids that have syllabi in the database."
   def list_populated_org_ids do
     sql = "SELECT DISTINCT org_id FROM syllabi WHERE org_id IS NOT NULL"
 
@@ -93,10 +95,6 @@ defmodule SimpleSyllabusReporter.Syllabi.SyllabusDB do
     end
   end
 
-  @doc """
-  Returns all cached list items for a given editor email, scoped to the currently selected term.
-  Result: `{:ok, docs, oldest_cached_at}` where oldest_cached_at is nil when empty.
-  """
   def list_by_editor_email(email) do
     sql = """
     SELECT s.list_data, s.list_cached_at
@@ -114,10 +112,6 @@ defmodule SimpleSyllabusReporter.Syllabi.SyllabusDB do
     end
   end
 
-  @doc """
-  Returns the cached detail for a code, or `{:ok, nil, nil}` if not cached.
-  Result: `{:ok, doc_or_nil, detail_cached_at_or_nil}`
-  """
   def get_detail(code) do
     sql = """
     SELECT detail_data, detail_cached_at
@@ -143,7 +137,6 @@ defmodule SimpleSyllabusReporter.Syllabi.SyllabusDB do
     |> Map.get("list_cached_at")
   end
 
-  @doc "Counts syllabi in scope (scoped to selected term, or all if none set)."
   def count_in_scope do
     sql = """
     SELECT COUNT(*)::integer AS total
@@ -157,4 +150,49 @@ defmodule SimpleSyllabusReporter.Syllabi.SyllabusDB do
       {:error, _} = err -> err
     end
   end
+
+  # Extract email addresses from detail_data's editors field.
+  #
+  # The detail_data editors structure is:
+  # [
+  #   {
+  #     "role": {...},
+  #     "accounts": [{"email": "...", ...}]
+  #   }
+  # ]
+  defp extract_linked_emails(nil, linked_email) when is_binary(linked_email),
+    do: [linked_email]
+
+  defp extract_linked_emails(nil, _), do: []
+
+  defp extract_linked_emails(detail_data, linked_email) when is_map(detail_data) do
+    emails_from_detail =
+      case detail_data["editors"] do
+        editors when is_list(editors) ->
+          Enum.flat_map(editors, fn editor ->
+            case editor["accounts"] do
+              accounts when is_list(accounts) ->
+                Enum.map(accounts, & &1["email"])
+                |> Enum.filter(&is_binary/1)
+
+              _ ->
+                []
+            end
+          end)
+
+        _ ->
+          []
+      end
+
+    extra_email = if is_binary(linked_email), do: [linked_email], else: []
+
+    (emails_from_detail ++ extra_email)
+    |> Enum.uniq()
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp extract_linked_emails(_, linked_email) when is_binary(linked_email),
+    do: [linked_email]
+
+  defp extract_linked_emails(_, _), do: []
 end

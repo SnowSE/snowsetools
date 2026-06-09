@@ -69,9 +69,9 @@ defmodule SimpleSyllabusReporter.Syllabi.CachedOrganizationsDb do
         orgs =
           Enum.map(rows, fn row ->
             %{
-              org_id: row["org_id"],
-              name: row["name"],
-              level: row["level"]
+              "entity_id" => row["org_id"],
+              "name" => row["name"],
+              "level" => row["level"]
             }
           end)
 
