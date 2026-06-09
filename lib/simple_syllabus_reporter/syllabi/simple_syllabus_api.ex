@@ -1,86 +1,69 @@
 defmodule SimpleSyllabusReporter.SimpleSyllabusApi do
-  @moduledoc """
-  Pure HTTP service layer for the SimpleSyllabus API.
-
-  Does not perform any caching — callers are responsible for caching.
-  See `SimpleSyllabusReporter.Syllabi.SyllabusDomainManager` for the caching layer.
-  """
   require Logger
   import SimpleSyllabusReporter.Cache
 
   alias SimpleSyllabusReporter.SyllabusSchemas
+  alias SimpleSyllabusReporter.Syllabi.Syncing.SyllabusSyncPubsub
 
   @base_url "https://snow.simplesyllabus.com/api2"
+  @user_agent "Mozilla/5.0 (compatible; SimpleSyllabusReporter/1.0)"
 
-  @doc """
-  Fetches all syllabi for an org from the API.
+  defp req_opts(opts) do
+    [receive_timeout: 10_000, headers: [{"User-Agent", @user_agent}]] ++ opts
+  end
 
-  Options:
-    - `:term_statuses` — list of term status strings to filter by (default: `["future"]`). Pass `[]` for no filter.
-  """
-  def fetch_syllabi_by_org(org_id, opts \\ []) when is_binary(org_id) do
-    term_statuses = Keyword.get(opts, :term_statuses, ["future"])
-    term_id = Keyword.get(opts, :term_id)
+  @spec fetch_syllabi_metadata_list_by_org(binary, keyword) ::
+          {:ok, %{syllabus_metadata_list: [map()]}} | {:error, term()}
+  def fetch_syllabi_metadata_list_by_org(org_id, term_id: term_id)
+      when is_binary(org_id) and is_binary(term_id) do
+    case fetch_all_syllabi_metadata_list_pages_by_org(org_id, term_id) do
+      {:ok, all_items} ->
+        Logger.info(
+          "fetch_syllabi_metadata_list_by_org org_id=#{org_id} term_id=#{term_id} fetched=#{length(all_items)}"
+        )
 
-    case fetch_syllabi_page(org_id, 0, term_statuses, term_id) do
-      {:ok, %{"items" => first_page_raw, "pagination" => pagination}} ->
-        all_raw =
-          first_page_raw ++
-            fetch_remaining_pages_by_org(org_id, pagination, term_statuses, term_id)
+        {:ok, %{syllabus_metadata_list: all_items}}
 
-        Logger.info("fetch_syllabi_by_org org_id=#{org_id} fetched=#{length(all_raw)}")
-        {:ok, docs} = SyllabusSchemas.parse_list(all_raw)
-        {:ok, %{items: docs, pagination: pagination}}
+      {:error, reason} = err ->
+        SyllabusSyncPubsub.broadcast_sync_error(
+          "fetch_syllabi_metadata_list_by_org",
+          "Failed to fetch syllabi list for org #{org_id} term #{term_id}: #{reason}"
+        )
 
-      {:error, _} = err ->
         err
     end
   end
 
-  @doc "Fetches all syllabi for an editor email from the API."
-  def fetch_syllabi_by_email(email) when is_binary(email) do
-    case fetch_syllabi_page_by_editor(email, 0) do
-      {:ok, %{"items" => first_page_raw, "pagination" => pagination}} ->
-        all_raw = first_page_raw ++ fetch_remaining_pages_by_editor(email, pagination)
-        Logger.info("fetch_syllabi_by_email email=#{email} fetched=#{length(all_raw)}")
-        {:ok, docs} = SyllabusSchemas.parse_list(all_raw)
-        {:ok, %{items: docs, pagination: pagination}}
-
-      {:error, _} = err ->
-        err
-    end
-  end
-
-  @doc "Fetches full syllabus detail for a code from the API."
   def fetch_syllabus_detail(code) when is_binary(code) do
     url = "#{@base_url}/doc-full-page-get"
 
-    case Req.get(url, params: [code: code], receive_timeout: 10_000) do
+    case Req.get(url, req_opts(params: [code: code])) do
       {:ok, %Req.Response{status: 200, body: body}} ->
         case body["items"] do
           [%{"doc_data" => doc_data} | _] ->
-            Logger.info(
-              "fetch_syllabus_detail code=#{inspect(code)} title=#{inspect(doc_data["title"])}"
-            )
-
             doc_data
             |> sanitize_components()
-            |> then(&SyllabusSchemas.parse_detail/1)
+            |> then(&SyllabusSchemas.parse_syllabus_detail/1)
 
           _ ->
             Logger.warning("fetch_syllabus_detail code=#{inspect(code)} no items in response")
             {:error, "No document found"}
         end
 
-      {:ok, %Req.Response{status: status, body: body}} ->
-        Logger.warning(
-          "fetch_syllabus_detail code=#{inspect(code)} status=#{status} body=#{inspect(body)}"
+      {:ok, %Req.Response{status: status, body: _body}} ->
+        SyllabusSyncPubsub.broadcast_sync_error(
+          "fetch_syllabus_detail",
+          "Failed to fetch syllabus detail for #{code}: Unexpected status #{status}"
         )
 
         {:error, "Unexpected status #{status}"}
 
       {:error, reason} ->
-        Logger.error("fetch_syllabus_detail code=#{inspect(code)} error=#{inspect(reason)}")
+        SyllabusSyncPubsub.broadcast_sync_error(
+          "fetch_syllabus_detail",
+          "Failed to fetch syllabus detail for #{code}: #{inspect(reason)}"
+        )
+
         {:error, inspect(reason)}
     end
   end
@@ -114,10 +97,15 @@ defmodule SimpleSyllabusReporter.SimpleSyllabusApi do
                          "name_locale" => Zoi.string()
                        })
 
+  @term_schema Zoi.object(%{
+                 "entity_id" => Zoi.string(),
+                 "name" => Zoi.string()
+               })
+
   ttl_cache def get_organizations do
     url = "#{@base_url}/app-state"
 
-    case Req.get(url, params: [locale: "en-US"], receive_timeout: 10_000) do
+    case Req.get(url, req_opts(params: [locale: "en-US"])) do
       {:ok, %Req.Response{status: 200, body: body}} ->
         raw_orgs =
           body
@@ -142,139 +130,133 @@ defmodule SimpleSyllabusReporter.SimpleSyllabusApi do
         Logger.info("get_organizations fetched count=#{length(orgs)}")
         {:ok, orgs}
 
-      {:ok, %Req.Response{status: status, body: body}} ->
-        Logger.warning("get_organizations status=#{status} body=#{inspect(body)}")
-        {:error, "Unexpected status #{status}"}
+      {:ok, %Req.Response{status: status, body: _body}} ->
+        error_msg = "Failed to fetch organizations: API returned status #{status}"
+        SyllabusSyncPubsub.broadcast_sync_error("get_organizations", error_msg)
+        {:error, error_msg}
 
       {:error, reason} ->
-        Logger.error("get_organizations error=#{inspect(reason)}")
-        {:error, inspect(reason)}
+        error_msg = "Failed to fetch organizations: #{inspect(reason)}"
+        SyllabusSyncPubsub.broadcast_sync_error("get_organizations", error_msg)
+        {:error, error_msg}
     end
   end
 
-  defp fetch_remaining_pages_by_org(
-         org_id,
-         %{
-           "total" => total,
-           "returned" => returned,
-           "page_size" => page_size
-         },
-         term_statuses,
-         term_id
-       ) do
-    if total > returned do
-      1..(ceil(total / page_size) - 1)
-      |> Task.async_stream(
-        fn page -> fetch_syllabi_page(org_id, page, term_statuses, term_id) end,
-        timeout: 15_000,
-        on_timeout: :kill_task
-      )
-      |> Enum.flat_map(fn
-        {:ok, {:ok, %{"items" => items}}} ->
-          items
+  def get_available_terms do
+    url = "#{@base_url}/app-state"
 
-        {:ok, {:error, reason}} ->
-          Logger.warning(
-            "fetch_syllabi_by_org page error org_id=#{org_id} reason=#{inspect(reason)}"
-          )
+    case Req.get(url, req_opts(params: [locale: "en-US"])) do
+      {:ok, %Req.Response{status: 200, body: body}} ->
+        raw_terms =
+          body
+          |> get_in(["items", Access.at(0), "state", "terms"])
+          |> List.wrap()
 
-          []
+        if Enum.all?(raw_terms, &is_nil/1) do
+          {:error, "No terms found in API response"}
+        else
+          {terms, failures} =
+            Enum.reduce(raw_terms, {[], []}, fn term, {valid_acc, fail_acc} ->
+              case Zoi.parse(@term_schema, term) do
+                {:ok, valid} ->
+                  {[{valid["entity_id"], valid["name"]} | valid_acc], fail_acc}
 
-        {:exit, reason} ->
-          Logger.warning(
-            "fetch_syllabi_by_org page exit org_id=#{org_id} reason=#{inspect(reason)}"
-          )
+                {:error, reason} ->
+                  term_name = term["name"] || "unknown"
+                  {valid_acc, ["#{term_name}: #{inspect(reason)}" | fail_acc]}
+              end
+            end)
 
-          []
-      end)
-    else
-      []
+          terms = Enum.reverse(terms)
+          failures = Enum.reverse(failures)
+
+          if Enum.empty?(terms) do
+            error_details = Enum.join(Enum.reverse(failures), "; ")
+            SyllabusSyncPubsub.broadcast_sync_error("get_available_terms", error_details)
+            {:error, error_details}
+          else
+            {:ok, terms}
+          end
+        end
+
+      {:ok, %Req.Response{status: status, body: body}} ->
+        error_msg =
+          "Failed to fetch available terms: API returned status #{status}, body: #{inspect(body)}"
+
+        SyllabusSyncPubsub.broadcast_sync_error("get_available_terms", error_msg)
+        {:error, error_msg}
+
+      {:error, reason} ->
+        error_msg = "Failed to fetch available terms: #{inspect(reason)}"
+        SyllabusSyncPubsub.broadcast_sync_error("get_available_terms", error_msg)
+        {:error, error_msg}
     end
   end
 
-  defp fetch_remaining_pages_by_editor(email, %{
-         "total" => total,
-         "returned" => returned,
-         "page_size" => page_size
-       }) do
-    if total > returned do
-      1..(ceil(total / page_size) - 1)
-      |> Task.async_stream(fn page -> fetch_syllabi_page_by_editor(email, page) end,
-        timeout: 15_000,
-        on_timeout: :kill_task
-      )
-      |> Enum.flat_map(fn
-        {:ok, {:ok, %{"items" => items}}} ->
-          items
-
-        {:ok, {:error, reason}} ->
-          Logger.warning(
-            "fetch_syllabi_by_email page error email=#{email} reason=#{inspect(reason)}"
-          )
-
-          []
-
-        {:exit, reason} ->
-          Logger.warning(
-            "fetch_syllabi_by_email page exit email=#{email} reason=#{inspect(reason)}"
-          )
-
-          []
-      end)
-    else
-      []
-    end
-  end
-
-  defp fetch_syllabi_page(org_id, page, term_statuses, term_id) do
+  defp fetch_all_syllabi_metadata_list_pages_by_org(org_id, term_id) do
     url = "#{@base_url}/doc-library-search"
 
-    term_params = Enum.map(term_statuses, &{"term_statuses[]", &1})
-    term_id_param = if term_id, do: [term_id: term_id], else: []
-
-    case Req.get(url,
-           params: [organization_id: org_id, page: page] ++ term_params ++ term_id_param,
-           receive_timeout: 10_000
-         ) do
-      {:ok, %Req.Response{status: 200, body: body}} ->
-        {:ok, body}
-
-      {:ok, %Req.Response{status: status, body: body}} ->
-        Logger.warning(
-          "fetch_syllabi_page org_id=#{org_id} page=#{page} status=#{status} body=#{inspect(body)}"
-        )
-
-        {:error, "Unexpected status #{status}"}
+    case fetch_paginated_items(url, organization_id: org_id, term_id: term_id) do
+      {:ok, all_items} ->
+        {:ok, list_items} = SyllabusSchemas.parse_syllabi_metadata_list(all_items)
+        {:ok, list_items}
 
       {:error, reason} ->
-        Logger.error("fetch_syllabi_page org_id=#{org_id} page=#{page} error=#{inspect(reason)}")
-        {:error, inspect(reason)}
+        SyllabusSyncPubsub.broadcast_sync_error(
+          "fetch_all_syllabi_metadata_list_pages_by_org",
+          "Failed to fetch syllabi metadata list for org #{org_id} term #{term_id}: #{inspect(reason)}"
+        )
+
+        {:error, reason}
     end
   end
 
-  defp fetch_syllabi_page_by_editor(editor, page) do
-    url = "#{@base_url}/doc-library-search"
+  defp fetch_paginated_items(url, params, current_page \\ 0, total_pages \\ nil, acc \\ []) do
+    page_params = Keyword.put(params, :page, current_page)
 
-    case Req.get(url,
-           params: [editor: editor, page: page, "term_statuses[]": "future"],
-           receive_timeout: 10_000
-         ) do
-      {:ok, %Req.Response{status: 200, body: body}} ->
-        {:ok, body}
+    case Req.get(url, req_opts(params: page_params)) do
+      {:ok, %Req.Response{status: 200, body: %{"items" => items, "pagination" => pagination}}}
+      when is_nil(total_pages) ->
+        new_total_pages = ceil(pagination["total"] / pagination["page_size"])
 
-      {:ok, %Req.Response{status: status, body: body}} ->
+        fetch_paginated_items(url, params, 1, new_total_pages, items)
+
+      {:ok, %Req.Response{status: 200, body: %{"items" => items}}} when not is_nil(total_pages) ->
+        new_acc = acc ++ items
+
+        if current_page + 1 >= total_pages do
+          {:ok, new_acc}
+        else
+          fetch_paginated_items(url, params, current_page + 1, total_pages, new_acc)
+        end
+
+      {:ok, %Req.Response{status: status}} when is_nil(total_pages) ->
+        {:error, "Unexpected status #{status} from #{url}"}
+
+      {:ok, %Req.Response{status: status}} when not is_nil(total_pages) ->
         Logger.warning(
-          "fetch_syllabi_page_by_editor editor=#{editor} page=#{page} status=#{status} body=#{inspect(body)}"
+          "fetch_paginated_items status error url=#{url} page=#{current_page} status=#{status}"
         )
 
-        {:error, "Unexpected status #{status}"}
+        if current_page + 1 >= total_pages do
+          {:ok, acc}
+        else
+          fetch_paginated_items(url, params, current_page + 1, total_pages, acc)
+        end
 
-      {:error, reason} ->
-        Logger.error(
-          "fetch_syllabi_page_by_editor editor=#{editor} page=#{page} error=#{inspect(reason)}"
+      {:error, reason} when is_nil(total_pages) ->
+        {:error, "Request failed for #{url}: #{inspect(reason)}"}
+
+      {:error, reason} when not is_nil(total_pages) ->
+        Logger.warning(
+          "fetch_paginated_items error url=#{url} page=#{current_page} reason=#{inspect(reason)}"
         )
 
-        {:error, inspect(reason)}
+        if current_page + 1 >= total_pages do
+          {:ok, acc}
+        else
+          fetch_paginated_items(url, params, current_page + 1, total_pages, acc)
+        end
     end
   end
 

@@ -26,14 +26,19 @@ defmodule SimpleSyllabusReporter.Data.User do
     end
   end
 
-  def get_by_id(user_id) do
+  def get_by_id(user_id) when is_binary(user_id) do
     sql = """
     SELECT id, email, inserted_at, updated_at
     FROM users
     WHERE id = $(user_id)
     """
 
-    case DbHelpers.run_sql(sql, %{"user_id" => user_id}, schema()) do
+    user_id_binary =
+      user_id
+      |> String.replace("-", "")
+      |> Base.decode16!(case: :lower)
+
+    case DbHelpers.run_sql(sql, %{"user_id" => user_id_binary}, schema()) do
       [user | _] -> {:ok, user}
       [] -> {:error, :not_found}
       {:error, reason} -> {:error, reason}

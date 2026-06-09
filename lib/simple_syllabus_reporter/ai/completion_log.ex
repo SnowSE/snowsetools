@@ -25,8 +25,13 @@ defmodule SimpleSyllabusReporter.AI.CompletionLog do
            "status" => status,
            "thinking" => thinking || ""
          }) do
-      {:error, reason} -> Logger.error("Failed to log AI completion: #{inspect(reason)}")
-      _ -> :ok
+      {:error, reason} ->
+        Logger.error(
+          "Failed to log AI completion topic=#{topic} event=#{inspect(event)} reason=#{inspect(reason)}"
+        )
+
+      rows when is_list(rows) ->
+        :ok
     end
   end
 

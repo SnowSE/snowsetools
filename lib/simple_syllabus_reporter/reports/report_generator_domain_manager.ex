@@ -168,7 +168,13 @@ defmodule SimpleSyllabusReporter.Reports.ReportGeneratorDomainManger do
           server = self()
 
           Task.start(fn ->
-            ReportGenerationMessages.prepare_and_send(server, syllabus_doc, element, code, report_id)
+            ReportGenerationMessages.prepare_and_send(
+              server,
+              syllabus_doc,
+              element,
+              code,
+              report_id
+            )
           end)
 
           {:noreply,
@@ -514,14 +520,24 @@ defmodule SimpleSyllabusReporter.Reports.ReportGeneratorDomainManger do
   end
 
   defp sum_school_totals(school_rows) do
-    Enum.reduce(school_rows, %{"met" => 0, "not_met" => 0, "partially_met" => 0, "total_syllabi" => 0, "not_generated" => 0}, fn row, acc ->
+    Enum.reduce(
+      school_rows,
       %{
-        "met" => acc["met"] + row["met"],
-        "not_met" => acc["not_met"] + row["not_met"],
-        "partially_met" => acc["partially_met"] + row["partially_met"],
-        "total_syllabi" => acc["total_syllabi"] + row["total_syllabi"],
-        "not_generated" => acc["not_generated"] + row["not_generated"]
-      }
-    end)
+        "met" => 0,
+        "not_met" => 0,
+        "partially_met" => 0,
+        "total_syllabi" => 0,
+        "not_generated" => 0
+      },
+      fn row, acc ->
+        %{
+          "met" => acc["met"] + row["met"],
+          "not_met" => acc["not_met"] + row["not_met"],
+          "partially_met" => acc["partially_met"] + row["partially_met"],
+          "total_syllabi" => acc["total_syllabi"] + row["total_syllabi"],
+          "not_generated" => acc["not_generated"] + row["not_generated"]
+        }
+      end
+    )
   end
 end

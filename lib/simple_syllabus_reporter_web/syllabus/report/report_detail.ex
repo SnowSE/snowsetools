@@ -57,7 +57,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportDetail do
                     "inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all",
                     if(generating? || is_nil(@syllabus),
                       do: "bg-slate-800/70 text-slate-500 cursor-not-allowed",
-                      else: "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer"
+                      else: "bg-indigo-600 hover:bg-indigo-500 text-slate-50 cursor-pointer"
                     )
                   ]}
                 >

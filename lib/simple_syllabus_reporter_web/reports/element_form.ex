@@ -64,7 +64,7 @@ defmodule SimpleSyllabusReporterWeb.Reports.ElementForm do
           <button
             type="submit"
             id="element-save-btn"
-            class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors"
+            class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-slate-50 text-sm font-medium rounded-lg transition-colors"
           >
             Save
           </button>

@@ -1,4 +1,9 @@
-# Tech Stack
+- **Use named parameters for functions with multiple parameters**
+      defp fetch_paginated_items(url: url, current_page: current_page, total_pages: total_pages) do
+        # ... function body
+      end
+
+
 
 Phoenix LiveView app backed by PostgreSQL. do not include useless comments, if the code is not easy to read, use better naming conventions and single-level of abstraction functions.
 
@@ -35,7 +40,7 @@ Set `PHX_SERVER=true` and provide env vars (`DATABASE_URL`, `SECRET_KEY_BASE`, `
 
 you can read current logs with `docker logs simplesyllabusreporter-app-1` be sure to use bash to filter for only the logs you care about.
 
-when checking if changes compile use `mix compile` on the terminal (not in container)
+when checking if changes compile use `mix precommit` on the terminal (not in container)
 
 
 ## Data Flows
@@ -123,12 +128,6 @@ Use the asyncronous model to leverage Phoenix Streams when rendering and updatin
 - Predicate function names should not start with `is_` and should end in a question mark. Names like `is_thing` should be reserved for guards
 - Elixir's builtin OTP primitives like `DynamicSupervisor` and `Registry`, require names in the child spec, such as `{DynamicSupervisor, name: MyApp.MyDynamicSup}`, then you can use `DynamicSupervisor.start_child(MyApp.MyDynamicSup, child_spec)`
 - Use `Task.async_stream(collection, callback, options)` for concurrent enumeration with back-pressure. The majority of times you will want to pass `timeout: :infinity` as option
-
-## Mix guidelines
-
-- Read the docs and options before using tasks (by using `mix help task_name`)
-- To debug test failures, run tests in a specific file with `mix test test/my_test.exs` or run all previously failed tests with `mix test --failed`
-- `mix deps.clean --all` is **almost never needed**. **Avoid** using it unless you have good reason
 
 ## Test guidelines
 

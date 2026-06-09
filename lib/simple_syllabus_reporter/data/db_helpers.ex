@@ -2,19 +2,10 @@ defmodule SimpleSyllabusReporter.Data.DbHelpers do
   require Logger
   @get_named_param ~r/\$\((\w+)\)/
 
-  @doc """
-  Runs SQL with named parameters (e.g. `$(name)`) and validates each row
-  against the given Zoi schema, returning `{:error, :db_error}` or a list of
-  validated structs/maps.
-  """
   def run_sql(sql, params, schema) when not is_nil(schema) do
     run_sql(sql, params) |> validate_rows(schema)
   end
 
-  @doc """
-  Runs SQL with named parameters (e.g. `$(name)`) and returns a list of row
-  maps with string keys, or `{:error, :db_error}`.
-  """
   def run_sql(sql, params) do
     original_sql = sql
     original_params = params
@@ -30,18 +21,24 @@ defmodule SimpleSyllabusReporter.Data.DbHelpers do
       end)
     rescue
       exception ->
-        Logger.error("Database error: #{Exception.message(exception)}")
+        error_message = extract_error_message(exception)
+        Logger.error("Database error: #{error_message}")
         Logger.error("Failed SQL: #{original_sql}")
         Logger.error("SQL params: #{inspect(original_params, pretty: true)}")
-        {:error, :db_error}
+        {:error, error_message}
     end
   end
 
-  @doc """
-  Converts `$(param_name)` placeholders to positional `$1`, `$2`, … params
-  expected by Postgrex. Repeated occurrences of the same name reuse the same
-  positional index.
-  """
+  defp extract_error_message(exception) do
+    msg =
+      case exception do
+        %{message: msg} when is_binary(msg) and byte_size(msg) > 0 -> msg
+        _ -> nil
+      end
+
+    msg || Exception.message(exception)
+  end
+
   def named_params_to_positional_params(query, params) do
     param_occurrences = Regex.scan(@get_named_param, query)
 
@@ -51,7 +48,7 @@ defmodule SimpleSyllabusReporter.Data.DbHelpers do
           {index_map, values}
         else
           next_index = map_size(index_map) + 1
-          param_value = params |> Map.fetch!(param_name) |> parse_uuid_string_to_binary()
+          param_value = Map.fetch!(params, param_name)
           {Map.put(index_map, param_name, next_index), values ++ [param_value]}
         end
       end)
@@ -63,16 +60,6 @@ defmodule SimpleSyllabusReporter.Data.DbHelpers do
 
     {positional_sql, ordered_values}
   end
-
-  # Postgrex expects UUID params as 16-byte binaries; convert formatted strings.
-  defp parse_uuid_string_to_binary(
-         <<_::binary-size(8), ?-, _::binary-size(4), ?-, _::binary-size(4), ?-, _::binary-size(4),
-           ?-, _::binary-size(12)>> = val
-       ) do
-    val |> String.replace("-", "") |> Base.decode16!(case: :lower)
-  end
-
-  defp parse_uuid_string_to_binary(val), do: val
 
   defp format_uuid_binary(<<a::4-bytes, b::2-bytes, c::2-bytes, d::2-bytes, e::6-bytes>>) do
     [a, b, c, d, e]
@@ -125,7 +112,7 @@ defmodule SimpleSyllabusReporter.Data.DbHelpers do
     end
   end
 
-  defp validate_rows({:error, :db_error}, _schema), do: {:error, :db_error}
+  defp validate_rows({:error, _} = err, _schema), do: err
 
   defp validate_rows(rows, schema) do
     Enum.reduce_while(rows, {:ok, []}, fn row, {:ok, acc} ->

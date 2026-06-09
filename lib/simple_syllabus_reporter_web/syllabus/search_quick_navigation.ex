@@ -70,7 +70,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SearchQuickNavigation do
           class={[
             "px-3 py-1 rounded-full text-xs font-medium border transition-colors",
             if(@active_query == division["name"],
-              do: "bg-indigo-600 border-indigo-500 text-white",
+              do: "bg-indigo-600 border-indigo-500 text-slate-50",
               else:
                 "bg-slate-800 border-slate-700 text-slate-300 hover:border-indigo-500 hover:text-indigo-300"
             )

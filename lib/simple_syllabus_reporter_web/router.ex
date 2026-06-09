@@ -34,8 +34,6 @@ defmodule SimpleSyllabusReporterWeb.Router do
     live "/reports/required-elements", Reports.RequiredElementsLive
     live "/ai/completions", AI.CompletionsHistoryLive
     live "/config", Config.ConfigLive
-
-    post "/cache/clear", CacheController, :clear
   end
 
   scope "/auth", SimpleSyllabusReporterWeb do
@@ -47,7 +45,7 @@ defmodule SimpleSyllabusReporterWeb.Router do
     get "/refresh", AuthController, :refresh
   end
 
-  # Enable LiveDashboard and Swoosh mailbox preview in development
+  # Enable LiveDashboard in development
   if Application.compile_env(:simple_syllabus_reporter, :dev_routes) do
     import Phoenix.LiveDashboard.Router
 
@@ -55,7 +53,6 @@ defmodule SimpleSyllabusReporterWeb.Router do
       pipe_through :browser
 
       live_dashboard "/dashboard", metrics: SimpleSyllabusReporterWeb.Telemetry
-      forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
   end
 

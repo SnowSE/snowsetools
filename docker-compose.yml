@@ -1,4 +1,5 @@
 services:
+  # kubectl exec -n simple-syllabus postgres-0 -c postgres -- sh -c 'pg_dump -U "$POSTGRES_USER" --no-owner --no-acl --clean --if-exists "$POSTGRES_DB"' > /tmp/prod_dump.sql && docker exec -i simplesyllabusreporter-db-1 psql -U syllabus_user -d simple_syllabus_reporter_dev < /tmp/prod_dump.sql
   db:
     image: postgres:18-alpine
     environment:

@@ -268,8 +268,6 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
     Map.new(errors, fn {field, msg} -> {to_string(field), msg} end)
   end
 
-  defp format_errors(errors), do: %{"base" => inspect(errors)}
-
   def render(assigns) do
     ~H"""
     <Layouts.app
@@ -287,7 +285,7 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequiredElementsLive do
             id="new-element-btn"
             type="button"
             phx-click="new"
-            class="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors"
+            class="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-slate-50 text-sm font-medium rounded-lg transition-colors"
           >
             <span class="hero-plus size-4" /> New Element
           </button>

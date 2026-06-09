@@ -30,7 +30,10 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportHandlers do
     report_items = socket.assigns.report_items
 
     missing = Enum.reject(elements, fn e -> Map.has_key?(report_items, e["id"]) end)
-    Enum.each(missing, fn element -> ReportGeneratorDomainManger.generate_async(selected, element) end)
+
+    Enum.each(missing, fn element ->
+      ReportGeneratorDomainManger.generate_async(selected, element)
+    end)
 
     missing_ids = MapSet.new(missing, & &1["id"])
 

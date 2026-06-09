@@ -7,8 +7,16 @@ defmodule SimpleSyllabusReporter.Application do
 
   @impl true
   def start(_type, _args) do
-    children = [
-      SimpleSyllabusReporter.Repo,
+    children = base_children() ++ conditional_children()
+
+    # See https://hexdocs.pm/elixir/Supervisor.html
+    # for other strategies and supported options
+    opts = [strategy: :one_for_one, name: SimpleSyllabusReporter.Supervisor]
+    Supervisor.start_link(children, opts)
+  end
+
+  defp base_children do
+    [
       {Oidcc.ProviderConfiguration.Worker,
        %{
          issuer:
@@ -39,17 +47,23 @@ defmodule SimpleSyllabusReporter.Application do
       {DNSCluster,
        query: Application.get_env(:simple_syllabus_reporter, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: SimpleSyllabusReporter.PubSub},
-      SimpleSyllabusReporter.AI.AsyncCompletions,
-      SimpleSyllabusReporter.Cache,
-      SimpleSyllabusReporter.Reports.ReportGeneratorDomainManger,
-      SimpleSyllabusReporter.Syllabi.SyllabusSync,
       SimpleSyllabusReporterWeb.Endpoint
     ]
+  end
 
-    # See https://hexdocs.pm/elixir/Supervisor.html
-    # for other strategies and supported options
-    opts = [strategy: :one_for_one, name: SimpleSyllabusReporter.Supervisor]
-    Supervisor.start_link(children, opts)
+  defp conditional_children do
+    # Only start database-dependent services if DATABASE_URL is configured
+    if System.get_env("DATABASE_URL") do
+      [
+        SimpleSyllabusReporter.Repo,
+        SimpleSyllabusReporter.AI.AsyncCompletions,
+        SimpleSyllabusReporter.Cache,
+        SimpleSyllabusReporter.Reports.ReportGeneratorDomainManger,
+        SimpleSyllabusReporter.Syllabi.Syncing.SyllabusScraperAgent
+      ]
+    else
+      []
+    end
   end
 
   # Tell Phoenix to update the endpoint configuration

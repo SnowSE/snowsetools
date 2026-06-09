@@ -60,11 +60,7 @@ defmodule SimpleSyllabusReporterWeb.Plugs.RefreshToken do
             "RefreshToken plug: refresh success sub=#{oidc_sub} new_exp=#{new_expires_at} ttl=#{new_expires_at - now}s"
           )
 
-          new_refresh_token =
-            case new_token.refresh do
-              %Oidcc.Token.Refresh{token: rt} -> rt
-              _ -> refresh_token
-            end
+          %Oidcc.Token.Refresh{token: new_refresh_token} = new_token.refresh
 
           conn
           |> put_session("session_expires_at", new_expires_at)

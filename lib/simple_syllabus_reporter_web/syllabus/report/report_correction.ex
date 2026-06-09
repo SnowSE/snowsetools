@@ -43,7 +43,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.ReportCorrection do
           <button
             id={"save-correction-btn-#{@element_id}"}
             type="submit"
-            class="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors cursor-pointer"
+            class="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-slate-50 rounded-lg transition-colors cursor-pointer"
           >
             Save correction
           </button>
