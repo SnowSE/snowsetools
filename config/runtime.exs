@@ -29,15 +29,19 @@ config :simple_syllabus_reporter, :ai,
 config :simple_syllabus_reporter, SimpleSyllabusReporterWeb.Endpoint,
   http: [port: env!("PORT", :integer, 4000), ip: {0, 0, 0, 0}]
 
-if config_env() == :test do
-  config :simple_syllabus_reporter, SimpleSyllabusReporter.Repo,
-    url: env!("DATABASE_URL", :string!),
-    pool: Ecto.Adapters.SQL.Sandbox,
-    pool_size: env!("POOL_SIZE", :integer, 5)
-else
-  config :simple_syllabus_reporter, SimpleSyllabusReporter.Repo,
-    url: env!("DATABASE_URL", :string!),
-    pool_size: env!("POOL_SIZE", :integer, 10)
+if System.get_env("DATABASE_URL") do
+  if config_env() == :test do
+    config :simple_syllabus_reporter, SimpleSyllabusReporter.Repo,
+      url: env!("DATABASE_URL", :string!),
+      pool: Ecto.Adapters.SQL.Sandbox,
+      pool_size: env!("POOL_SIZE", :integer, 5)
+  else
+    config :simple_syllabus_reporter, SimpleSyllabusReporter.Repo,
+      url: env!("DATABASE_URL", :string!),
+      pool_size: env!("POOL_SIZE", :integer, 20),
+      queue_target: 500,
+      queue_interval: 1000
+  end
 end
 
 if config_env() == :prod do

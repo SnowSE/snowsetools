@@ -104,15 +104,18 @@ defmodule SimpleSyllabusReporterWeb.Home.HomeLive do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_user={@current_user} socket={@socket} current_path={@current_path}>
+    <Layouts.app
+      flash={@flash}
+      current_user={@current_user}
+      socket={@socket}
+      current_path={@current_path}
+    >
       <div class="max-w-5xl mx-auto px-6 py-10 space-y-10">
-
         <div class="flex items-baseline justify-between">
           <span class="text-sm text-slate-400">{@current_term_name}</span>
         </div>
 
         <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
-
           <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
             <h2 class="text-sm font-medium text-slate-300 mb-4 text-center">Report Status</h2>
             <div id="status-chart-wrapper" phx-update="ignore">
@@ -126,10 +129,10 @@ defmodule SimpleSyllabusReporterWeb.Home.HomeLive do
                 data-color-not-generated={@chart_colors.not_generated}
                 data-color-border={@chart_colors.border}
                 data-color-legend={@chart_colors.legend}
-              ></canvas>
+              >
+              </canvas>
             </div>
           </div>
-
         </div>
 
         <%= if @by_school != [] do %>
@@ -158,7 +161,8 @@ defmodule SimpleSyllabusReporterWeb.Home.HomeLive do
                       data-color-not-generated={@chart_colors.not_generated}
                       data-color-border={@chart_colors.border}
                       data-color-legend={@chart_colors.legend}
-                    ></canvas>
+                    >
+                    </canvas>
                   </div>
                   <div class="grid grid-cols-4 gap-1 text-center">
                     <div class="rounded-lg bg-green-500/10 border border-green-500/20 py-1.5">

@@ -1,17 +1,15 @@
 defmodule SimpleSyllabusReporter.Syllabi.SyllabusDomainManager do
   @moduledoc """
-  Orchestration layer for syllabus data. Serves cached results from the
-  database when available and falls back to the SimpleSyllabus API,
-  persisting fetched data for future requests.
+  Orchestration layer for syllabus data. All queries read exclusively from
+  the local database cache. No API calls during searches - syncing happens
+  only from the settings page.
   """
   require Logger
 
-  alias SimpleSyllabusReporter.SimpleSyllabusApi
-  alias SimpleSyllabusReporter.Syllabi.SyllabusDB
+  alias SimpleSyllabusReporter.Syllabi.{SyllabusDB, CachedOrganizationsDb}
 
   @doc """
-  Returns syllabi for an org. Serves from DB cache when available;
-  fetches from the API and persists on a cache miss.
+  Returns syllabi for an org from the database cache.
 
   Returns `{:ok, %{items: docs, cached_at: datetime_or_nil}}` or `{:error, term}`.
   """
@@ -21,20 +19,15 @@ defmodule SimpleSyllabusReporter.Syllabi.SyllabusDomainManager do
         {:ok, %{items: docs, cached_at: cached_at}}
 
       {:ok, [], _} ->
-        fetch_and_persist_by_org(org_id)
+        {:ok, %{items: [], cached_at: nil}}
 
       {:error, reason} ->
-        Logger.warning(
-          "SyllabusDomainManager.search_by_org DB read failed, falling back to API reason=#{inspect(reason)}"
-        )
-
-        fetch_and_persist_by_org(org_id)
+        {:error, reason}
     end
   end
 
   @doc """
-  Returns syllabi for an editor email. Serves from DB cache when available;
-  fetches from the API and persists on a cache miss.
+  Returns syllabi for an editor email from the database cache.
 
   Returns `{:ok, %{items: docs, cached_at: datetime_or_nil}}` or `{:error, term}`.
   """
@@ -44,20 +37,15 @@ defmodule SimpleSyllabusReporter.Syllabi.SyllabusDomainManager do
         {:ok, %{items: docs, cached_at: cached_at}}
 
       {:ok, [], _} ->
-        fetch_and_persist_by_email(email)
+        {:ok, %{items: [], cached_at: nil}}
 
       {:error, reason} ->
-        Logger.warning(
-          "SyllabusDomainManager.search_by_email DB read failed, falling back to API reason=#{inspect(reason)}"
-        )
-
-        fetch_and_persist_by_email(email)
+        {:error, reason}
     end
   end
 
   @doc """
-  Returns full detail for a syllabus code. Serves from DB cache when available;
-  fetches from the API and persists on a cache miss.
+  Returns full detail for a syllabus code from the database cache.
 
   Returns `{:ok, doc}` or `{:error, term}`.
   """
@@ -67,67 +55,26 @@ defmodule SimpleSyllabusReporter.Syllabi.SyllabusDomainManager do
         {:ok, doc}
 
       {:ok, nil, _} ->
-        fetch_and_persist_detail(code)
+        {:error, "Detail not yet synced"}
 
       {:error, reason} ->
-        Logger.warning(
-          "SyllabusDomainManager.get_detail DB read failed, falling back to API code=#{code} reason=#{inspect(reason)}"
-        )
-
-        fetch_and_persist_detail(code)
+        {:error, reason}
     end
   end
 
-  @doc "Returns all level-2 schools. Falls back to API list when DB is empty."
+  @doc "Returns all level-2 schools from the cached organizations."
   def get_departments do
-    with {:ok, orgs} <- SimpleSyllabusApi.get_organizations(),
-         {:ok, populated_ids} <- SyllabusDB.list_populated_org_ids() do
-      populated = MapSet.new(populated_ids)
+    case CachedOrganizationsDb.get_searchable_orgs() do
+      {:ok, [_ | _] = orgs} ->
+        # Return organizations sorted by name
+        {:ok, Enum.sort_by(orgs, & &1.name)}
 
-      schools =
-        orgs
-        |> Enum.filter(&(&1["level"] == 2 && &1["is_self_active"]))
-        |> Enum.sort_by(& &1["name"])
+      {:ok, []} ->
+        # No organizations cached yet - user needs to sync first
+        {:error, "Organizations not yet synced. Please run a sync from settings."}
 
-      if Enum.any?(schools, &MapSet.member?(populated, &1["entity_id"])) do
-        {:ok, schools}
-      else
-        # DB not yet populated — return all schools so the UI isn't empty
-        {:ok, schools}
-      end
-    end
-  end
-
-  defp fetch_and_persist_by_org(org_id) do
-    case SimpleSyllabusApi.fetch_syllabi_by_org(org_id) do
-      {:ok, %{items: docs} = result} ->
-        Task.start(fn -> SyllabusDB.upsert_list_items(docs, org_id: org_id) end)
-        {:ok, Map.put(result, :cached_at, nil)}
-
-      {:error, _} = err ->
-        err
-    end
-  end
-
-  defp fetch_and_persist_by_email(email) do
-    case SimpleSyllabusApi.fetch_syllabi_by_email(email) do
-      {:ok, %{items: docs} = result} ->
-        Task.start(fn -> SyllabusDB.upsert_list_items(docs, linked_email: email) end)
-        {:ok, Map.put(result, :cached_at, nil)}
-
-      {:error, _} = err ->
-        err
-    end
-  end
-
-  defp fetch_and_persist_detail(code) do
-    case SimpleSyllabusApi.fetch_syllabus_detail(code) do
-      {:ok, doc} = result ->
-        Task.start(fn -> SyllabusDB.upsert_detail(code, doc) end)
-        result
-
-      {:error, _} = err ->
-        err
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 end

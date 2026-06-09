@@ -7,12 +7,6 @@ config :simple_syllabus_reporter, SimpleSyllabusReporterWeb.Endpoint,
   secret_key_base: "MxJlN/focNzVRl/22870oWk+cubOB3gmOTTdZQpmTptLbe4h3v73wkyYCt93fRpK",
   server: false
 
-# In test we don't send emails
-config :simple_syllabus_reporter, SimpleSyllabusReporter.Mailer, adapter: Swoosh.Adapters.Test
-
-# Disable swoosh api client as it is only required for production adapters
-config :swoosh, :api_client, false
-
 # Print only warnings and errors during test
 config :logger, level: :warning
 

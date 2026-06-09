@@ -1,12 +1,15 @@
 
-CREATE TABLE IF NOT EXISTS users (
+-- Simple Syllabus Reporter Database Schema
+-- This schema creates all tables from scratch for a fresh database
+
+CREATE TABLE users (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   email       TEXT        NOT NULL UNIQUE,
   inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS required_elements (
+CREATE TABLE required_elements (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   name        TEXT        NOT NULL,
   description TEXT        NOT NULL DEFAULT '',
@@ -23,7 +26,7 @@ INSERT INTO required_elements (name, description) VALUES
   ('Required Materials',               'Notification of required textbook(s) or a statement that there are none to buy.')
 ON CONFLICT DO NOTHING;
 
-CREATE TABLE IF NOT EXISTS required_element_report_instructions (
+CREATE TABLE required_element_report_instructions (
   id                   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   required_element_id  UUID        NOT NULL REFERENCES required_elements(id) ON DELETE CASCADE,
   content              TEXT        NOT NULL,
@@ -31,7 +34,7 @@ CREATE TABLE IF NOT EXISTS required_element_report_instructions (
   updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS generated_reports (
+CREATE TABLE generated_reports (
   id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   syllabus_code   TEXT        NOT NULL,
   syllabus_title  TEXT        NOT NULL,
@@ -42,7 +45,7 @@ CREATE TABLE IF NOT EXISTS generated_reports (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS generated_report_items (
+CREATE TABLE generated_report_items (
   id                        UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   generated_report_id       UUID        NOT NULL REFERENCES generated_reports(id) ON DELETE CASCADE,
   required_element_id       UUID        NOT NULL REFERENCES required_elements(id) ON DELETE RESTRICT,
@@ -55,7 +58,7 @@ CREATE TABLE IF NOT EXISTS generated_report_items (
   UNIQUE (generated_report_id, required_element_id)
 );
 
-CREATE TABLE IF NOT EXISTS ai_completions (
+CREATE TABLE ai_completions (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   topic       TEXT        NOT NULL,
   event       TEXT        NOT NULL,
@@ -68,9 +71,14 @@ CREATE TABLE IF NOT EXISTS ai_completions (
   inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS ai_completions_inserted_at_idx ON ai_completions (inserted_at DESC);
+CREATE TABLE site_config (
+  key         TEXT        PRIMARY KEY,
+  value       TEXT        NOT NULL,
+  inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
-CREATE TABLE IF NOT EXISTS syllabi (
+CREATE TABLE syllabi (
   code              TEXT        PRIMARY KEY,
   title             TEXT,
   course_name       TEXT,
@@ -83,16 +91,62 @@ CREATE TABLE IF NOT EXISTS syllabi (
   detail_data       JSONB,
   list_cached_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   detail_cached_at  TIMESTAMPTZ,
+  sync_status       TEXT        NOT NULL DEFAULT 'pending'
+                      CHECK (sync_status IN ('pending', 'synced', 'error')),
+  sync_error        TEXT,
+  synced_at         TIMESTAMPTZ,
   inserted_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS syllabi_org_id_idx ON syllabi (org_id);
-CREATE INDEX IF NOT EXISTS syllabi_linked_emails_idx ON syllabi USING GIN (linked_emails);
-
-CREATE TABLE IF NOT EXISTS site_config (
-  key         TEXT        PRIMARY KEY,
-  value       TEXT        NOT NULL,
-  inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE cached_organizations (
+  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id          TEXT        NOT NULL UNIQUE,
+  parent_org_id   TEXT,
+  name            TEXT        NOT NULL,
+  level           INT         NOT NULL,
+  metadata        JSONB       NOT NULL DEFAULT '{}',
+  cached_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  inserted_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE available_terms (
+  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  term_id         TEXT        NOT NULL UNIQUE,
+  term_name       TEXT        NOT NULL,
+  status          TEXT        NOT NULL DEFAULT 'active',
+  cached_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  inserted_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Indexes for performance
+CREATE INDEX ai_completions_inserted_at_idx ON ai_completions (inserted_at DESC);
+CREATE INDEX syllabi_org_id_idx ON syllabi (org_id);
+CREATE INDEX syllabi_linked_emails_idx ON syllabi USING GIN (linked_emails);
+CREATE INDEX syllabi_sync_status_idx ON syllabi (sync_status);
+CREATE INDEX syllabi_term_id_org_id_idx ON syllabi (term_id, org_id);
+CREATE INDEX term_syncs_status_idx ON term_syncs (status);
+CREATE INDEX term_syncs_term_id_idx ON term_syncs (term_id);
+CREATE UNIQUE INDEX only_one_active_sync_idx ON term_syncs (status) WHERE status = 'in_progress';
+CREATE INDEX cached_organizations_level_idx ON cached_organizations (level);
+CREATE INDEX syllabus_sync_log_term_sync_id_idx ON syllabus_sync_log (term_sync_id);
+CREATE INDEX available_terms_status_idx ON available_terms (status);
+CREATE INDEX available_terms_cached_at_idx ON available_terms (cached_at);
+
+-- ============================================================================
+-- MIGRATION NOTES FOR EXISTING DATABASES
+-- ============================================================================
+-- If migraticached_organizations_level_idx ON cached_organizations (level
+-- 2. Ensure syllabi columns sync_status, sync_error, synced_at exist:
+--    ALTER TABLE syllabi ADD COLUMN IF NOT EXISTS
+--      sync_status TEXT NOT NULL DEFAULT 'pending' CHECK (sync_status IN ('pending', 'synced', 'error')),
+--      sync_error TEXT,
+--      synced_at TIMESTAMPTZ;
+--
+-- 3. Verify all indexes are created. If missing, create them individually:
+--    See index creation statements above.
+--
+-- For a fresh database, simply run this entire schema.sql as-is.
+-- ============================================================================

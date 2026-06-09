@@ -236,12 +236,10 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList do
         </div>
       <% end %>
 
-      <%
-        total_generated =
-          @report_counts |> Map.values() |> Enum.flat_map(&Map.values/1) |> Enum.sum()
+      <% total_generated =
+        @report_counts |> Map.values() |> Enum.flat_map(&Map.values/1) |> Enum.sum()
 
-        total_possible = map_size(@syllabi_docs) * @total_elements
-      %>
+      total_possible = map_size(@syllabi_docs) * @total_elements %>
 
       <%= if not @syllabi_empty? && @total_elements > 0 && !@loading_search do %>
         <div class="mb-3 shrink-0">
@@ -402,8 +400,14 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchResultsList do
     end
   end
 
+  defp find_department(_departments, ""), do: nil
+
   defp find_department(departments, name) do
-    Enum.find(departments, &(String.downcase(&1["name"]) == String.downcase(name)))
+    normalized_name = String.downcase(name)
+
+    Enum.find(departments, fn dept ->
+      String.downcase(dept["name"] || "") == normalized_name
+    end)
   end
 
   defp email?(query), do: String.contains?(query, "@")

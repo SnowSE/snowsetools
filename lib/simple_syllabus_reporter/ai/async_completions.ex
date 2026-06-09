@@ -177,7 +177,7 @@ defmodule SimpleSyllabusReporter.AI.AsyncCompletions do
     ref
   end
 
-  @spec complete_sync([message()], [option()]) :: result()
+  @spec complete_sync([message()], [option()]) :: {result(), String.t() | nil}
   defp complete_sync(messages, opts) do
     config = Application.fetch_env!(:simple_syllabus_reporter, :ai)
 

@@ -2,48 +2,31 @@ defmodule SimpleSyllabusReporter.Syllabi.SyllabusDB do
   require Logger
   alias SimpleSyllabusReporter.Data.DbHelpers
 
-  @doc """
-  Upserts a batch of list-item docs into the syllabi table.
+  def upsert_list_items(docs, org_id: org_id) do
+    Enum.each(docs, fn doc ->
+      upsert_syllabus(
+        syllabus_metadata: doc,
+        syllabus_details: nil,
+        org_id: org_id,
+        linked_email: nil
+      )
+    end)
+  end
 
-  Options:
-    - `:org_id` — entity_id of the org these syllabi were fetched under
-    - `:linked_email` — email address this search was performed with
-  """
-  def upsert_list_items([], _opts), do: :ok
-
-  def upsert_list_items(docs, opts) do
-    org_id = Keyword.get(opts, :org_id)
-    linked_email = Keyword.get(opts, :linked_email)
-
+  def upsert_syllabus(
+        syllabus_metadata: doc,
+        syllabus_details: detail_data,
+        org_id: org_id,
+        linked_email: linked_email
+      ) do
     sql = """
     INSERT INTO syllabi
-      (code, title, course_name, term_name, term_id, org_id, linked_emails, editors, list_data, list_cached_at, updated_at)
-    SELECT
-      d.code,
-      d.title,
-      d.course_name,
-      d.term_name,
-      d.term_id,
-      d.org_id,
-      CASE WHEN $(linked_email)::text IS NOT NULL
-           THEN ARRAY[$(linked_email)::text]
-           ELSE '{}'::text[]
-      END,
-      parsed.editors,
-      parsed.list_data,
-      NOW(),
-      NOW()
-    FROM UNNEST(
-      $(codes)::text[],
-      $(titles)::text[],
-      $(course_names)::text[],
-      $(term_names)::text[],
-      $(term_ids)::text[],
-      $(org_ids)::text[],
-      $(editors_list)::text[],
-      $(list_data_list)::text[]
-    ) AS d(code, title, course_name, term_name, term_id, org_id, editors_json, list_data_json),
-    LATERAL (SELECT editors_json::jsonb AS editors, list_data_json::jsonb AS list_data) AS parsed
+      (code, title, course_name, term_name, term_id, org_id, linked_emails, editors, list_data, detail_data, list_cached_at, detail_cached_at, updated_at)
+    VALUES
+      ($(code), $(title), $(course_name), $(term_name), $(term_id), $(org_id),
+       CASE WHEN $(linked_email)::text IS NOT NULL THEN ARRAY[$(linked_email)] ELSE '{}'::text[] END,
+       $(editors)::jsonb, $(list_data)::jsonb, $(detail_data)::jsonb,
+       NOW(), NOW(), NOW())
     ON CONFLICT (code) DO UPDATE SET
       title          = EXCLUDED.title,
       course_name    = EXCLUDED.course_name,
@@ -53,50 +36,36 @@ defmodule SimpleSyllabusReporter.Syllabi.SyllabusDB do
       linked_emails  = (SELECT array(SELECT DISTINCT unnest(syllabi.linked_emails || EXCLUDED.linked_emails))),
       editors        = EXCLUDED.editors,
       list_data      = EXCLUDED.list_data,
+      detail_data    = EXCLUDED.detail_data,
       list_cached_at = NOW(),
+      detail_cached_at = NOW(),
       updated_at     = NOW()
     """
 
     params = %{
-      "codes" => Enum.map(docs, & &1["code"]),
-      "titles" => Enum.map(docs, & &1["title"]),
-      "course_names" => Enum.map(docs, & &1["course_name"]),
-      "term_names" => Enum.map(docs, & &1["term_name"]),
-      "term_ids" => Enum.map(docs, & &1["term_id"]),
-      "org_ids" => Enum.map(docs, fn doc -> org_id || doc["entity_id"] end),
-      "editors_list" => Enum.map(docs, fn doc -> Jason.encode!(doc["editors"] || []) end),
-      "list_data_list" => Enum.map(docs, &Jason.encode!/1),
+      "code" => doc["code"],
+      "title" => doc["title"],
+      "course_name" => doc["course_name"],
+      "term_name" => doc["term_name"],
+      "term_id" => doc["term_id"],
+      "org_id" => org_id || doc["entity_id"],
+      "editors" => Jason.encode!(doc["editors"] || []),
+      "list_data" => Jason.encode!(doc["list_data"] || %{}),
+      "detail_data" => Jason.encode!(detail_data),
       "linked_email" => linked_email
     }
 
     case DbHelpers.run_sql(sql, params) do
-      {:error, _} = err -> err
-      _ -> :ok
+      {:error, reason} = err ->
+        Logger.error("Failed to upsert syllabus code=#{doc["code"]} reason=#{inspect(reason)}")
+        err
+
+      rows when is_list(rows) ->
+        Logger.info("Upserted syllabus #{doc["title"]}")
+        :ok
     end
   end
 
-  @doc "Upserts detail data for a syllabus code."
-  def upsert_detail(code, doc) do
-    sql = """
-    INSERT INTO syllabi (code, detail_data, detail_cached_at, updated_at)
-    VALUES ($(code), $(detail_data), NOW(), NOW())
-    ON CONFLICT (code) DO UPDATE SET
-      detail_data      = EXCLUDED.detail_data,
-      detail_cached_at = EXCLUDED.detail_cached_at,
-      updated_at       = NOW()
-    """
-
-    case DbHelpers.run_sql(sql, %{"code" => code, "detail_data" => doc}) do
-      {:error, _} = err -> err
-      _ -> :ok
-    end
-  end
-
-  @doc """
-  Returns all cached list items for an org, scoped to the currently selected term
-  (as stored in site_config). If no term is selected, all terms are returned.
-  Result: `{:ok, docs, oldest_cached_at}` where oldest_cached_at is nil when empty.
-  """
   def list_by_org(org_id) when is_binary(org_id) do
     sql = """
     SELECT s.list_data, s.list_cached_at

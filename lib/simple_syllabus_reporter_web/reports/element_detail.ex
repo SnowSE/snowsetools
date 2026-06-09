@@ -50,7 +50,7 @@ defmodule SimpleSyllabusReporterWeb.Reports.ElementDetail do
                           type="button"
                           phx-click="generate_missing_for_element"
                           phx-value-id={@selected["id"]}
-                          class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 rounded-md transition-colors"
+                          class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs text-slate-400 hover:text-slate-100 border border-slate-700 hover:border-slate-500 rounded-md transition-colors"
                         >
                           <span class="hero-play size-3.5" />
                           Generate missing ({@element_counts["not_generated"]})
@@ -79,7 +79,7 @@ defmodule SimpleSyllabusReporterWeb.Reports.ElementDetail do
                   type="button"
                   phx-click="edit"
                   phx-value-id={@selected["id"]}
-                  class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-300 hover:text-white border border-slate-700 hover:border-slate-500 rounded-lg transition-colors"
+                  class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-300 hover:text-slate-100 border border-slate-700 hover:border-slate-500 rounded-lg transition-colors"
                 >
                   <span class="hero-pencil-square size-4" /> Edit
                 </button>

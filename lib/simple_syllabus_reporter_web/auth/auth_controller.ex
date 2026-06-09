@@ -137,12 +137,7 @@ defmodule SimpleSyllabusReporterWeb.AuthController do
            Oidcc.Token.refresh(refresh_token, client_context, %{expected_subject: sub}) do
       new_exp = Map.get(new_token.id.claims, "exp")
 
-      new_refresh =
-        case new_token.refresh do
-          %Oidcc.Token.Refresh{token: rt} -> rt
-          _ -> refresh_token
-        end
-
+      %Oidcc.Token.Refresh{token: new_refresh} = new_token.refresh
       refresh_reused? = new_refresh == refresh_token
       now = System.system_time(:second)
 
@@ -162,13 +157,6 @@ defmodule SimpleSyllabusReporterWeb.AuthController do
       {:error, reason} ->
         Logger.error(
           "auth_controller.refresh OIDC error sub=#{inspect(sub)} reason=#{inspect(reason)}"
-        )
-
-        send_resp(conn, 401, "")
-
-      other ->
-        Logger.error(
-          "auth_controller.refresh unexpected failure sub=#{inspect(sub)} result=#{inspect(other)}"
         )
 
         send_resp(conn, 401, "")

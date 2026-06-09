@@ -56,8 +56,7 @@ defmodule SimpleSyllabusReporter.MixProject do
        app: false,
        compile: false,
        depth: 1},
-      {:swoosh, "~> 1.16"},
-      {:req, "~> 0.5"},
+      {:req, "~> 0.6"},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 1.0"},
@@ -68,7 +67,8 @@ defmodule SimpleSyllabusReporter.MixProject do
       {:postgrex, ">= 0.22.0"},
       {:zoi, "~> 0.18"},
       {:dotenvy, "~> 1.1.1"},
-      {:oidcc_plug, "~> 0.4.0"}
+      {:oidcc_plug, "~> 0.4.0"},
+      {:dialyxir, "~> 1.4", only: :test, runtime: false}
     ]
   end
 
@@ -92,7 +92,13 @@ defmodule SimpleSyllabusReporter.MixProject do
         "esbuild simple_syllabus_reporter --minify",
         "phx.digest"
       ],
-      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
+      precommit: [
+        "compile --warnings-as-errors",
+        "deps.unlock --unused",
+        "format",
+        "dialyzer --quiet-with-result",
+        "test"
+      ]
     ]
   end
 end

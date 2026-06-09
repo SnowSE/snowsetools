@@ -28,7 +28,7 @@ defmodule SimpleSyllabusReporterWeb.Syllabus.SyllabusSearchForm do
         type="submit"
         id="search-submit-btn"
         disabled={@loading_search}
-        class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+        class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-slate-50 text-sm font-medium rounded-lg transition-colors"
       >
         <%= if @loading_search do %>
           Searching…

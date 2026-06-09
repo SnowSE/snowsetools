@@ -47,7 +47,7 @@ defmodule SimpleSyllabusReporterWeb.Reports.RequirementsPanel do
             <button
               type="submit"
               id={"instruction-save-btn-#{@element["id"]}"}
-              class="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium rounded-lg transition-colors"
+              class="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-slate-50 text-xs font-medium rounded-lg transition-colors"
             >
               Save
             </button>
