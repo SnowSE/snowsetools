@@ -196,7 +196,7 @@ defmodule SimpleSyllabusReporter.SimpleSyllabusApi do
   defp fetch_all_syllabi_metadata_list_pages_by_org(org_id, term_id) do
     url = "#{@base_url}/doc-library-search"
 
-    case fetch_paginated_items(url, organization_id: org_id, term_id: term_id) do
+    case fetch_paginated_items(url, organization_id: org_id, "term_ids[]": term_id) do
       {:ok, all_items} ->
         {:ok, list_items} = SyllabusSchemas.parse_syllabi_metadata_list(all_items)
         {:ok, list_items}
