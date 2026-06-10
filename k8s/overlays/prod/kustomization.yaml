@@ -38,8 +38,8 @@ patches:
             namespace: istio-system
             kind: Gateway
         hostnames:
-          - webapp.simple-syllabus.svc.cluster.local
           - "simplesyllabuscheck.snowse.io"
+          - webapp.simple-syllabus.svc.cluster.local
     target:
       kind: HTTPRoute
       name: simple-syllabus
