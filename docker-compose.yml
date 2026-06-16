@@ -1,5 +1,4 @@
 services:
-  # kubectl exec -n simple-syllabus postgres-0 -c postgres -- sh -c 'pg_dump -U "$POSTGRES_USER" --no-owner --no-acl --clean --if-exists "$POSTGRES_DB"' > /tmp/prod_dump.sql && docker exec -i snowsetools-db-1 psql -U syllabus_user -d snow_se_tools_dev < /tmp/prod_dump.sql
   db:
     image: postgres:18-alpine
     environment:
@@ -7,14 +6,10 @@ services:
       POSTGRES_PASSWORD: syllabus_pass
       POSTGRES_DB: snow_se_tools_dev
     volumes:
-      - ./k8s/base/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      # - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
       - postgres_data:/var/lib/postgresql
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U syllabus_user -d snow_se_tools_dev",
-        ]
+      test: ["CMD-SHELL", "pg_isready -U syllabus_user -d snow_se_tools_dev"]
       interval: 5s
       timeout: 5s
       retries: 10

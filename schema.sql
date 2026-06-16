@@ -15,17 +15,6 @@ CREATE TABLE site_config (
   inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
--- TODO: live migration
--- ALTER TABLE required_elements RENAME TO syllabus_required_elements;
--- ALTER TABLE required_element_report_instructions RENAME TO syllabus_required_element_report_instructions;
--- ALTER TABLE generated_reports RENAME TO syllabus_generated_reports;
--- ALTER TABLE generated_report_items RENAME TO syllabus_generated_report_items;
--- ALTER TABLE ai_completions RENAME TO syllabus_ai_completions;
--- ALTER TABLE cached_organizations RENAME TO syllabus_cached_organizations;
--- ALTER TABLE available_terms RENAME TO syllabus_available_terms;
--- After renaming, recreate FK constraints that reference the renamed tables.
-
 CREATE TABLE syllabus_required_elements (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   name        TEXT        NOT NULL,
