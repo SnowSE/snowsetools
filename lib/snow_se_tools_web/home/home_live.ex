@@ -129,8 +129,7 @@ defmodule SnowSeToolsWeb.Home.HomeLive do
                 data-color-not-generated={@chart_colors.not_generated}
                 data-color-border={@chart_colors.border}
                 data-color-legend={@chart_colors.legend}
-              >
-              </canvas>
+              ></canvas>
             </div>
           </div>
         </div>
@@ -161,8 +160,7 @@ defmodule SnowSeToolsWeb.Home.HomeLive do
                       data-color-not-generated={@chart_colors.not_generated}
                       data-color-border={@chart_colors.border}
                       data-color-legend={@chart_colors.legend}
-                    >
-                    </canvas>
+                    ></canvas>
                   </div>
                   <div class="grid grid-cols-4 gap-1 text-center">
                     <div class="rounded-lg bg-green-500/10 border border-green-500/20 py-1.5">
