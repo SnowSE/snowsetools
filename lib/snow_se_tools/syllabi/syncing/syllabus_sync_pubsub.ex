@@ -7,7 +7,7 @@ defmodule SnowSeTools.Syllabi.Syncing.SyllabusSyncPubsub do
     Phoenix.PubSub.broadcast(
       SnowSeTools.PubSub,
       @topic,
-      {:sync_complete, sync_id}
+      {:simple_syllabus_sync, {:sync_complete, sync_id}}
     )
   end
 
@@ -17,7 +17,7 @@ defmodule SnowSeTools.Syllabi.Syncing.SyllabusSyncPubsub do
     Phoenix.PubSub.broadcast(
       SnowSeTools.PubSub,
       @topic,
-      {:sync_error, source, error_message}
+      {:simple_syllabus_sync, {:sync_error, source, error_message}}
     )
   end
 
@@ -25,7 +25,7 @@ defmodule SnowSeTools.Syllabi.Syncing.SyllabusSyncPubsub do
     Phoenix.PubSub.broadcast(
       SnowSeTools.PubSub,
       @topic,
-      {:sync_progress, %{total: total, completed: completed}}
+      {:simple_syllabus_sync, {:sync_progress, %{total: total, completed: completed}}}
     )
   end
 

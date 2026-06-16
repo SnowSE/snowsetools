@@ -33,7 +33,7 @@ defmodule SnowSeToolsWeb.Router do
     live "/syllabi/report", Syllabus.SyllabusReportLive
     live "/reports/required-elements", Reports.RequiredElementsLive
     live "/ai/completions", AI.CompletionsHistoryLive
-    live "/config", Config.ConfigLive
+    live "/config", Config.SimpleSyllabusConfig
   end
 
   scope "/auth", SnowSeToolsWeb do

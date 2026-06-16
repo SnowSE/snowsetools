@@ -4,8 +4,59 @@
       end
 
 
+## LiveComponent State and PubSub
 
-Phoenix LiveView app backed by PostgreSQL. do not include useless comments, if the code is not easy to read, use better naming conventions and single-level of abstraction functions.
+LiveComponents may keep local UI state in `socket.assigns` (e.g. `syncing`, `progress`, `error`). Use `assign_new/3` to initialize component-local state once without resetting it on every parent update.
+
+```elixir
+socket
+|> assign_new(:syncing, fn -> false end)
+|> assign_new(:progress, fn -> 0 end)
+```
+
+LiveComponents do **not** run in their own process. They share the parent LiveView process and mailbox. As a result:
+
+* Do not subscribe to PubSub from a component.
+* Do not use components as the primary receiver of external process messages.
+* Subscribe in the LiveView and handle PubSub messages in the LiveView's `handle_info/2`.
+
+Preferred pattern:
+
+```elixir
+# LiveView
+def mount(_, _, socket) do
+  if connected?(socket) do
+    MyPubSub.subscribe()
+  end
+
+  {:ok, socket}
+end
+
+def handle_info({:progress, value}, socket) do
+  send_update(MyComponent,
+    id: "sync-status",
+    progress: value
+  )
+
+  {:noreply, socket}
+end
+```
+
+```elixir
+# Component
+def update(%{progress: progress}, socket) do
+  {:ok, assign(socket, progress: progress)}
+end
+```
+
+Rule of thumb:
+
+* LiveComponent = local UI state and rendering.
+* LiveView = PubSub subscriptions, process messages, external events, and coordination between components.
+
+## general instructions
+
+do not include useless comments, if the code is not easy to read, use better naming conventions and single-level of abstraction functions.
 
 never silently ignore errors. make sure that errors properly get displayed to the user via either message passing or pubsub. 
 
@@ -15,30 +66,17 @@ avoid empty catch-all clauses that hide errors
 
 Phoenix connects to Postgres via `Ecto.Repo` (no Ecto schemas). All queries use `DbHelpers.run_sql/2,3` with named parameters (`$(param_name)`), which are converted to positional Postgrex params at runtime. Query results are optionally validated against a Zoi schema.
 
-## Configuration
-
-All runtime config is loaded from `.env` (via Dotenvy) merged with system env vars. Key variables:
-
-- `DATABASE_URL` — Ecto-format Postgres URL (`ecto://user:pass@host/db`)
-- `SECRET_KEY_BASE` — Phoenix cookie signing key
-- `PORT` — HTTP port (default 4000)
-
-Copy `example.env` to `.env` and fill in values before starting the app.
-
 ## Dev Environment
 
 `docker compose up` starts two containers:
 
 1. **db** — Postgres 17; `schema.sql` is mounted and run on first start
+   - you can run sql with `docker exec simplesyllabusreporter-db-1 sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "\dt"'`
 2. **app** — Elixir/Phoenix; source is bind-mounted so live reload works
-
-## Production
-
-Set `PHX_SERVER=true` and provide env vars (`DATABASE_URL`, `SECRET_KEY_BASE`, `PHX_HOST`). The app binds to `0.0.0.0:4000` behind a reverse proxy terminating TLS.
 
 ## Getting feedback
 
-you can read current logs with `docker logs snowsetools-app-1` be sure to use bash to filter for only the logs you care about.
+you can read current logs with `docker logs simplesyllabusreporter-app-1` be sure to use bash to filter for only the logs you care about.
 
 when checking if changes compile use `mix precommit` on the terminal (not in container)
 
@@ -50,6 +88,14 @@ The UI layer (in the snow_se_tools_web folder) should only communicate with the 
 All UI communication with domain managers should be asyncronous through Genserver.Cast data will flow back through pubsub or response messages.
 
 Use the asyncronous model to leverage Phoenix Streams when rendering and updating large amounts of data.
+
+
+
+
+
+
+
+
 
 --- Phoenix guidelines below ---
 
@@ -86,6 +132,8 @@ Use the asyncronous model to leverage Phoenix Streams when rendering and updatin
 - Implement **subtle micro-interactions** (e.g., button hover effects, and smooth transitions)
 - Ensure **clean typography, spacing, and layout balance** for a refined, premium look
 - Focus on **delightful details** like hover effects, loading states, and smooth page transitions
+- ensure that the foreground color and backround color match (do not put rose text on slate background)
+  - usually this means making a semi-transparent backround color for the element
 
 
 <!-- usage-rules-start -->

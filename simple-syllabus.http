@@ -8,7 +8,7 @@ User-Agent: Mozilla/5.0 (compatible; SnowSeTools/1.0)
 
 ### Get syllabi metadata list by organization (replicate SimpleSyllabusApi.fetch_syllabi_metadata_list_by_org)
 ### Required params: organization_id, page (0-based), term_statuses[] (or defaults to ["future"])
-GET https://snow.simplesyllabus.com/api2/doc-library-search?organization_id=ORG_ID&page=0&term_statuses[]=future
+GET https://snow.simplesyllabus.com/api2/doc-library-search?page=0&term_statuses[]=future
 User-Agent: Mozilla/5.0 (compatible; SnowSeTools/1.0)
 
 
