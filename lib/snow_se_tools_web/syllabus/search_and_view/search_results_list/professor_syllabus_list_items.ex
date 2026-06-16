@@ -163,7 +163,7 @@ defmodule SnowSeToolsWeb.Syllabus.ProfessorSyllabusListItems do
         />
         <%= if total_run == @total_elements && (not_met + partially_met > 0) && !item_generating? do %>
           <button
-            id={"regen-non-met-#{@doc["code"]}"}
+            id={"regen-non-met-#{@doc["code"]}-#{professor_slug(@professor)}"}
             type="button"
             phx-click="regenerate_non_met"
             phx-value-code={@doc["code"]}
