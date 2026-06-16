@@ -6,7 +6,7 @@ import Config
 # The watchers configuration can be used to run external
 # watchers to your application. For example, we can use it
 # to bundle .js and .css sources.
-config :simple_syllabus_reporter, SimpleSyllabusReporterWeb.Endpoint,
+config :snow_se_tools, SnowSeToolsWeb.Endpoint,
   # Binding to 0.0.0.0 allows access from Docker and other machines.
   http: [ip: {0, 0, 0, 0}],
   check_origin: false,
@@ -14,9 +14,8 @@ config :simple_syllabus_reporter, SimpleSyllabusReporterWeb.Endpoint,
   debug_errors: true,
   secret_key_base: "cZzPzqn4Z4OnDD9rutn+RC5AtMmYCl16nhgWyFgO3hUQeStF4RB1qfELVkEYYrnc",
   watchers: [
-    esbuild:
-      {Esbuild, :install_and_run, [:simple_syllabus_reporter, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:simple_syllabus_reporter, ~w(--watch)]}
+    esbuild: {Esbuild, :install_and_run, [:snow_se_tools, ~w(--sourcemap=inline --watch)]},
+    tailwind: {Tailwind, :install_and_run, [:snow_se_tools, ~w(--watch)]}
   ]
 
 # ## SSL Support
@@ -43,7 +42,7 @@ config :simple_syllabus_reporter, SimpleSyllabusReporterWeb.Endpoint,
 # different ports.
 
 # Reload browser tabs when matching files change.
-config :simple_syllabus_reporter, SimpleSyllabusReporterWeb.Endpoint,
+config :snow_se_tools, SnowSeToolsWeb.Endpoint,
   live_reload: [
     url: "ws://localhost:4000/phoenix/live_reload/socket",
     web_console_logger: true,
@@ -53,14 +52,14 @@ config :simple_syllabus_reporter, SimpleSyllabusReporterWeb.Endpoint,
       # Gettext translations
       ~r"priv/gettext/.*\.po$"E,
       # Router, Controllers, LiveViews and LiveComponents
-      ~r"lib/simple_syllabus_reporter_web/.*\.(ex|heex)$"E,
+      ~r"lib/snow_se_tools_web/.*\.(ex|heex)$"E,
       # Context / service modules
-      ~r"lib/simple_syllabus_reporter/.*\.ex$"E
+      ~r"lib/snow_se_tools/.*\.ex$"E
     ]
   ]
 
 # Enable dev routes for dashboard and mailbox
-config :simple_syllabus_reporter, dev_routes: true
+config :snow_se_tools, dev_routes: true
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
@@ -73,7 +72,7 @@ config :phoenix, :stacktrace_depth, 20
 config :phoenix, :plug_init_mode, :runtime
 
 # Disable Ecto's automatic query logging (db_helpers handles error logging)
-config :simple_syllabus_reporter, SimpleSyllabusReporter.Repo, log: false
+config :snow_se_tools, SnowSeTools.Repo, log: false
 
 config :phoenix_live_view,
   # Include debug annotations and locations in rendered markup.

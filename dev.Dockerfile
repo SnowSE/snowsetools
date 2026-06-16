@@ -1,4 +1,4 @@
-FROM elixir:1.19.5-otp-28-alpine
+FROM elixir:1.20.1-otp-28-alpine
 
 RUN apk add --no-cache build-base git bash wget nodejs npm inotify-tools
 

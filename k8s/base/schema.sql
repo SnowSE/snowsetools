@@ -9,7 +9,24 @@ CREATE TABLE users (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE required_elements (
+CREATE TABLE site_config (
+  key         TEXT        PRIMARY KEY,
+  value       TEXT        NOT NULL,
+  inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- TODO: live migration
+-- ALTER TABLE required_elements RENAME TO syllabus_required_elements;
+-- ALTER TABLE required_element_report_instructions RENAME TO syllabus_required_element_report_instructions;
+-- ALTER TABLE generated_reports RENAME TO syllabus_generated_reports;
+-- ALTER TABLE generated_report_items RENAME TO syllabus_generated_report_items;
+-- ALTER TABLE ai_completions RENAME TO syllabus_ai_completions;
+-- ALTER TABLE cached_organizations RENAME TO syllabus_cached_organizations;
+-- ALTER TABLE available_terms RENAME TO syllabus_available_terms;
+-- After renaming, recreate FK constraints that reference the renamed tables.
+
+CREATE TABLE syllabus_required_elements (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   name        TEXT        NOT NULL,
   description TEXT        NOT NULL DEFAULT '',
@@ -17,7 +34,7 @@ CREATE TABLE required_elements (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-INSERT INTO required_elements (name, description) VALUES
+INSERT INTO syllabus_required_elements (name, description) VALUES
   ('Assignment Overview',              'A brief description of each major assignment, examination, etc.'),
   ('Course Information',               'Prefix, number, section number, and course title.'),
   ('Course Student Learning Outcomes', 'Student-facing language describing what they will learn. Should align with GE and program outcomes.'),
@@ -26,15 +43,15 @@ INSERT INTO required_elements (name, description) VALUES
   ('Required Materials',               'Notification of required textbook(s) or a statement that there are none to buy.')
 ON CONFLICT DO NOTHING;
 
-CREATE TABLE required_element_report_instructions (
+CREATE TABLE syllabus_required_element_report_instructions (
   id                   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  required_element_id  UUID        NOT NULL REFERENCES required_elements(id) ON DELETE CASCADE,
+  required_element_id  UUID        NOT NULL REFERENCES syllabus_required_elements(id) ON DELETE CASCADE,
   content              TEXT        NOT NULL,
   inserted_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE generated_reports (
+CREATE TABLE syllabus_generated_reports (
   id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   syllabus_code   TEXT        NOT NULL,
   syllabus_title  TEXT        NOT NULL,
@@ -45,10 +62,10 @@ CREATE TABLE generated_reports (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE generated_report_items (
+CREATE TABLE syllabus_generated_report_items (
   id                        UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  generated_report_id       UUID        NOT NULL REFERENCES generated_reports(id) ON DELETE CASCADE,
-  required_element_id       UUID        NOT NULL REFERENCES required_elements(id) ON DELETE RESTRICT,
+  generated_report_id       UUID        NOT NULL REFERENCES syllabus_generated_reports(id) ON DELETE CASCADE,
+  required_element_id       UUID        NOT NULL REFERENCES syllabus_required_elements(id) ON DELETE RESTRICT,
   status                    TEXT        NOT NULL CHECK (status IN ('met', 'not_met', 'partially_met')),
   description               TEXT        NOT NULL DEFAULT '',
   evidence                  TEXT        NOT NULL DEFAULT '',
@@ -58,7 +75,7 @@ CREATE TABLE generated_report_items (
   UNIQUE (generated_report_id, required_element_id)
 );
 
-CREATE TABLE ai_completions (
+CREATE TABLE syllabus_ai_completions (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   topic       TEXT        NOT NULL,
   event       TEXT        NOT NULL,
@@ -69,13 +86,6 @@ CREATE TABLE ai_completions (
   result      TEXT        NOT NULL DEFAULT '',
   thinking    TEXT        NOT NULL DEFAULT '',
   inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE site_config (
-  key         TEXT        PRIMARY KEY,
-  value       TEXT        NOT NULL,
-  inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE syllabi (
@@ -99,7 +109,7 @@ CREATE TABLE syllabi (
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE cached_organizations (
+CREATE TABLE syllabus_cached_organizations (
   id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id          TEXT        NOT NULL UNIQUE,
   parent_org_id   TEXT,
@@ -111,7 +121,7 @@ CREATE TABLE cached_organizations (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE available_terms (
+CREATE TABLE syllabus_available_terms (
   id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   term_id         TEXT        NOT NULL UNIQUE,
   term_name       TEXT        NOT NULL,
@@ -120,33 +130,3 @@ CREATE TABLE available_terms (
   inserted_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
--- Indexes for performance
-CREATE INDEX ai_completions_inserted_at_idx ON ai_completions (inserted_at DESC);
-CREATE INDEX syllabi_org_id_idx ON syllabi (org_id);
-CREATE INDEX syllabi_linked_emails_idx ON syllabi USING GIN (linked_emails);
-CREATE INDEX syllabi_sync_status_idx ON syllabi (sync_status);
-CREATE INDEX syllabi_term_id_org_id_idx ON syllabi (term_id, org_id);
-CREATE INDEX term_syncs_status_idx ON term_syncs (status);
-CREATE INDEX term_syncs_term_id_idx ON term_syncs (term_id);
-CREATE UNIQUE INDEX only_one_active_sync_idx ON term_syncs (status) WHERE status = 'in_progress';
-CREATE INDEX cached_organizations_level_idx ON cached_organizations (level);
-CREATE INDEX syllabus_sync_log_term_sync_id_idx ON syllabus_sync_log (term_sync_id);
-CREATE INDEX available_terms_status_idx ON available_terms (status);
-CREATE INDEX available_terms_cached_at_idx ON available_terms (cached_at);
-
--- ============================================================================
--- MIGRATION NOTES FOR EXISTING DATABASES
--- ============================================================================
--- If migraticached_organizations_level_idx ON cached_organizations (level
--- 2. Ensure syllabi columns sync_status, sync_error, synced_at exist:
---    ALTER TABLE syllabi ADD COLUMN IF NOT EXISTS
---      sync_status TEXT NOT NULL DEFAULT 'pending' CHECK (sync_status IN ('pending', 'synced', 'error')),
---      sync_error TEXT,
---      synced_at TIMESTAMPTZ;
---
--- 3. Verify all indexes are created. If missing, create them individually:
---    See index creation statements above.
---
--- For a fresh database, simply run this entire schema.sql as-is.
--- ============================================================================

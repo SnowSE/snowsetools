@@ -1,9 +1,9 @@
-defmodule SimpleSyllabusReporter.MixProject do
+defmodule SnowSeTools.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :simple_syllabus_reporter,
+      app: :snow_se_tools,
       version: "0.1.0",
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -20,7 +20,7 @@ defmodule SimpleSyllabusReporter.MixProject do
   # Type `mix help compile.app` for more information.
   def application do
     [
-      mod: {SimpleSyllabusReporter.Application, []},
+      mod: {SnowSeTools.Application, []},
       extra_applications: [:logger, :runtime_tools]
     ]
   end
@@ -43,12 +43,12 @@ defmodule SimpleSyllabusReporter.MixProject do
       {:phoenix, "~> 1.8.5"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
-      {:phoenix_live_view, "~> 1.1.0"},
+      {:phoenix_live_view, "~> 1.2.0"},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:html_sanitize_ex, "~> 1.4"},
       {:phoenix_live_dashboard, "~> 0.8.3"},
       {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
-      {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
+      {:tailwind, "~> 0.5", runtime: Mix.env() == :dev},
       {:heroicons,
        github: "tailwindlabs/heroicons",
        tag: "v2.2.0",
@@ -84,12 +84,12 @@ defmodule SimpleSyllabusReporter.MixProject do
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": [
         "compile",
-        "tailwind simple_syllabus_reporter",
-        "esbuild simple_syllabus_reporter"
+        "tailwind snow_se_tools",
+        "esbuild snow_se_tools"
       ],
       "assets.deploy": [
-        "tailwind simple_syllabus_reporter --minify",
-        "esbuild simple_syllabus_reporter --minify",
+        "tailwind snow_se_tools --minify",
+        "esbuild snow_se_tools --minify",
         "phx.digest"
       ],
       precommit: [

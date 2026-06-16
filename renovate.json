@@ -12,8 +12,10 @@
     }
   ],
   "kubernetes": {
-    "managerFilePatterns": [
-      "/^k8s/.+\\.ya?ml$/"
-    ]
+    "managerFilePatterns": ["/^k8s/.+\\.ya?ml$/"]
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true
   }
 }

@@ -17,6 +17,7 @@ metadata:
   namespace: simple-syllabus
 spec:
   replicas: 1
+  revisionHistoryLimit: 4
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -32,7 +33,7 @@ spec:
     spec:
       containers:
         - name: webapp
-          image: ghcr.io/alexmickelson/simple-syllabus-reporter:54
+          image: ghcr.io/alexmickelson/simple-syllabus-reporter:57
           ports:
             - containerPort: 4000
           envFrom:

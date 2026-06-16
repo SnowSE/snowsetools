@@ -17,9 +17,9 @@ patches:
               - name: webapp
                 env:
                   - name: PHX_HOST
-                    value: "alexsimplesyllabuscheck.snowse.io"
+                    value: "simplesyllabuscheck.snowse.io"
                   - name: OIDC_REDIRECT_URI
-                    value: "https://alexsimplesyllabuscheck.snowse.io/auth/callback"
+                    value: "https://simplesyllabuscheck.snowse.io/auth/callback"
 
     target:
       kind: Deployment
@@ -38,8 +38,8 @@ patches:
             namespace: istio-system
             kind: Gateway
         hostnames:
+          - "simplesyllabuscheck.snowse.io"
           - webapp.simple-syllabus.svc.cluster.local
-          - "alexsimplesyllabuscheck.snowse.io"
     target:
       kind: HTTPRoute
       name: simple-syllabus

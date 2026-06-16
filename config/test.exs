@@ -2,7 +2,7 @@ import Config
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
-config :simple_syllabus_reporter, SimpleSyllabusReporterWeb.Endpoint,
+config :snow_se_tools, SnowSeToolsWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
   secret_key_base: "MxJlN/focNzVRl/22870oWk+cubOB3gmOTTdZQpmTptLbe4h3v73wkyYCt93fRpK",
   server: false

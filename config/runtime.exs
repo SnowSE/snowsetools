@@ -13,30 +13,30 @@ source!([
 # any compile-time configuration in here, as it won't be applied.
 
 if env!("PHX_SERVER", :boolean, false) do
-  config :simple_syllabus_reporter, SimpleSyllabusReporterWeb.Endpoint, server: true
+  config :snow_se_tools, SnowSeToolsWeb.Endpoint, server: true
 end
 
-config :simple_syllabus_reporter, :oidc,
+config :snow_se_tools, :oidc,
   issuer: env!("OIDC_ISSUER", :string!),
   client_id: env!("OIDC_CLIENT_ID", :string!),
   redirect_uri: env!("OIDC_REDIRECT_URI", :string, nil)
 
-config :simple_syllabus_reporter, :ai,
+config :snow_se_tools, :ai,
   endpoint: env!("AI_ENDPOINT", :string!),
   api_key: env!("AI_API_KEY", :string!),
   model: env!("AI_MODEL", :string!)
 
-config :simple_syllabus_reporter, SimpleSyllabusReporterWeb.Endpoint,
+config :snow_se_tools, SnowSeToolsWeb.Endpoint,
   http: [port: env!("PORT", :integer, 4000), ip: {0, 0, 0, 0}]
 
 if System.get_env("DATABASE_URL") do
   if config_env() == :test do
-    config :simple_syllabus_reporter, SimpleSyllabusReporter.Repo,
+    config :snow_se_tools, SnowSeTools.Repo,
       url: env!("DATABASE_URL", :string!),
       pool: Ecto.Adapters.SQL.Sandbox,
       pool_size: env!("POOL_SIZE", :integer, 5)
   else
-    config :simple_syllabus_reporter, SimpleSyllabusReporter.Repo,
+    config :snow_se_tools, SnowSeTools.Repo,
       url: env!("DATABASE_URL", :string!),
       pool_size: env!("POOL_SIZE", :integer, 20),
       queue_target: 500,
@@ -48,7 +48,7 @@ if config_env() == :prod do
   secret_key_base = env!("SECRET_KEY_BASE", :string!)
   host = env!("PHX_HOST", :string!)
 
-  config :simple_syllabus_reporter, SimpleSyllabusReporterWeb.Endpoint,
+  config :snow_se_tools, SnowSeToolsWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     secret_key_base: secret_key_base
 end
