@@ -33,24 +33,7 @@ defmodule SnowSeToolsWeb.AppHeader do
           >
             Syllabi
           </.link>
-          <.link
-            navigate={~p"/reports/required-elements"}
-            class={nav_link_class(@current_path, ~p"/reports/required-elements")}
-          >
-            Required Elements
-          </.link>
-          <.link
-            navigate={~p"/ai/completions"}
-            class={nav_link_class(@current_path, ~p"/ai/completions")}
-          >
-            AI History
-          </.link>
-          <.link
-            navigate={~p"/config"}
-            class={nav_link_class(@current_path, ~p"/config")}
-          >
-            Settings
-          </.link>
+
           <span class="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-300">
             <.icon name="hero-user-circle" class="size-4" />
             {@current_user.email}

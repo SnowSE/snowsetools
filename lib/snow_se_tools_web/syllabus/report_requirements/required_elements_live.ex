@@ -270,44 +270,37 @@ defmodule SnowSeToolsWeb.Reports.RequiredElementsLive do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      current_user={@current_user}
-      socket={@socket}
-      current_path={@current_path}
-    >
-      <div class="w-6xl mx-auto px-4 py-8">
-        <div class="flex items-center justify-between mb-6">
-          <div>
-            <h1 class="text-xl font-semibold text-slate-100">Required Elements</h1>
-          </div>
-          <button
-            id="new-element-btn"
-            type="button"
-            phx-click="new"
-            class="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-slate-50 text-sm font-medium rounded-lg transition-colors"
-          >
-            <span class="hero-plus size-4" /> New Element
-          </button>
+    <div class="w-6xl mx-auto px-4 py-8">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h1 class="text-xl font-semibold text-slate-100">Required Elements</h1>
         </div>
-
-        <% selected = Enum.find(@elements, &(&1["id"] == @expanded_id)) %>
-        <div class="flex gap-5 items-start h-[calc(100vh-10rem)] min-h-0">
-          <.elements_list elements={@elements} expanded_id={@expanded_id} />
-          <.element_detail
-            selected={selected}
-            editing={@editing}
-            form_errors={@form_errors}
-            confirm_delete={@confirm_delete}
-            instructions={@instructions}
-            editing_instruction={@editing_instruction}
-            instruction_errors={@instruction_errors}
-            confirm_delete_instruction={@confirm_delete_instruction}
-            element_counts={@element_counts}
-          />
-        </div>
+        <button
+          id="new-element-btn"
+          type="button"
+          phx-click="new"
+          class="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-slate-50 text-sm font-medium rounded-lg transition-colors"
+        >
+          <span class="hero-plus size-4" /> New Element
+        </button>
       </div>
-    </Layouts.app>
+
+      <% selected = Enum.find(@elements, &(&1["id"] == @expanded_id)) %>
+      <div class="flex gap-5 items-start h-[calc(100vh-10rem)] min-h-0">
+        <.elements_list elements={@elements} expanded_id={@expanded_id} />
+        <.element_detail
+          selected={selected}
+          editing={@editing}
+          form_errors={@form_errors}
+          confirm_delete={@confirm_delete}
+          instructions={@instructions}
+          editing_instruction={@editing_instruction}
+          instruction_errors={@instruction_errors}
+          confirm_delete_instruction={@confirm_delete_instruction}
+          element_counts={@element_counts}
+        />
+      </div>
+    </div>
     """
   end
 end

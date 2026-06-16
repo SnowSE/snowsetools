@@ -2,185 +2,53 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusLive do
   use SnowSeToolsWeb, :live_view
   require Logger
 
-  alias SnowSeToolsWeb.Syllabus.ReportHandlers
-  alias SnowSeToolsWeb.Syllabus.SyllabusSearchResultsList
-  alias SnowSeToolsWeb.Syllabus.SyllabusDetail
-  alias SnowSeToolsWeb.Syllabus.SearchQuickNavigation
-  alias SnowSeToolsWeb.Syllabus.SyllabusSearchForm
-  alias SnowSeTools.Syllabi.SyllabusDomainManager
-  alias SnowSeTools.ConfigDB
-  alias SnowSeTools.Reports.ReportGenerationStatus
-  alias SnowSeTools.Reports.ReportGeneratorDomainManger
-
   on_mount {SnowSeToolsWeb.UserAuth, :ensure_authenticated}
 
-  def mount(_params, _session, socket) do
-    if connected?(socket) do
-      ReportGenerationStatus.subscribe()
-      ConfigDB.subscribe()
-    end
-
+  def mount(_params, session, socket) do
     socket =
       socket
       |> assign(:page_title, "Syllabus Search")
-      |> assign(:query, "")
-      |> assign(:selected, nil)
-      |> assign(:loading_detail, false)
-      |> assign(:detail_error, nil)
-      |> assign(:search_error, nil)
-      |> ReportHandlers.mount_assigns()
+      |> assign(:session_id, session["current_user_id"])
+      |> assign(:mode, :search)
+      |> assign(:search_live_pid, nil)
+      |> assign(:search_params, %{})
+      |> assign(:modes,
+        search: "Search Syllabi",
+        required_elements: "Required Elements",
+        ai_history: "AI History",
+        settings: "Settings"
+      )
 
     {:ok, socket}
   end
 
-  def handle_params(%{"q" => query} = params, _uri, socket) do
-    code = params["code"]
-    title = params["title"]
-    term = params["term"] || ""
-    prev_code = socket.assigns.selected && socket.assigns.selected["code"]
-    code_changed? = code != prev_code
+  def handle_params(params, _uri, socket) do
+    query = params["q"] || ""
 
-    socket = assign(socket, :query, query)
-
-    socket =
-      cond do
-        code && code_changed? ->
-          ReportGeneratorDomainManger.request_items_for_code(code, self())
-
-          socket
-          |> ReportHandlers.clear_detail()
-          |> assign(:loading_detail, true)
-          |> assign(:detail_error, nil)
-          |> assign(:selected, %{
-            "code" => code,
-            "title" => (socket.assigns.selected || %{})["title"] || title || code,
-            "term" => term
-          })
-          |> assign(:generating, MapSet.new())
-          |> start_async(:fetch_detail, fn -> SyllabusDomainManager.get_detail(code) end)
-
-        is_nil(code) && code_changed? ->
-          ReportHandlers.clear_detail(socket)
-
-        true ->
-          socket
-      end
-
-    {:noreply, push_event(socket, "save_state", %{query: query})}
-  end
-
-  def handle_params(_params, _uri, socket) do
-    {:noreply, socket}
-  end
-
-  def handle_event("restore_state", %{"query" => query}, socket)
-      when is_binary(query) and byte_size(query) > 0 do
-    {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}")}
-  end
-
-  def handle_event("restore_state", _params, socket), do: {:noreply, socket}
-
-  def handle_event("search", %{"query" => query}, socket) do
-    {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}")}
-  end
-
-  @detail_events ~w[
-    select_element
-    open_correction
-    cancel_correction
-    save_correction
-    generate_report
-    generate_missing_for_selected
-  ]
-
-  def handle_event(event, params, socket) when event in @detail_events do
-    ReportHandlers.handle_event(event, params, socket)
-  end
-
-  def handle_async(:fetch_detail, {:ok, {:ok, doc}}, socket) do
-    prev = socket.assigns.selected
-
-    merged =
-      Map.merge(doc, %{"code" => prev["code"], "title" => prev["title"], "term" => prev["term"]})
-
-    {:noreply, socket |> assign(:loading_detail, false) |> assign(:selected, merged)}
-  end
-
-  def handle_async(:fetch_detail, {:ok, {:error, reason}}, socket) do
-    {:noreply, socket |> assign(:loading_detail, false) |> assign(:detail_error, reason)}
-  end
-
-  def handle_async(:fetch_detail, {:exit, reason}, socket) do
-    {:noreply, socket |> assign(:loading_detail, false) |> assign(:detail_error, inspect(reason))}
-  end
-
-  def handle_info({:quick_nav, query}, socket) do
-    {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}")}
-  end
-
-  def handle_info({:report_counts_loaded, result}, socket) do
-    Phoenix.LiveView.send_update(SyllabusSearchResultsList,
-      id: "search-results",
-      report_counts_loaded: result
-    )
-
-    {:noreply, socket}
-  end
-
-  def handle_info(%ReportGenerationStatus.PendingUpdate{pending: pending} = msg, socket) do
-    Phoenix.LiveView.send_update(SyllabusSearchResultsList,
-      id: "search-results",
-      pending_update: pending
-    )
-
-    ReportHandlers.handle_info(msg, socket)
-  end
-
-  def handle_info(
-        %ReportGenerationStatus.ItemResult{
-          code: code,
-          element_id: element_id,
-          result: {:ok, item}
-        } =
-          msg,
-        socket
-      ) do
-    old_status = get_in(socket.assigns.report_items, [element_id, "status"])
-    new_status = item["status"]
-
-    Phoenix.LiveView.send_update(SyllabusSearchResultsList,
-      id: "search-results",
-      report_counts_update: {code, old_status, new_status}
-    )
-
-    ReportHandlers.handle_info(msg, socket)
-  end
-
-  def handle_info({:term_changed, _term_id}, socket) do
-    query = socket.assigns.query
-
-    next =
-      if byte_size(query) > 0 do
-        ~p"/syllabi?q=#{query}"
-      else
-        ~p"/syllabi"
-      end
-
-    {:noreply, push_patch(socket, to: next)}
-  end
-
-  def handle_info(message, socket) do
-    case ReportHandlers.handle_info(message, socket) do
-      :unhandled ->
-        Logger.warning(
-          "SyllabusLive: completely unhandled handle_info message: #{inspect(message)}"
-        )
-
-        {:noreply, socket}
-
-      result ->
-        result
+    if search_live = socket.assigns.search_live_pid do
+      send(search_live, {:navigate_params, params})
     end
+
+    {:noreply, socket |> assign(:query, query) |> assign(:search_params, params)}
+  end
+
+  def handle_event("switch_mode", %{"mode" => mode}, socket) do
+    mode_atom = String.to_existing_atom(mode)
+    {:noreply, assign(socket, :mode, mode_atom)}
+  end
+
+  def handle_info({:search_navigate, query}, socket) do
+    {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}")}
+  end
+
+  def handle_info({:term_changed_from_child, query}, socket) do
+    path = if byte_size(query) > 0, do: ~p"/syllabi?q=#{query}", else: ~p"/syllabi"
+    {:noreply, push_patch(socket, to: path)}
+  end
+
+  def handle_info({:syllabus_search_live_ready, pid}, socket) when is_pid(pid) do
+    send(pid, {:navigate_params, socket.assigns.search_params})
+    {:noreply, assign(socket, :search_live_pid, pid)}
   end
 
   def render(assigns) do
@@ -191,88 +59,58 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusLive do
       socket={@socket}
       current_path={@current_path}
     >
-      <div
-        id="syllabus-page"
-        phx-hook=".SyllabusState"
-        class="flex flex-col h-full min-h-0 max-w-[2000px] mx-auto w-full p-4"
-      >
-        <.live_component
-          module={SearchQuickNavigation}
-          id="quick-navigation"
-          current_user={@current_user}
-          active_query={@query}
-        />
-        <SyllabusSearchForm.search_form
-          query={@query}
-          loading_search={false}
-        />
-
-        <%= if @search_error do %>
-          <div
-            id="search-error"
-            class="mb-3 rounded-lg bg-red-900/40 border border-red-700 px-4 py-3 text-red-300 text-sm"
-          >
-            {@search_error}
+      <div class="flex flex-col h-full min-h-0">
+        <div class="border-b border-slate-700/60 shrink-0">
+          <div class="max-w-[2000px] mx-auto w-full flex items-center gap-1 px-4">
+            <%= for {mode_key, label} <- @modes do %>
+              <button
+                id={"tab-#{mode_key}"}
+                type="button"
+                phx-click="switch_mode"
+                phx-value-mode={mode_key}
+                class={[
+                  "px-4 py-2.5 text-sm font-medium border-b-2 transition-colors cursor-pointer",
+                  @mode == mode_key &&
+                    "text-indigo-300 border-indigo-400",
+                  @mode != mode_key &&
+                    "text-slate-400 border-transparent hover:text-slate-200 hover:border-slate-500"
+                ]}
+              >
+                {label}
+              </button>
+            <% end %>
           </div>
-        <% end %>
+        </div>
 
-        <div class="flex gap-6 min-h-0 flex-1 overflow-hidden">
-          <.live_component
-            module={SyllabusSearchResultsList}
-            id="search-results"
-            query={@query}
-            selected={@selected}
-            elements={@elements}
-          />
-
-          <%= if @selected do %>
-            <SyllabusDetail.detail_panel
-              selected={@selected}
-              loading_detail={@loading_detail}
-              detail_error={@detail_error}
-              elements={@elements}
-              loading_elements={@loading_elements}
-              selected_element_id={@selected_element_id}
-              report_items={@report_items}
-              generating={@generating}
-              generation_errors={@generation_errors}
-              correcting_element_id={@correcting_element_id}
-            />
-          <% else %>
-            <SyllabusDetail.detail_panel_placeholder />
+        <div class="flex-1 min-h-0">
+          <%= case @mode do %>
+            <% :search -> %>
+              {live_render(@socket, SnowSeToolsWeb.Syllabus.SyllabusSearchLive,
+                id: "syllabus-search",
+                session: %{
+                  "current_user_id" => @session_id,
+                  "parent_pid" => self() |> :erlang.pid_to_list() |> to_string()
+                }
+              )}
+            <% :required_elements -> %>
+              {live_render(@socket, SnowSeToolsWeb.Reports.RequiredElementsLive,
+                id: "required-elements",
+                session: %{"current_user_id" => @session_id}
+              )}
+            <% :ai_history -> %>
+              {live_render(@socket, SnowSeToolsWeb.AI.CompletionsHistoryLive,
+                id: "ai-history",
+                session: %{"current_user_id" => @session_id}
+              )}
+            <% :settings -> %>
+              {live_render(@socket, SnowSeToolsWeb.Config.SimpleSyllabusConfig,
+                id: "settings",
+                session: %{"current_user_id" => @session_id}
+              )}
           <% end %>
         </div>
       </div>
     </Layouts.app>
-
-    <script :type={Phoenix.LiveView.ColocatedHook} name=".SyllabusState">
-      export default {
-        mounted() {
-          const url = new URL(window.location.href);
-          if (!url.searchParams.has("q")) {
-            try {
-              const stored = localStorage.getItem("syllabi_state");
-              if (stored) {
-                const state = JSON.parse(stored);
-                if (state && state.query) {
-                  this.pushEvent("restore_state", state);
-                }
-              }
-            } catch (e) {
-              console.error("SyllabusState: failed to read localStorage", e);
-            }
-          }
-
-          this.handleEvent("save_state", (data) => {
-            try {
-              localStorage.setItem("syllabi_state", JSON.stringify(data));
-            } catch (e) {
-              console.error("SyllabusState: failed to write localStorage", e);
-            }
-          });
-        }
-      }
-    </script>
     """
   end
 end

@@ -29,11 +29,8 @@ defmodule SnowSeToolsWeb.Router do
     pipe_through [:browser, :require_authenticated]
 
     live "/home", Home.HomeLive
-    live "/syllabi", Syllabus.SyllabusLive
+    live "/syllabi", Syllabus.SyllabusLive, :index
     live "/syllabi/report", Syllabus.SyllabusReportLive
-    live "/reports/required-elements", Reports.RequiredElementsLive
-    live "/ai/completions", AI.CompletionsHistoryLive
-    live "/config", Config.SimpleSyllabusConfig
   end
 
   scope "/auth", SnowSeToolsWeb do

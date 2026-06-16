@@ -9,7 +9,6 @@ defmodule SnowSeTools.ConfigDB do
   def subscribe, do: Phoenix.PubSub.subscribe(@pubsub, @topic)
   def unsubscribe, do: Phoenix.PubSub.unsubscribe(@pubsub, @topic)
 
-  @doc "Returns the currently selected term_id, or nil if none is set."
   def get_current_term do
     sql = "SELECT value FROM site_config WHERE key = $(key)"
 
@@ -20,7 +19,6 @@ defmodule SnowSeTools.ConfigDB do
     end
   end
 
-  @doc "Sets the current term. Pass nil to clear the selection."
   def set_current_term(nil) do
     sql = "DELETE FROM site_config WHERE key = $(key)"
 
@@ -51,7 +49,6 @@ defmodule SnowSeTools.ConfigDB do
     end
   end
 
-  @doc "Returns all available terms from the syllabus_available_terms table, sorted by term_id descending."
   def list_available_terms do
     case AvailableTermsDb.list_active_terms() do
       {:ok, terms} ->

@@ -51,13 +51,37 @@ defmodule SnowSeTools.Syllabi.AvailableTermsDb do
 
       rows ->
         terms =
-          Enum.map(rows, fn row ->
-            {row["term_id"], row["term_name"]}
-          end)
+          rows
+          |> Enum.map(fn row -> {row["term_id"], row["term_name"]} end)
+          |> Enum.sort_by(&sort_key/1)
+          |> Enum.reverse()
 
         {:ok, terms}
     end
   end
+
+  defp sort_key({_term_id, "The End of Time"}), do: {0, 0}
+  defp sort_key({_term_id, "Initial Term"}), do: {9999, 0}
+  defp sort_key({_term_id, term_name}), do: parse_year_season(term_name)
+
+  defp parse_year_season(name) when is_binary(name) do
+    case String.split(name, " ", parts: 2) do
+      [season, year_str] ->
+        with {year, _} <- Integer.parse(year_str) do
+          {year, season_order(season)}
+        else
+          _ -> {9999, 99}
+        end
+
+      _ ->
+        {9999, 99}
+    end
+  end
+
+  defp season_order("Summer"), do: 2
+  defp season_order("Spring"), do: 1
+  defp season_order("Fall"), do: 3
+  defp season_order(_other), do: 0
 
   def get_term(term_id) do
     sql = """
@@ -91,7 +115,7 @@ defmodule SnowSeTools.Syllabi.AvailableTermsDb do
         err
 
       [row] ->
-        {:ok, row["count"]}
+        {:ok, String.to_integer(row["count"])}
     end
   end
 end

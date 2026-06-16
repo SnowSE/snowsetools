@@ -13,10 +13,7 @@ defmodule SnowSeToolsWeb.UserAuth do
           socket
           |> assign(:current_user, user)
           |> schedule_session_refresh(session)
-          |> attach_hook(:track_current_path, :handle_params, fn _params, url, socket ->
-            %{path: path} = URI.parse(url)
-            {:cont, assign(socket, :current_path, path)}
-          end)
+          |> track_current_path()
 
         {:cont, socket}
 
@@ -32,6 +29,15 @@ defmodule SnowSeToolsWeb.UserAuth do
 
   # Refresh 60 seconds before expiry. Must be shorter than the token lifetime.
   @refresh_before_seconds 60
+
+  defp track_current_path(%{parent_pid: nil} = socket) do
+    attach_hook(socket, :track_current_path, :handle_params, fn _params, url, socket ->
+      %{path: path} = URI.parse(url)
+      {:cont, assign(socket, :current_path, path)}
+    end)
+  end
+
+  defp track_current_path(socket), do: socket
 
   defp schedule_session_refresh(socket, %{"session_expires_at" => exp}) when is_integer(exp) do
     now = System.system_time(:second)
