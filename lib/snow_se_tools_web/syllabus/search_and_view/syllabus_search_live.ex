@@ -8,6 +8,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
   alias SnowSeToolsWeb.Syllabus.SearchQuickNavigation
   alias SnowSeToolsWeb.Syllabus.SyllabusSearchForm
   alias SnowSeTools.Syllabi.SyllabusDomainManager
+  alias SnowSeTools.Syllabi.AvailableTermsDb
   alias SnowSeTools.ConfigDB
   alias SnowSeTools.Reports.ReportGenerationStatus
   alias SnowSeTools.Reports.ReportGeneratorDomainManger
@@ -22,17 +23,22 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
 
     if connected?(socket) do
       ReportGenerationStatus.subscribe()
-      ConfigDB.subscribe()
 
       if parent_pid do
         send(parent_pid, {:syllabus_search_live_ready, self()})
       end
     end
 
+    available_terms = list_available_terms()
+    selected_term_id = normalize_term_id(ConfigDB.get_current_term())
+
     socket =
       socket
       |> assign(:page_title, "Syllabus Search")
       |> assign(:query, "")
+      |> assign(:available_terms, available_terms)
+      |> assign(:selected_term_id, selected_term_id)
+      |> assign(:selected_term_name, find_term_name(available_terms, selected_term_id))
       |> assign(:selected, nil)
       |> assign(:loading_detail, false)
       |> assign(:detail_error, nil)
@@ -43,8 +49,10 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
     {:ok, socket}
   end
 
-  def handle_event("restore_state", %{"query" => query}, socket)
+  def handle_event("restore_state", %{"query" => query} = params, socket)
       when is_binary(query) and byte_size(query) > 0 do
+    socket = maybe_restore_term(params, socket)
+
     if pid = socket.assigns.parent_pid do
       send(pid, {:search_navigate, query})
     end
@@ -60,6 +68,21 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
     end
 
     {:noreply, socket}
+  end
+
+  def handle_event("set_search_term", %{"term_id" => term_id}, socket) do
+    selected_term_id = normalize_term_id(term_id)
+
+    socket =
+      socket
+      |> assign(:selected_term_id, selected_term_id)
+      |> assign(
+        :selected_term_name,
+        find_term_name(socket.assigns.available_terms, selected_term_id)
+      )
+      |> ReportHandlers.clear_detail()
+
+    {:noreply, push_event(socket, "save_state", state_payload(socket))}
   end
 
   @detail_events ~w[
@@ -105,7 +128,8 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
     socket =
       cond do
         code && code_changed? ->
-          ReportGeneratorDomainManger.request_items_for_code(code, self())
+          term_id = socket.assigns.selected_term_id
+          ReportGeneratorDomainManger.request_items_for_code(code, self(), term_id: term_id)
 
           socket
           |> ReportHandlers.clear_detail()
@@ -117,7 +141,9 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
             "term" => term
           })
           |> assign(:generating, MapSet.new())
-          |> start_async(:fetch_detail, fn -> SyllabusDomainManager.get_detail(code) end)
+          |> start_async(:fetch_detail, fn ->
+            SyllabusDomainManager.get_detail(code, term_id: term_id)
+          end)
 
         is_nil(code) && code_changed? ->
           ReportHandlers.clear_detail(socket)
@@ -126,7 +152,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
           socket
       end
 
-    {:noreply, push_event(socket, "save_state", %{query: query})}
+    {:noreply, push_event(socket, "save_state", state_payload(socket))}
   end
 
   def handle_info({:quick_nav, query}, socket) do
@@ -175,14 +201,6 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
     ReportHandlers.handle_info(msg, socket)
   end
 
-  def handle_info({:term_changed, _term_id}, socket) do
-    if pid = socket.assigns.parent_pid do
-      send(pid, {:term_changed_from_child, socket.assigns.query})
-    end
-
-    {:noreply, socket}
-  end
-
   def handle_info(message, socket) do
     case ReportHandlers.handle_info(message, socket) do
       :unhandled ->
@@ -200,7 +218,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
   def render(assigns) do
     ~H"""
     <div
-      id="syllabus-search"
+      id="syllabus-search-panel"
       phx-hook=".SyllabusState"
       class="flex flex-col h-full min-h-0 max-w-[2000px] mx-auto w-full p-4"
     >
@@ -213,6 +231,8 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
       <SyllabusSearchForm.search_form
         query={@query}
         loading_search={false}
+        available_terms={@available_terms}
+        selected_term_id={@selected_term_id}
       />
 
       <%= if @search_error do %>
@@ -229,6 +249,8 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
           module={SyllabusSearchResultsList}
           id="search-results"
           query={@query}
+          selected_term_id={@selected_term_id}
+          selected_term_name={@selected_term_name}
           selected={@selected}
           elements={@elements}
         />
@@ -281,5 +303,45 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
       }
     </script>
     """
+  end
+
+  defp list_available_terms do
+    case AvailableTermsDb.list_active_terms() do
+      {:ok, terms} ->
+        terms
+
+      {:error, reason} ->
+        Logger.error("SyllabusSearchLive: failed to load available terms: #{inspect(reason)}")
+        []
+    end
+  end
+
+  defp normalize_term_id(""), do: nil
+  defp normalize_term_id(term_id) when is_binary(term_id), do: term_id
+  defp normalize_term_id(_term_id), do: nil
+
+  defp find_term_name(_terms, nil), do: "All terms"
+
+  defp find_term_name(terms, term_id) do
+    Enum.find_value(terms, term_id, fn {id, name} ->
+      if id == term_id, do: name
+    end)
+  end
+
+  defp maybe_restore_term(%{"term_id" => term_id}, socket) do
+    selected_term_id = normalize_term_id(term_id)
+
+    socket
+    |> assign(:selected_term_id, selected_term_id)
+    |> assign(
+      :selected_term_name,
+      find_term_name(socket.assigns.available_terms, selected_term_id)
+    )
+  end
+
+  defp maybe_restore_term(_params, socket), do: socket
+
+  defp state_payload(socket) do
+    %{query: socket.assigns.query, term_id: socket.assigns.selected_term_id}
   end
 end

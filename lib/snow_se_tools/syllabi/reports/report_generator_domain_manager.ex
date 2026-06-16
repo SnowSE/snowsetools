@@ -35,7 +35,7 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
         report_ids: %{},
         broadcast_timer: nil,
         counts: %{},
-        syllabi_codes: []
+        syllabi_codes_by_term: %{}
       },
       name: __MODULE__
     )
@@ -61,12 +61,16 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
     GenServer.call(__MODULE__, {:get_coverage, element_id})
   end
 
-  def get_syllabi_codes do
-    GenServer.call(__MODULE__, :get_syllabi_codes)
+  def get_syllabi_codes(opts \\ []) do
+    GenServer.call(__MODULE__, {:get_syllabi_codes, Keyword.get(opts, :term_id)})
   end
 
   def set_syllabi_codes(codes) when is_list(codes) do
-    GenServer.cast(__MODULE__, {:set_syllabi_codes, codes})
+    set_syllabi_codes(codes, term_id: nil)
+  end
+
+  def set_syllabi_codes(codes, term_id: term_id) when is_list(codes) do
+    GenServer.cast(__MODULE__, {:set_syllabi_codes, codes, term_id})
   end
 
   def request_totals(pid) do
@@ -86,11 +90,19 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
   end
 
   def request_items_for_code(code, pid) do
-    GenServer.cast(__MODULE__, {:request_items_for_code, code, pid})
+    request_items_for_code(code, pid, term_id: nil)
+  end
+
+  def request_items_for_code(code, pid, term_id: term_id) do
+    GenServer.cast(__MODULE__, {:request_items_for_code, code, pid, term_id})
   end
 
   def request_report_counts(codes, pid) when is_list(codes) do
-    GenServer.cast(__MODULE__, {:request_report_counts, codes, pid})
+    request_report_counts(codes, pid, term_id: nil)
+  end
+
+  def request_report_counts(codes, pid, term_id: term_id) when is_list(codes) do
+    GenServer.cast(__MODULE__, {:request_report_counts, codes, pid, term_id})
   end
 
   def request_elements(pid) do
@@ -98,11 +110,19 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
   end
 
   def generate_missing_for_codes(codes, elements) when is_list(codes) do
-    GenServer.cast(__MODULE__, {:generate_missing_for_codes, codes, elements})
+    generate_missing_for_codes(codes, elements, term_id: nil)
+  end
+
+  def generate_missing_for_codes(codes, elements, term_id: term_id) when is_list(codes) do
+    GenServer.cast(__MODULE__, {:generate_missing_for_codes, codes, elements, term_id})
   end
 
   def regenerate_non_met_for_code(code, elements) do
-    GenServer.cast(__MODULE__, {:regenerate_non_met_for_code, code, elements})
+    regenerate_non_met_for_code(code, elements, term_id: nil)
+  end
+
+  def regenerate_non_met_for_code(code, elements, term_id: term_id) do
+    GenServer.cast(__MODULE__, {:regenerate_non_met_for_code, code, elements, term_id})
   end
 
   @impl true
@@ -121,13 +141,14 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
   end
 
   @impl true
-  def handle_call(:get_syllabi_codes, _from, state) do
-    {:reply, state.syllabi_codes, state}
+  def handle_call({:get_syllabi_codes, term_id}, _from, state) do
+    {:reply, Map.get(state.syllabi_codes_by_term, term_key(term_id), []), state}
   end
 
   @impl true
-  def handle_cast({:set_syllabi_codes, codes}, state) do
-    {:noreply, %{state | syllabi_codes: codes}}
+  def handle_cast({:set_syllabi_codes, codes, term_id}, state) do
+    syllabi_codes_by_term = Map.put(state.syllabi_codes_by_term, term_key(term_id), codes)
+    {:noreply, %{state | syllabi_codes_by_term: syllabi_codes_by_term}}
   end
 
   @impl true
@@ -164,7 +185,7 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
       {:noreply, state}
     else
       case ensure_report_id(code, syllabus_doc, state.report_ids) do
-        {:ok, report_id, new_report_ids} ->
+        {:ok, report_id, report_key, new_report_ids} ->
           server = self()
 
           Task.start(fn ->
@@ -178,7 +199,13 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
           end)
 
           {:noreply,
-           add_pending(%{state | report_ids: new_report_ids}, code, element_id, report_id)}
+           add_pending(
+             %{state | report_ids: new_report_ids},
+             code,
+             element_id,
+             report_key,
+             report_id
+           )}
 
         {:error, reason} ->
           Logger.error(
@@ -250,14 +277,18 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
     {:noreply, state}
   end
 
-  def handle_cast({:request_items_for_code, code, pid}, state) do
-    Task.start(fn -> send(pid, {:report_items_loaded, fetch_items_for_code(code)}) end)
+  def handle_cast({:request_items_for_code, code, pid, term_id}, state) do
+    Task.start(fn -> send(pid, {:report_items_loaded, fetch_items_for_code(code, term_id)}) end)
     {:noreply, state}
   end
 
-  def handle_cast({:request_report_counts, codes, pid}, state) do
+  def handle_cast({:request_report_counts, codes, pid, term_id}, state) do
     Task.start(fn ->
-      send(pid, {:report_counts_loaded, GeneratedReportItemDB.item_counts_for_syllabi(codes)})
+      send(
+        pid,
+        {:report_counts_loaded,
+         GeneratedReportItemDB.item_counts_for_syllabi(codes, term_id: term_id)}
+      )
     end)
 
     {:noreply, state}
@@ -268,11 +299,11 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
     {:noreply, state}
   end
 
-  def handle_cast({:generate_missing_for_codes, codes, elements}, state) do
+  def handle_cast({:generate_missing_for_codes, codes, elements, term_id}, state) do
     Task.start(fn ->
       Enum.each(codes, fn code ->
-        with {:ok, full_doc} <- SyllabusDomainManager.get_detail(code),
-             {:ok, items_map} <- fetch_items_for_code(code) do
+        with {:ok, full_doc} <- SyllabusDomainManager.get_detail(code, term_id: term_id),
+             {:ok, items_map} <- fetch_items_for_code(code, term_id) do
           existing_ids = MapSet.new(Map.keys(items_map))
           missing = Enum.reject(elements, fn e -> MapSet.member?(existing_ids, e["id"]) end)
           Enum.each(missing, fn element -> generate_async(full_doc, element) end)
@@ -288,10 +319,10 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
     {:noreply, state}
   end
 
-  def handle_cast({:regenerate_non_met_for_code, code, elements}, state) do
+  def handle_cast({:regenerate_non_met_for_code, code, elements, term_id}, state) do
     Task.start(fn ->
-      with {:ok, full_doc} <- SyllabusDomainManager.get_detail(code),
-           {:ok, items_map} <- fetch_items_for_code(code) do
+      with {:ok, full_doc} <- SyllabusDomainManager.get_detail(code, term_id: term_id),
+           {:ok, items_map} <- fetch_items_for_code(code, term_id) do
         non_met_ids =
           items_map
           |> Enum.filter(fn {_id, item} -> item["status"] in ["not_met", "partially_met"] end)
@@ -463,38 +494,48 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
 
   defp schedule_pending_broadcast(state), do: state
 
-  defp fetch_items_for_code(code) do
-    case GeneratedReportDB.get_latest_for_syllabus(code) do
+  defp fetch_items_for_code(code, term_id) do
+    case GeneratedReportDB.get_latest_for_syllabus(code, term_id: term_id) do
       {:ok, report} -> GeneratedReportItemDB.list_for_report_as_map(report["id"])
       {:error, :not_found} -> {:ok, %{}}
       {:error, _} = err -> err
     end
   end
 
+  defp term_key(nil), do: :all
+  defp term_key(term_id) when is_binary(term_id), do: term_id
+
   defp ensure_report_id(code, syllabus_doc, report_ids) do
-    case Map.get(report_ids, code) do
+    term_id = syllabus_doc["term_id"]
+    report_key = {term_key(term_id), code}
+
+    case Map.get(report_ids, report_key) do
       nil ->
         case GeneratedReportDB.get_or_create_for_syllabus(
                syllabus_doc["code"],
                syllabus_doc["title"] || syllabus_doc["code"],
-               ReportGenerationMessages.primary_instructor_name(syllabus_doc)
+               ReportGenerationMessages.primary_instructor_name(syllabus_doc),
+               term_id: term_id
              ) do
-          {:ok, report} -> {:ok, report["id"], Map.put(report_ids, code, report["id"])}
-          {:error, _} = err -> err
+          {:ok, report} ->
+            {:ok, report["id"], report_key, Map.put(report_ids, report_key, report["id"])}
+
+          {:error, _} = err ->
+            err
         end
 
       report_id ->
-        {:ok, report_id, report_ids}
+        {:ok, report_id, report_key, report_ids}
     end
   end
 
-  defp add_pending(state, code, element_id, report_id) do
+  defp add_pending(state, code, element_id, report_key, report_id) do
     new_pending = MapSet.put(state.pending, {code, element_id})
 
     new_state = %{
       state
       | pending: new_pending,
-        report_ids: Map.put(state.report_ids, code, report_id)
+        report_ids: Map.put(state.report_ids, report_key, report_id)
     }
 
     schedule_pending_broadcast(new_state)
@@ -507,7 +548,10 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
       if Enum.any?(new_pending, fn {c, _} -> c == code end) do
         state.report_ids
       else
-        Map.delete(state.report_ids, code)
+        Map.reject(state.report_ids, fn
+          {{_term_key, cached_code}, _report_id} -> cached_code == code
+          {cached_code, _report_id} -> cached_code == code
+        end)
       end
 
     new_state = %{state | pending: new_pending, report_ids: new_report_ids}

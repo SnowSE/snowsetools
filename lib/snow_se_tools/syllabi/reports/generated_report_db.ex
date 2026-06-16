@@ -90,15 +90,21 @@ defmodule SnowSeTools.Reports.GeneratedReportDB do
   end
 
   def get_latest_for_syllabus(syllabus_code) do
+    get_latest_for_syllabus(syllabus_code, term_id: nil)
+  end
+
+  def get_latest_for_syllabus(syllabus_code, term_id: term_id) do
     sql = """
-    SELECT id, syllabus_code, syllabus_title, instructor_name, status
-    FROM syllabus_generated_reports
-    WHERE syllabus_code = $(syllabus_code)
-    ORDER BY inserted_at DESC
+    SELECT gr.id, gr.syllabus_code, gr.syllabus_title, gr.instructor_name, gr.status
+    FROM syllabus_generated_reports gr
+    JOIN syllabi s ON s.code = gr.syllabus_code
+    WHERE gr.syllabus_code = $(syllabus_code)
+      AND ($(term_id)::text IS NULL OR s.term_id = $(term_id))
+    ORDER BY gr.inserted_at DESC
     LIMIT 1
     """
 
-    case DbHelpers.run_sql(sql, %{"syllabus_code" => syllabus_code}) do
+    case DbHelpers.run_sql(sql, %{"syllabus_code" => syllabus_code, "term_id" => term_id}) do
       {:error, _} = err -> err
       [row | _] -> {:ok, row}
       [] -> {:error, :not_found}
@@ -106,7 +112,16 @@ defmodule SnowSeTools.Reports.GeneratedReportDB do
   end
 
   def get_or_create_for_syllabus(syllabus_code, syllabus_title, instructor_name) do
-    case get_latest_for_syllabus(syllabus_code) do
+    get_or_create_for_syllabus(syllabus_code, syllabus_title, instructor_name, term_id: nil)
+  end
+
+  def get_or_create_for_syllabus(
+        syllabus_code,
+        syllabus_title,
+        instructor_name,
+        term_id: term_id
+      ) do
+    case get_latest_for_syllabus(syllabus_code, term_id: term_id) do
       {:ok, report} ->
         {:ok, report}
 

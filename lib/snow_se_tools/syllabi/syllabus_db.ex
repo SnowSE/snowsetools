@@ -69,17 +69,18 @@ defmodule SnowSeTools.Syllabi.SyllabusDB do
     end
   end
 
-  def list_by_org(org_id) when is_binary(org_id) do
+  def list_by_org(org_id) when is_binary(org_id), do: list_by_org(org_id, term_id: nil)
+
+  def list_by_org(org_id, term_id: term_id) when is_binary(org_id) do
     sql = """
     SELECT s.list_data, s.list_cached_at
     FROM syllabi s
-    LEFT JOIN site_config sc ON sc.key = 'selected_term_id'
     WHERE s.org_id = ANY($(org_ids)::text[])
-      AND (sc.value IS NULL OR s.term_id = sc.value)
+      AND ($(term_id)::text IS NULL OR s.term_id = $(term_id))
     ORDER BY COALESCE(s.title, s.course_name) ASC NULLS LAST
     """
 
-    case DbHelpers.run_sql(sql, %{"org_ids" => [org_id]}) do
+    case DbHelpers.run_sql(sql, %{"org_ids" => [org_id], "term_id" => term_id}) do
       {:error, _} = err -> err
       [] -> {:ok, [], nil}
       rows -> {:ok, Enum.map(rows, & &1["list_data"]), oldest_cached_at(rows)}
@@ -95,31 +96,36 @@ defmodule SnowSeTools.Syllabi.SyllabusDB do
     end
   end
 
-  def list_by_editor_email(email) do
+  def list_by_editor_email(email), do: list_by_editor_email(email, term_id: nil)
+
+  def list_by_editor_email(email, term_id: term_id) do
     sql = """
     SELECT s.list_data, s.list_cached_at
     FROM syllabi s
-    LEFT JOIN site_config sc ON sc.key = 'selected_term_id'
     WHERE $(email) = ANY(s.linked_emails)
-      AND (sc.value IS NULL OR s.term_id = sc.value)
+      AND ($(term_id)::text IS NULL OR s.term_id = $(term_id))
     ORDER BY COALESCE(s.title, s.course_name) ASC NULLS LAST
     """
 
-    case DbHelpers.run_sql(sql, %{"email" => email}) do
+    case DbHelpers.run_sql(sql, %{"email" => email, "term_id" => term_id}) do
       {:error, _} = err -> err
       [] -> {:ok, [], nil}
       rows -> {:ok, Enum.map(rows, & &1["list_data"]), oldest_cached_at(rows)}
     end
   end
 
-  def get_detail(code) do
+  def get_detail(code), do: get_detail(code, term_id: nil)
+
+  def get_detail(code, term_id: term_id) do
     sql = """
     SELECT detail_data, detail_cached_at
     FROM syllabi
-    WHERE code = $(code) AND detail_data IS NOT NULL
+    WHERE code = $(code)
+      AND detail_data IS NOT NULL
+      AND ($(term_id)::text IS NULL OR term_id = $(term_id))
     """
 
-    case DbHelpers.run_sql(sql, %{"code" => code}) do
+    case DbHelpers.run_sql(sql, %{"code" => code, "term_id" => term_id}) do
       {:error, _} = err -> err
       [] -> {:ok, nil, nil}
       [row | _] -> {:ok, row["detail_data"], row["detail_cached_at"]}

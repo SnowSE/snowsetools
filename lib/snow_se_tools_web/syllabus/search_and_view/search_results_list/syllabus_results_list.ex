@@ -22,6 +22,8 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchResultsList do
     {:ok,
      socket
      |> assign(:query, "")
+     |> assign(:selected_term_id, nil)
+     |> assign(:selected_term_name, "All terms")
      |> assign(:departments, [])
      |> assign(:selected, nil)
      |> assign(:elements, [])
@@ -104,6 +106,8 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchResultsList do
     prev_query = socket.assigns.query
     query = Map.get(assigns, :query, prev_query)
     query_changed? = is_binary(query) and query != prev_query
+    selected_term_id = Map.get(assigns, :selected_term_id, socket.assigns.selected_term_id)
+    term_changed? = selected_term_id != socket.assigns.selected_term_id
 
     elements = Map.get(assigns, :elements, socket.assigns.elements)
 
@@ -111,10 +115,15 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchResultsList do
       socket
       |> assign(:selected, Map.get(assigns, :selected, socket.assigns.selected))
       |> assign(:query, query)
+      |> assign(:selected_term_id, selected_term_id)
+      |> assign(
+        :selected_term_name,
+        Map.get(assigns, :selected_term_name, socket.assigns.selected_term_name)
+      )
       |> assign(:elements, elements)
       |> assign(:total_elements, length(elements))
 
-    socket = if query_changed?, do: trigger_search(socket, query), else: socket
+    socket = if query_changed? || term_changed?, do: trigger_search(socket, query), else: socket
     {:ok, socket}
   end
 
@@ -139,7 +148,10 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchResultsList do
         socket.assigns.total_elements
       )
 
-    ReportGeneratorDomainManger.generate_missing_for_codes(codes, socket.assigns.elements)
+    ReportGeneratorDomainManger.generate_missing_for_codes(codes, socket.assigns.elements,
+      term_id: socket.assigns.selected_term_id
+    )
+
     {:noreply, assign(socket, :generating_all, true)}
   end
 
@@ -159,14 +171,18 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchResultsList do
 
     ReportGeneratorDomainManger.generate_missing_for_codes(
       codes_with_missing,
-      socket.assigns.elements
+      socket.assigns.elements,
+      term_id: socket.assigns.selected_term_id
     )
 
     {:noreply, assign(socket, :generating_all, true)}
   end
 
   def handle_event("regenerate_non_met", %{"code" => code}, socket) do
-    ReportGeneratorDomainManger.regenerate_non_met_for_code(code, socket.assigns.elements)
+    ReportGeneratorDomainManger.regenerate_non_met_for_code(code, socket.assigns.elements,
+      term_id: socket.assigns.selected_term_id
+    )
+
     {:noreply, socket}
   end
 
@@ -192,13 +208,18 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchResultsList do
 
     if connected?(socket) do
       ReportGenerationStatus.request_pending(codes)
-      ReportGeneratorDomainManger.set_syllabi_codes(codes)
+
+      ReportGeneratorDomainManger.set_syllabi_codes(codes,
+        term_id: socket.assigns.selected_term_id
+      )
     end
 
     syllabi_docs = Map.new(docs, &{&1["code"], &1})
     {code_to_slug, professors_meta, stream_items} = build_professor_groups(syllabi_docs)
 
-    ReportGeneratorDomainManger.request_report_counts(codes, self())
+    ReportGeneratorDomainManger.request_report_counts(codes, self(),
+      term_id: socket.assigns.selected_term_id
+    )
 
     {:noreply,
      socket
@@ -374,26 +395,47 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchResultsList do
   # ----- private -----
 
   defp trigger_search(socket, query) do
+    term_id = socket.assigns.selected_term_id
+
     cond do
+      query == "" ->
+        socket
+        |> assign(:loading_search, false)
+        |> assign(:search_error, nil)
+        |> assign(:search_pending?, false)
+        |> assign(:syllabi_empty?, true)
+        |> assign(:syllabi_docs, %{})
+        |> assign(:report_counts, %{})
+        |> assign(:generating_per_code, %{})
+        |> assign(:generating_all, false)
+        |> stream(:professor_groups, [], reset: true)
+
       email?(query) ->
         socket
         |> assign(:loading_search, true)
         |> assign(:syllabi_empty?, true)
+        |> assign(:search_error, nil)
         |> assign(:search_pending?, false)
-        |> start_async(:search, fn -> SyllabusDomainManager.search_by_email(query) end)
+        |> start_async(:search, fn ->
+          SyllabusDomainManager.search_by_email(query, term_id: term_id)
+        end)
 
       socket.assigns.departments == [] ->
         socket
         |> assign(:loading_search, true)
         |> assign(:syllabi_empty?, true)
+        |> assign(:search_error, nil)
         |> assign(:search_pending?, true)
 
       dept = find_department(socket.assigns.departments, query) ->
         socket
         |> assign(:loading_search, true)
         |> assign(:syllabi_empty?, true)
+        |> assign(:search_error, nil)
         |> assign(:search_pending?, false)
-        |> start_async(:search, fn -> SyllabusDomainManager.search_by_org(dept["entity_id"]) end)
+        |> start_async(:search, fn ->
+          SyllabusDomainManager.search_by_org(dept["entity_id"], term_id: term_id)
+        end)
 
       true ->
         assign(socket, loading_search: false, search_error: "No matching department found")

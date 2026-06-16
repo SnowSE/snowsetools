@@ -3,8 +3,10 @@ defmodule SnowSeTools.Syllabi.SyllabusDomainManager do
 
   alias SnowSeTools.Syllabi.{SyllabusDB, CachedOrganizationsDb}
 
-  def search_by_org(org_id) do
-    case SyllabusDB.list_by_org(org_id) do
+  def search_by_org(org_id), do: search_by_org(org_id, term_id: nil)
+
+  def search_by_org(org_id, term_id: term_id) do
+    case SyllabusDB.list_by_org(org_id, term_id: term_id) do
       {:ok, [_ | _] = docs, cached_at} ->
         {:ok, %{items: docs, cached_at: cached_at}}
 
@@ -16,8 +18,10 @@ defmodule SnowSeTools.Syllabi.SyllabusDomainManager do
     end
   end
 
-  def search_by_email(email) do
-    case SyllabusDB.list_by_editor_email(email) do
+  def search_by_email(email), do: search_by_email(email, term_id: nil)
+
+  def search_by_email(email, term_id: term_id) do
+    case SyllabusDB.list_by_editor_email(email, term_id: term_id) do
       {:ok, [_ | _] = docs, cached_at} ->
         {:ok, %{items: docs, cached_at: cached_at}}
 
@@ -29,8 +33,10 @@ defmodule SnowSeTools.Syllabi.SyllabusDomainManager do
     end
   end
 
-  def get_detail(code) do
-    case SyllabusDB.get_detail(code) do
+  def get_detail(code), do: get_detail(code, term_id: nil)
+
+  def get_detail(code, term_id: term_id) do
+    case SyllabusDB.get_detail(code, term_id: term_id) do
       {:ok, doc, _cached_at} when not is_nil(doc) ->
         {:ok, doc}
 

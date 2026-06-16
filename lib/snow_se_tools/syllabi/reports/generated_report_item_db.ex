@@ -123,17 +123,20 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
     end
   end
 
-  def item_counts_for_syllabi([]), do: {:ok, %{}}
+  def item_counts_for_syllabi(codes, opts \\ [])
 
-  def item_counts_for_syllabi(codes) when is_list(codes) do
+  def item_counts_for_syllabi([], _opts), do: {:ok, %{}}
+
+  def item_counts_for_syllabi(codes, opts) when is_list(codes) do
+    term_id = Keyword.get(opts, :term_id)
+
     sql = """
     WITH latest_reports AS (
       SELECT DISTINCT ON (gr.syllabus_code) gr.id, gr.syllabus_code
       FROM syllabus_generated_reports gr
       JOIN syllabi s ON s.code = gr.syllabus_code
-      LEFT JOIN site_config sc ON sc.key = 'selected_term_id'
       WHERE gr.syllabus_code = ANY($(codes))
-        AND (sc.value IS NULL OR s.term_id = sc.value)
+        AND ($(term_id)::text IS NULL OR s.term_id = $(term_id))
       ORDER BY gr.syllabus_code, gr.inserted_at DESC
     )
     SELECT
@@ -146,7 +149,7 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
     GROUP BY lr.syllabus_code
     """
 
-    case DbHelpers.run_sql(sql, %{"codes" => codes}) do
+    case DbHelpers.run_sql(sql, %{"codes" => codes, "term_id" => term_id}) do
       {:error, _} = err ->
         err
 
