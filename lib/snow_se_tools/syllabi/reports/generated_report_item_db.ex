@@ -172,8 +172,6 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
       SELECT DISTINCT ON (gr.syllabus_code) gr.id
       FROM syllabus_generated_reports gr
       JOIN syllabi s ON s.code = gr.syllabus_code
-      LEFT JOIN site_config sc ON sc.key = 'selected_term_id'
-      WHERE sc.value IS NULL OR s.term_id = sc.value
       ORDER BY gr.syllabus_code, gr.inserted_at DESC
     )
     SELECT
@@ -205,8 +203,6 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
       SELECT DISTINCT ON (gr.syllabus_code) gr.id
       FROM syllabus_generated_reports gr
       JOIN syllabi s ON s.code = gr.syllabus_code
-      LEFT JOIN site_config sc ON sc.key = 'selected_term_id'
-      WHERE sc.value IS NULL OR s.term_id = sc.value
       ORDER BY gr.syllabus_code, gr.inserted_at DESC
     ),
     total AS (
@@ -236,9 +232,7 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
     WITH scoped_syllabi AS (
       SELECT s.code, s.org_id
       FROM syllabi s
-      LEFT JOIN site_config sc ON sc.key = 'selected_term_id'
       WHERE s.org_id IS NOT NULL
-        AND (sc.value IS NULL OR s.term_id = sc.value)
     ),
     latest_reports AS (
       SELECT DISTINCT ON (gr.syllabus_code) gr.id, gr.syllabus_code
@@ -276,10 +270,8 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
     JOIN syllabus_generated_reports gr ON gr.id = gri.generated_report_id
     JOIN syllabus_required_elements re ON re.id = gri.required_element_id
     JOIN syllabi s ON s.code = gr.syllabus_code
-    LEFT JOIN site_config sc ON sc.key = 'selected_term_id'
     WHERE gri.required_element_id = $(required_element_id)
       AND gri.status IN ('not_met', 'partially_met')
-      AND (sc.value IS NULL OR s.term_id = sc.value)
     ORDER BY gr.inserted_at ASC
     """
 
@@ -295,9 +287,7 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
       SELECT DISTINCT ON (gr.syllabus_code) gr.id, gr.syllabus_code
       FROM syllabus_generated_reports gr
       JOIN syllabi s ON s.code = gr.syllabus_code
-      LEFT JOIN site_config sc ON sc.key = 'selected_term_id'
       WHERE gr.syllabus_code = ANY($(codes))
-        AND (sc.value IS NULL OR s.term_id = sc.value)
       ORDER BY gr.syllabus_code, gr.inserted_at DESC
     ),
     covered AS (

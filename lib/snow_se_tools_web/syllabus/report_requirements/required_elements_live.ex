@@ -4,7 +4,6 @@ defmodule SnowSeToolsWeb.Reports.RequiredElementsLive do
   alias SnowSeTools.Reports.RequiredElementDB
   alias SnowSeTools.Reports.ReportInstructionDB
   alias SnowSeTools.Reports.ReportGeneratorDomainManger
-  alias SnowSeTools.ConfigDB
 
   import SnowSeToolsWeb.Reports.ElementsList
   import SnowSeToolsWeb.Reports.ElementDetail
@@ -12,8 +11,6 @@ defmodule SnowSeToolsWeb.Reports.RequiredElementsLive do
   on_mount {SnowSeToolsWeb.UserAuth, :ensure_authenticated}
 
   def mount(_params, _session, socket) do
-    if connected?(socket), do: ConfigDB.subscribe()
-
     socket =
       socket
       |> assign(:page_title, "Required Elements")
@@ -219,21 +216,6 @@ defmodule SnowSeToolsWeb.Reports.RequiredElementsLive do
       {:ok, elements} -> assign(socket, :elements, elements)
       {:error, _} -> assign(socket, :elements, [])
     end
-  end
-
-  def handle_info({:term_changed, _term_id}, socket) do
-    socket =
-      if socket.assigns.expanded_id do
-        assign(
-          socket,
-          :element_counts,
-          ReportGeneratorDomainManger.get_element_coverage(socket.assigns.expanded_id)
-        )
-      else
-        socket
-      end
-
-    {:noreply, socket}
   end
 
   def handle_info({:element_coverage_updated, element_id, counts}, socket) do

@@ -38,7 +38,6 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchForm do
         value={@selected_term_id}
         class="min-w-56 bg-slate-800 border border-slate-700 text-slate-100 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
       >
-        <option value="" selected={is_nil(@selected_term_id)}>All terms</option>
         <%= for {term_id, term_name} <- @available_terms do %>
           <option value={term_id} selected={@selected_term_id == term_id}>
             {term_name}

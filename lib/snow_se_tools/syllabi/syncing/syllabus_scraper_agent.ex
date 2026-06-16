@@ -9,13 +9,15 @@ defmodule SnowSeTools.Syllabi.Syncing.SyllabusScraperAgent do
     do: GenServer.start_link(__MODULE__, :idle, name: __MODULE__)
 
   def sync_term(term_id) do
-    GenServer.cast(__MODULE__, {:sync_term, term_id})
-    :ok
+    GenServer.call(__MODULE__, {:sync_term, term_id})
   end
 
   def sync_term_list do
-    GenServer.cast(__MODULE__, :sync_term_list)
-    :ok
+    GenServer.call(__MODULE__, :sync_term_list)
+  end
+
+  def status do
+    GenServer.call(__MODULE__, :status)
   end
 
   def report_syllabi_to_sync(total) do
@@ -30,7 +32,6 @@ defmodule SnowSeTools.Syllabi.Syncing.SyllabusScraperAgent do
     GenServer.cast(__MODULE__, {:sync_error, reason})
   end
 
-  @impl true
   def init(:idle) do
     {:ok,
      %{
@@ -39,14 +40,17 @@ defmodule SnowSeTools.Syllabi.Syncing.SyllabusScraperAgent do
      }}
   end
 
-  @impl true
-  def handle_cast({:sync_term, term_id}, state) do
-    if state.syllabus_sync.status == :syncing do
+  def handle_call(:status, _from, state) do
+    {:reply, sync_status(state), state}
+  end
+
+  def handle_call({:sync_term, term_id}, _from, state) do
+    if syncing?(state) do
       Logger.warning(
         "SyllabusScraperAgent syllabus sync already in progress, ignoring term sync request"
       )
 
-      {:noreply, state}
+      {:reply, {:error, :sync_in_progress}, state}
     else
       parent = self()
 
@@ -56,21 +60,22 @@ defmodule SnowSeTools.Syllabi.Syncing.SyllabusScraperAgent do
           send(parent, {:syllabus_sync_done, result})
         end)
 
-      {:noreply,
-       %{
-         state
-         | syllabus_sync: %{status: :syncing, term_id: term_id, ref: ref, total: 0, completed: 0}
-       }}
+      new_state = %{
+        state
+        | syllabus_sync: %{status: :syncing, term_id: term_id, ref: ref, total: 0, completed: 0}
+      }
+
+      {:reply, :ok, new_state}
     end
   end
 
-  def handle_cast(:sync_term_list, state) do
-    if state.term_list_sync.status == :syncing do
+  def handle_call(:sync_term_list, _from, state) do
+    if syncing?(state) do
       Logger.warning(
         "SyllabusScraperAgent term list sync already in progress, ignoring term list sync request"
       )
 
-      {:noreply, state}
+      {:reply, {:error, :sync_in_progress}, state}
     else
       parent = self()
 
@@ -80,7 +85,7 @@ defmodule SnowSeTools.Syllabi.Syncing.SyllabusScraperAgent do
           send(parent, {:term_list_sync_done, result})
         end)
 
-      {:noreply, %{state | term_list_sync: %{status: :syncing, ref: ref}}}
+      {:reply, :ok, %{state | term_list_sync: %{status: :syncing, ref: ref}}}
     end
   end
 
@@ -108,7 +113,6 @@ defmodule SnowSeTools.Syllabi.Syncing.SyllabusScraperAgent do
      %{state | syllabus_sync: %{status: :idle, term_id: nil, ref: nil, total: 0, completed: 0}}}
   end
 
-  @impl true
   def handle_info({:term_list_sync_done, result}, state) do
     case result do
       {:ok, term_count} ->
@@ -179,5 +183,20 @@ defmodule SnowSeTools.Syllabi.Syncing.SyllabusScraperAgent do
 
   def handle_info(_msg, state) do
     {:noreply, state}
+  end
+
+  defp syncing?(state) do
+    state.term_list_sync.status == :syncing || state.syllabus_sync.status == :syncing
+  end
+
+  defp sync_status(state) do
+    %{
+      syncing?: syncing?(state),
+      term_list_syncing?: state.term_list_sync.status == :syncing,
+      syllabus_syncing?: state.syllabus_sync.status == :syncing,
+      term_id: state.syllabus_sync.term_id,
+      total: state.syllabus_sync.total,
+      completed: state.syllabus_sync.completed
+    }
   end
 end

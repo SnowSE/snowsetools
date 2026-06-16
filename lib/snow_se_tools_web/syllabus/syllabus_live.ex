@@ -41,11 +41,6 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusLive do
     {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}")}
   end
 
-  def handle_info({:term_changed_from_child, query}, socket) do
-    path = if byte_size(query) > 0, do: ~p"/syllabi?q=#{query}", else: ~p"/syllabi"
-    {:noreply, push_patch(socket, to: path)}
-  end
-
   def handle_info({:syllabus_search_live_ready, pid}, socket) when is_pid(pid) do
     send(pid, {:navigate_params, socket.assigns.search_params})
     {:noreply, assign(socket, :search_live_pid, pid)}

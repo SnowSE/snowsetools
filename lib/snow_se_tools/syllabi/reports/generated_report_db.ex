@@ -23,8 +23,6 @@ defmodule SnowSeTools.Reports.GeneratedReportDB do
     SELECT gr.id, gr.syllabus_code, gr.syllabus_title, gr.instructor_name, gr.status, gr.inserted_at
     FROM syllabus_generated_reports gr
     JOIN syllabi s ON s.code = gr.syllabus_code
-    LEFT JOIN site_config sc ON sc.key = 'selected_term_id'
-    WHERE sc.value IS NULL OR s.term_id = sc.value
     ORDER BY gr.inserted_at DESC
     """
 
@@ -157,13 +155,11 @@ defmodule SnowSeTools.Reports.GeneratedReportDB do
     FROM syllabus_generated_reports gr
     JOIN syllabus_required_elements re ON TRUE
     JOIN syllabi s ON s.code = gr.syllabus_code
-    LEFT JOIN site_config sc ON sc.key = 'selected_term_id'
     LEFT JOIN syllabus_generated_report_items gri
       ON gri.generated_report_id = gr.id
      AND gri.required_element_id = re.id
     WHERE gr.status = 'pending'
       AND gri.id IS NULL
-      AND (sc.value IS NULL OR s.term_id = sc.value)
     ORDER BY gr.inserted_at ASC
     """
 

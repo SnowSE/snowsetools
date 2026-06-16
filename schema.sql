@@ -9,12 +9,6 @@ CREATE TABLE users (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE site_config (
-  key         TEXT        PRIMARY KEY,
-  value       TEXT        NOT NULL,
-  inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
 CREATE TABLE syllabus_required_elements (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   name        TEXT        NOT NULL,

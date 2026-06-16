@@ -60,6 +60,36 @@ defmodule SnowSeTools.Syllabi.AvailableTermsDb do
     end
   end
 
+  def list_terms_with_sync_status do
+    sql = """
+    SELECT
+      t.term_id,
+      t.term_name,
+      t.status,
+      t.cached_at,
+      COUNT(s.code)::integer AS syllabus_count,
+      MAX(s.synced_at) AS last_synced_at
+    FROM syllabus_available_terms t
+    LEFT JOIN syllabi s ON s.term_id = t.term_id
+    WHERE t.status = 'active'
+    GROUP BY t.term_id, t.term_name, t.status, t.cached_at
+    ORDER BY t.term_id DESC
+    """
+
+    case DbHelpers.run_sql(sql, %{}) do
+      {:error, _} = err ->
+        err
+
+      rows ->
+        terms =
+          rows
+          |> Enum.sort_by(fn row -> sort_key({row["term_id"], row["term_name"]}) end)
+          |> Enum.reverse()
+
+        {:ok, terms}
+    end
+  end
+
   defp sort_key({_term_id, "The End of Time"}), do: {0, 0}
   defp sort_key({_term_id, "Initial Term"}), do: {9999, 0}
   defp sort_key({_term_id, term_name}), do: parse_year_season(term_name)

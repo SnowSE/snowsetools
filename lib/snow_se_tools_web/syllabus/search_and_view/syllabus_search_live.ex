@@ -9,7 +9,6 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
   alias SnowSeToolsWeb.Syllabus.SyllabusSearchForm
   alias SnowSeTools.Syllabi.SyllabusDomainManager
   alias SnowSeTools.Syllabi.AvailableTermsDb
-  alias SnowSeTools.ConfigDB
   alias SnowSeTools.Reports.ReportGenerationStatus
   alias SnowSeTools.Reports.ReportGeneratorDomainManger
 
@@ -30,15 +29,17 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
     end
 
     available_terms = list_available_terms()
-    selected_term_id = normalize_term_id(ConfigDB.get_current_term())
 
     socket =
       socket
       |> assign(:page_title, "Syllabus Search")
       |> assign(:query, "")
       |> assign(:available_terms, available_terms)
-      |> assign(:selected_term_id, selected_term_id)
-      |> assign(:selected_term_name, find_term_name(available_terms, selected_term_id))
+      |> assign(:selected_term_id, default_term_id(available_terms))
+      |> assign(
+        :selected_term_name,
+        find_term_name(available_terms, default_term_id(available_terms))
+      )
       |> assign(:selected, nil)
       |> assign(:loading_detail, false)
       |> assign(:detail_error, nil)
@@ -316,11 +317,46 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
     end
   end
 
-  defp normalize_term_id(""), do: nil
+  defp normalize_term_id(term_id) when is_binary(term_id) and byte_size(term_id) == 0, do: nil
   defp normalize_term_id(term_id) when is_binary(term_id), do: term_id
   defp normalize_term_id(_term_id), do: nil
 
-  defp find_term_name(_terms, nil), do: "All terms"
+  defp default_term_id([]), do: nil
+
+  defp default_term_id(terms) do
+    now = Date.utc_today()
+
+    {term_id, _name} =
+      Enum.min_by(terms, fn {_id, name} ->
+        {year, season} = parse_season_year(name)
+        target_month = season_month(season)
+        target = Date.new!(year, target_month, 15)
+        abs(Date.diff(target, now))
+      end)
+
+    term_id
+  end
+
+  defp parse_season_year(name) do
+    today = Date.utc_today()
+
+    case String.split(name, " ", parts: 2) do
+      [season, year_str] ->
+        with {year, _} <- Integer.parse(year_str) do
+          {year, String.downcase(season)}
+        else
+          _ -> {today.year, :unknown}
+        end
+
+      _ ->
+        {today.year, :unknown}
+    end
+  end
+
+  defp season_month("fall"), do: 9
+  defp season_month("spring"), do: 3
+  defp season_month("summer"), do: 6
+  defp season_month(_), do: 1
 
   defp find_term_name(terms, term_id) do
     Enum.find_value(terms, term_id, fn {id, name} ->

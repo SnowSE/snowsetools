@@ -63,7 +63,7 @@ defmodule SnowSeToolsWeb.FlashComponents do
       id={@id}
       phx-click={@kind == :info && JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
-      class={["fixed top-4 right-4 z-50", @kind == :info && "cursor-pointer"]}
+      class={["cursor-pointer", @kind == :info && ""]}
       {@rest}
     >
       <div class={[
@@ -110,7 +110,7 @@ defmodule SnowSeToolsWeb.FlashComponents do
 
   def flash_group(assigns) do
     ~H"""
-    <div id={@id} aria-live="polite">
+    <div class="fixed top-4 right-4 z-50 flex flex-col gap-2" id={@id} aria-live="polite">
       <.flash kind={:info} flash={@flash} />
       <.flash kind={:error} flash={@flash} />
 

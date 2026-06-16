@@ -1,7 +1,6 @@
 defmodule SnowSeToolsWeb.Home.HomeLive do
   use SnowSeToolsWeb, :live_view
 
-  alias SnowSeTools.ConfigDB
   alias SnowSeTools.Reports.ReportGeneratorDomainManger
   alias SnowSeTools.Reports.ReportGenerationStatus
   alias SnowSeTools.Syllabi.SyllabusDomainManager
@@ -19,20 +18,10 @@ defmodule SnowSeToolsWeb.Home.HomeLive do
     socket =
       if connected?(socket) do
         ReportGenerationStatus.subscribe()
-        ConfigDB.subscribe()
         ReportGeneratorDomainManger.request_totals(self())
         start_async(socket, :fetch_departments, fn -> SyllabusDomainManager.get_departments() end)
       else
         socket
-      end
-
-    current_term_id = ConfigDB.get_current_term()
-    terms = ConfigDB.list_available_terms()
-
-    current_term_name =
-      case Enum.find(terms, fn t -> t["term_id"] == current_term_id end) do
-        nil -> "All terms"
-        term -> term["term_name"]
       end
 
     {:ok,
@@ -41,7 +30,6 @@ defmodule SnowSeToolsWeb.Home.HomeLive do
        totals: nil,
        by_school: [],
        departments: %{},
-       current_term_name: current_term_name,
        chart_colors: %{
          met: @color_positive,
          not_met: @color_negative,
@@ -64,19 +52,6 @@ defmodule SnowSeToolsWeb.Home.HomeLive do
   def handle_info(%ReportGenerationStatus.ItemResult{}, socket) do
     ReportGeneratorDomainManger.request_totals(self())
     {:noreply, socket}
-  end
-
-  def handle_info({:term_changed, term_id}, socket) do
-    terms = ConfigDB.list_available_terms()
-
-    current_term_name =
-      case Enum.find(terms, fn t -> t["term_id"] == term_id end) do
-        nil -> "All terms"
-        term -> term["term_name"]
-      end
-
-    ReportGeneratorDomainManger.request_totals(self())
-    {:noreply, assign(socket, :current_term_name, current_term_name)}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
@@ -111,10 +86,6 @@ defmodule SnowSeToolsWeb.Home.HomeLive do
       current_path={@current_path}
     >
       <div class="max-w-5xl mx-auto px-6 py-10 space-y-10">
-        <div class="flex items-baseline justify-between">
-          <span class="text-sm text-slate-400">{@current_term_name}</span>
-        </div>
-
         <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
           <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
             <h2 class="text-sm font-medium text-slate-300 mb-4 text-center">Report Status</h2>

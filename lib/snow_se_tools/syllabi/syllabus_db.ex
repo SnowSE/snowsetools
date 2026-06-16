@@ -24,12 +24,12 @@ defmodule SnowSeTools.Syllabi.SyllabusDB do
 
     sql = """
     INSERT INTO syllabi
-      (code, title, course_name, term_name, term_id, org_id, linked_emails, editors, list_data, detail_data, list_cached_at, detail_cached_at, updated_at)
+      (code, title, course_name, term_name, term_id, org_id, linked_emails, editors, list_data, detail_data, list_cached_at, detail_cached_at, sync_status, sync_error, synced_at, updated_at)
     VALUES
       ($(code), $(title), $(course_name), $(term_name), $(term_id), $(org_id),
        $(linked_emails)::text[],
        $(editors)::jsonb, $(list_data)::jsonb, $(detail_data)::jsonb,
-       NOW(), NOW(), NOW())
+       NOW(), NOW(), 'synced', NULL, NOW(), NOW())
     ON CONFLICT (code) DO UPDATE SET
       title          = EXCLUDED.title,
       course_name    = EXCLUDED.course_name,
@@ -42,6 +42,9 @@ defmodule SnowSeTools.Syllabi.SyllabusDB do
       detail_data    = EXCLUDED.detail_data,
       list_cached_at = NOW(),
       detail_cached_at = NOW(),
+      sync_status    = 'synced',
+      sync_error     = NULL,
+      synced_at      = NOW(),
       updated_at     = NOW()
     """
 
@@ -146,9 +149,7 @@ defmodule SnowSeTools.Syllabi.SyllabusDB do
   def count_in_scope do
     sql = """
     SELECT COUNT(*)::integer AS total
-    FROM syllabi s
-    LEFT JOIN site_config sc ON sc.key = 'selected_term_id'
-    WHERE sc.value IS NULL OR s.term_id = sc.value
+    FROM syllabi
     """
 
     case DbHelpers.run_sql(sql, %{}) do

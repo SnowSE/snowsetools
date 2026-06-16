@@ -3,7 +3,6 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
   require Logger
 
   alias SnowSeTools.AI.AsyncCompletions
-  alias SnowSeTools.ConfigDB
   alias SnowSeTools.Reports.GeneratedReportDB
   alias SnowSeTools.Reports.GeneratedReportItemDB
   alias SnowSeTools.Reports.ReportGenerationMessages
@@ -128,7 +127,6 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
   @impl true
   def init(state) do
     Phoenix.PubSub.subscribe(@pubsub, @ai_topic)
-    ConfigDB.subscribe()
     send(self(), :recover_pending_reports)
     send(self(), :hydrate_coverage)
     {:ok, state}
@@ -345,12 +343,6 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
   def handle_info(:flush_pending_broadcast, state) do
     ReportGenerationStatus.publish_pending_update(state.pending)
     {:noreply, %{state | broadcast_timer: nil}}
-  end
-
-  @impl true
-  def handle_info({:term_changed, _term_id}, state) do
-    send(self(), :hydrate_coverage)
-    {:noreply, state}
   end
 
   @impl true
