@@ -184,7 +184,7 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportItemDB do
       AND gri.required_element_id = $(element_id)
     """
 
-    case DbHelpers.run_sql(sql, %{"element_id" => element_id}) do
+    case DbHelpers.run_sql(sql, %{"element_id" => Uuid.to_binary(element_id)}) do
       {:error, _} = err ->
         err
 
@@ -280,7 +280,7 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportItemDB do
     ORDER BY gr.inserted_at ASC
     """
 
-    case DbHelpers.run_sql(sql, %{"required_element_id" => required_element_id}) do
+    case DbHelpers.run_sql(sql, %{"required_element_id" => Uuid.to_binary(required_element_id)}) do
       {:error, _} = err -> err
       rows -> {:ok, rows}
     end
@@ -309,7 +309,10 @@ defmodule SimpleSyllabusReporter.Reports.GeneratedReportItemDB do
     WHERE code NOT IN (SELECT syllabus_code FROM covered)
     """
 
-    case DbHelpers.run_sql(sql, %{"element_id" => element_id, "codes" => all_codes}) do
+    case DbHelpers.run_sql(sql, %{
+           "element_id" => Uuid.to_binary(element_id),
+           "codes" => all_codes
+         }) do
       {:error, _} = err -> err
       rows -> {:ok, Enum.map(rows, & &1["code"])}
     end
