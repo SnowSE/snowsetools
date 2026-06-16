@@ -3,31 +3,31 @@
 ### Get all organizations and available terms (replicate SimpleSyllabusApi.get_organizations & get_available_terms)
 ### Extracts organizations and terms from app-state nested in response
 GET https://snow.simplesyllabus.com/api2/app-state?locale=en-US
-User-Agent: Mozilla/5.0 (compatible; SimpleSyllabusReporter/1.0)
+User-Agent: Mozilla/5.0 (compatible; SnowSeTools/1.0)
 
 
 ### Get syllabi metadata list by organization (replicate SimpleSyllabusApi.fetch_syllabi_metadata_list_by_org)
 ### Required params: organization_id, page (0-based), term_statuses[] (or defaults to ["future"])
 GET https://snow.simplesyllabus.com/api2/doc-library-search?organization_id=ORG_ID&page=0&term_statuses[]=future
-User-Agent: Mozilla/5.0 (compatible; SimpleSyllabusReporter/1.0)
+User-Agent: Mozilla/5.0 (compatible; SnowSeTools/1.0)
 
 
 ### Get syllabi by organization with term_id override
 ### When syncing specific term, pass term_id and override term_statuses with empty array
 GET https://snow.simplesyllabus.com/api2/doc-library-search?organization_id=ORG_ID&term_id=TERM_ID&page=0
-User-Agent: Mozilla/5.0 (compatible; SimpleSyllabusReporter/1.0)
+User-Agent: Mozilla/5.0 (compatible; SnowSeTools/1.0)
 
 
 ### Get syllabi by editor (alternative path)
 GET https://snow.simplesyllabus.com/api2/doc-library-search?editor=EMAIL@EXAMPLE.COM&page=0&term_statuses[]=future
-User-Agent: Mozilla/5.0 (compatible; SimpleSyllabusReporter/1.0)
+User-Agent: Mozilla/5.0 (compatible; SnowSeTools/1.0)
 
 
 ### Get syllabi detail page (replicate SimpleSyllabusApi.fetch_syllabus_detail)
 GET https://snow.simplesyllabus.com/api2/doc-full-page-get?code=SYLLABUS_CODE
-User-Agent: Mozilla/5.0 (compatible; SimpleSyllabusReporter/1.0)
+User-Agent: Mozilla/5.0 (compatible; SnowSeTools/1.0)
 
 
 ### Example: Fetch specific syllabus by code
 GET https://snow.simplesyllabus.com/api2/doc-full-page-get?code=3rpi2fdwv
-User-Agent: Mozilla/5.0 (compatible; SimpleSyllabusReporter/1.0) 
+User-Agent: Mozilla/5.0 (compatible; SnowSeTools/1.0) 

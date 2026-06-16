@@ -6,7 +6,7 @@
 erl_crash.dump
 *.ez
 /tmp/
-simple_syllabus_reporter-*.tar
+snow_se_tools-*.tar
 /priv/static/assets/
 k8s/base/secret.yaml
 secrets.env

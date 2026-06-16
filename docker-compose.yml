@@ -1,11 +1,11 @@
 services:
-  # kubectl exec -n simple-syllabus postgres-0 -c postgres -- sh -c 'pg_dump -U "$POSTGRES_USER" --no-owner --no-acl --clean --if-exists "$POSTGRES_DB"' > /tmp/prod_dump.sql && docker exec -i simplesyllabusreporter-db-1 psql -U syllabus_user -d simple_syllabus_reporter_dev < /tmp/prod_dump.sql
+  # kubectl exec -n simple-syllabus postgres-0 -c postgres -- sh -c 'pg_dump -U "$POSTGRES_USER" --no-owner --no-acl --clean --if-exists "$POSTGRES_DB"' > /tmp/prod_dump.sql && docker exec -i snowsetools-db-1 psql -U syllabus_user -d snow_se_tools_dev < /tmp/prod_dump.sql
   db:
     image: postgres:18-alpine
     environment:
       POSTGRES_USER: syllabus_user
       POSTGRES_PASSWORD: syllabus_pass
-      POSTGRES_DB: simple_syllabus_reporter_dev
+      POSTGRES_DB: snow_se_tools_dev
     volumes:
       - ./k8s/base/schema.sql:/docker-entrypoint-initdb.d/schema.sql
       - postgres_data:/var/lib/postgresql
@@ -13,7 +13,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -U syllabus_user -d simple_syllabus_reporter_dev",
+          "pg_isready -U syllabus_user -d snow_se_tools_dev",
         ]
       interval: 5s
       timeout: 5s
@@ -32,7 +32,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: ecto://syllabus_user:syllabus_pass@db/simple_syllabus_reporter_dev
+      DATABASE_URL: ecto://syllabus_user:syllabus_pass@db/snow_se_tools_dev
       SECRET_KEY_BASE: ${SECRET_KEY_BASE}
       PHX_SERVER: "true"
       MIX_ENV: dev

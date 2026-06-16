@@ -38,14 +38,14 @@ Set `PHX_SERVER=true` and provide env vars (`DATABASE_URL`, `SECRET_KEY_BASE`, `
 
 ## Getting feedback
 
-you can read current logs with `docker logs simplesyllabusreporter-app-1` be sure to use bash to filter for only the logs you care about.
+you can read current logs with `docker logs snowsetools-app-1` be sure to use bash to filter for only the logs you care about.
 
 when checking if changes compile use `mix precommit` on the terminal (not in container)
 
 
 ## Data Flows
 
-The UI layer (in the simple_syllabus_reporter_web folder) should only communicate with the domain manager agents to get data. Never let a liveview talk directly to the database or service layers.
+The UI layer (in the snow_se_tools_web folder) should only communicate with the domain manager agents to get data. Never let a liveview talk directly to the database or service layers.
 
 All UI communication with domain managers should be asyncronous through Genserver.Cast data will flow back through pubsub or response messages.
 
@@ -57,7 +57,7 @@ Use the asyncronous model to leverage Phoenix Streams when rendering and updatin
 
 - Use `mix precommit` alias when you are done with all changes and fix any pending issues
 - Use the already included and available `:req` (`Req`) library for HTTP requests, **avoid** `:httpoison`, `:tesla`, and `:httpc`. Req is included by default and is the preferred HTTP client for Phoenix apps
-- organize files and folders by feature name, not file type. for example liveviews about syllabus go in `simple_syllabus_reporter_web/syllabus/syllabus_live.ex` not in a `live` folder
+- organize files and folders by feature name, not file type. for example liveviews about syllabus go in `snow_se_tools_web/syllabus/syllabus_live.ex` not in a `live` folder
 
 ### JS and CSS guidelines
 

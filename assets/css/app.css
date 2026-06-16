@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @source "../css";
 @source "../js";
-@source "../../lib/simple_syllabus_reporter_web";
+@source "../../lib/snow_se_tools_web";
 
 @plugin "../vendor/heroicons";
 
