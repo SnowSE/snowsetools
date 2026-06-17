@@ -1,7 +1,9 @@
 defmodule SnowSeToolsWeb.Admin.AdminLive do
   use SnowSeToolsWeb, :live_view
   use SnowSeToolsWeb.Admin.AdminUIMessages
+  use SnowSeToolsWeb.Admin.AdminSnowCoursesUIMessages
 
+  alias SnowSeTools.Snow.SnowCourseCacheDomainManager
   alias SnowSeTools.UserGroups.UserGroupDomainManager
   alias SnowSeToolsWeb.UserAuth
 
@@ -21,6 +23,7 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
 
     if connected?(socket) do
       UserGroupDomainManager.request_dashboard(pid: self())
+      SnowCourseCacheDomainManager.request_dashboard(pid: self())
     end
 
     {:ok, socket}
@@ -100,6 +103,8 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
     UserGroupDomainManager.remove_user_group(pid: self(), user_id: user_id, group_id: group_id)
     {:noreply, socket}
   end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   def render(assigns) do
     ~H"""
@@ -321,6 +326,13 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
               </table>
             </div>
           </section>
+
+          <div class="col-span-full">
+            <.live_component
+              module={SnowSeToolsWeb.Admin.SnowCacheComponent}
+              id="snow-cache-component"
+            />
+          </div>
         </div>
       </div>
       <:modal :if={@pending_delete}>

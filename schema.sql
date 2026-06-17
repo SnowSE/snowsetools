@@ -133,3 +133,42 @@ CREATE TABLE syllabus_available_terms (
   inserted_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE snow_terms (
+  term_code   TEXT        PRIMARY KEY,
+  term_name   TEXT        NOT NULL,
+  cached_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE snow_courses (
+  id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  term_code               TEXT        NOT NULL REFERENCES snow_terms(term_code) ON DELETE CASCADE,
+  crn                     TEXT        NOT NULL,
+  subject_code            TEXT        NOT NULL,
+  course_number           TEXT        NOT NULL,
+  section_number          TEXT        NOT NULL,
+  course_name             TEXT        NOT NULL,
+  primary_instructor_name  TEXT,
+  data                    TEXT        NOT NULL,
+  cached_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(term_code, crn)
+);
+
+CREATE INDEX snow_courses_term_code_idx ON snow_courses(term_code);
+
+CREATE TABLE snow_section_students (
+  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  term_code       TEXT        NOT NULL REFERENCES snow_terms(term_code) ON DELETE CASCADE,
+  crn             TEXT        NOT NULL,
+  badger_id       TEXT,
+  first_name      TEXT,
+  last_name       TEXT,
+  email           TEXT,
+  data            TEXT        NOT NULL,
+  last_synced_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX snow_section_students_term_crn_idx ON snow_section_students(term_code, crn);

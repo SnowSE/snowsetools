@@ -29,8 +29,6 @@ defmodule SnowSeToolsWeb.Admin.AdminUIMessages do
         {:noreply, put_flash(socket, :error, format_error(reason))}
       end
 
-      def handle_info(_message, socket), do: {:noreply, socket}
-
       defp reset_forms(socket) do
         socket
         |> assign(:editing_group_id, nil)

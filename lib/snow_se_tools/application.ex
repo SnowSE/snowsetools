@@ -57,6 +57,7 @@ defmodule SnowSeTools.Application do
         SnowSeTools.UserGroups.UserGroupDomainManager,
         SnowSeTools.AI.AsyncCompletions,
         SnowSeTools.Cache,
+        SnowSeTools.Snow.SnowCourseCacheDomainManager,
         SnowSeTools.Reports.ReportGeneratorDomainManger,
         SnowSeTools.Syllabi.Syncing.SyllabusScraperAgent
       ]
