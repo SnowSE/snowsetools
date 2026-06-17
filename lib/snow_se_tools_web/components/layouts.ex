@@ -9,6 +9,7 @@ defmodule SnowSeToolsWeb.Layouts do
   attr :current_path, :string, default: nil
   attr :socket, :any, default: nil
   slot :inner_block, required: true
+  slot :modal, doc: "optional modal content rendered above the page content"
 
   def app(assigns) do
     ~H"""
@@ -23,6 +24,11 @@ defmodule SnowSeToolsWeb.Layouts do
       </main>
     </div>
     <.flash_group flash={@flash} />
+    <div id="modal-root" class="relative z-50">
+      <%= for modal <- @modal do %>
+        {render_slot(modal)}
+      <% end %>
+    </div>
     <div id="session-refresh-hook" phx-hook=".SessionRefresh" phx-update="ignore" class="hidden">
     </div>
     <script :type={Phoenix.LiveView.ColocatedHook} name=".SessionRefresh">

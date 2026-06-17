@@ -86,6 +86,7 @@ defmodule SnowSeToolsWeb do
       import Phoenix.HTML
       # Core UI components
       import SnowSeToolsWeb.FlashComponents
+      import SnowSeToolsWeb.ModalComponents
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

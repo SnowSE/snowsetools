@@ -15,6 +15,7 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
       |> assign(:groups, [])
       |> assign(:editing_group_id, nil)
       |> assign(:last_action_message, nil)
+      |> assign(:pending_delete, nil)
       |> assign(:group_form, to_form(%{"name" => ""}, as: :group))
       |> assign(:user_form, to_form(%{"email" => ""}, as: :user))
 
@@ -61,9 +62,33 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
     {:noreply, reset_group_form(socket)}
   end
 
-  def handle_event("delete_group", %{"id" => group_id}, socket) do
-    UserGroupDomainManager.delete_group(pid: self(), group_id: group_id)
-    {:noreply, socket}
+  def handle_event("request_delete_group", %{"id" => group_id}, socket) do
+    group = Enum.find(socket.assigns.groups, &(&1.id == group_id))
+
+    pending_delete =
+      if group do
+        %{kind: :group, id: group.id, label: group.name}
+      else
+        nil
+      end
+
+    {:noreply, assign(socket, :pending_delete, pending_delete)}
+  end
+
+  def handle_event("cancel_delete", _params, socket) do
+    {:noreply, assign(socket, :pending_delete, nil)}
+  end
+
+  def handle_event("confirm_delete", _params, socket) do
+    case socket.assigns.pending_delete do
+      %{kind: :group, id: group_id} ->
+        UserGroupDomainManager.delete_group(pid: self(), group_id: group_id)
+
+      _ ->
+        :ok
+    end
+
+    {:noreply, assign(socket, :pending_delete, nil)}
   end
 
   def handle_event("add_user_group", %{"user_id" => user_id, "group_id" => group_id}, socket) do
@@ -275,7 +300,7 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
                           <button
                             id={"delete-group-#{group.id}"}
                             type="button"
-                            phx-click="delete_group"
+                            phx-click="request_delete_group"
                             phx-value-id={group.id}
                             class={[
                               "rounded-lg px-3 py-1.5 text-xs font-semibold transition",
@@ -298,6 +323,35 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
           </section>
         </div>
       </div>
+      <:modal :if={@pending_delete}>
+        <.modal id="confirm-delete-modal" on_close="cancel_delete">
+          <div class="space-y-5">
+            <div class="space-y-2">
+              <h2 class="text-xl font-semibold text-slate-100">Confirm deletion</h2>
+              <p class="text-sm leading-6 text-slate-300">
+                Delete {@pending_delete.label}?
+              </p>
+            </div>
+
+            <div class="flex justify-end gap-3">
+              <button
+                type="button"
+                phx-click="cancel_delete"
+                class="rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                phx-click="confirm_delete"
+                class="rounded-xl bg-rose-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-400"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </.modal>
+      </:modal>
     </Layouts.app>
     """
   end
