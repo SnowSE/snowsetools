@@ -4,6 +4,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusLive do
   alias SnowSeTools.Reports.ReportGeneratorDomainManger
   alias SnowSeTools.Reports.ReportGenerationStatus
   alias SnowSeTools.Syllabi.SyllabusDomainManager
+  alias SnowSeTools.Syllabi.AvailableTermsDb
 
   on_mount {SnowSeToolsWeb.UserAuth, :ensure_authenticated}
 
@@ -11,7 +12,8 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusLive do
     socket =
       if connected?(socket) do
         ReportGenerationStatus.subscribe()
-        ReportGeneratorDomainManger.request_totals(self())
+        term_id = default_term_id(list_available_terms())
+        ReportGeneratorDomainManger.request_totals(self(), term_id: term_id)
         start_async(socket, :fetch_departments, fn -> SyllabusDomainManager.get_departments() end)
       else
         socket
@@ -27,6 +29,8 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusLive do
       |> assign(:totals, nil)
       |> assign(:by_school, [])
       |> assign(:departments, %{})
+      |> assign(:available_terms, list_available_terms())
+      |> assign(:selected_term_id, default_term_id(list_available_terms()))
       |> assign(:modes,
         search: "Search Syllabi",
         school_overviews: "School Overviews",
@@ -40,17 +44,24 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusLive do
 
   def handle_params(params, _uri, socket) do
     query = params["q"] || ""
+    mode = mode_from_params(params)
 
     if search_live = socket.assigns.search_live_pid do
       send(search_live, {:navigate_params, params})
     end
 
-    {:noreply, socket |> assign(:query, query) |> assign(:search_params, params)}
+    {:noreply,
+     socket
+     |> assign(:query, query)
+     |> assign(:mode, mode)
+     |> assign(:search_params, params)}
   end
 
   def handle_event("switch_mode", %{"mode" => mode}, socket) do
     mode_atom = String.to_existing_atom(mode)
-    {:noreply, assign(socket, :mode, mode_atom)}
+
+    {:noreply,
+     push_patch(socket, to: syllabus_path(params: socket.assigns.search_params, mode: mode_atom))}
   end
 
   def handle_info({:search_navigate, query}, socket) do
@@ -69,8 +80,15 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusLive do
   end
 
   def handle_info(%ReportGenerationStatus.ItemResult{}, socket) do
-    ReportGeneratorDomainManger.request_totals(self())
+    ReportGeneratorDomainManger.request_totals(self(), term_id: socket.assigns.selected_term_id)
     {:noreply, socket}
+  end
+
+  def handle_info({:school_overview_term_changed, term_id}, socket) do
+    selected_term_id = normalize_term_id(term_id)
+    ReportGeneratorDomainManger.request_totals(self(), term_id: selected_term_id)
+
+    {:noreply, assign(socket, :selected_term_id, selected_term_id)}
   end
 
   def handle_info({:syllabus_search_live_ready, pid}, socket) when is_pid(pid) do
@@ -136,6 +154,8 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusLive do
                 totals={@totals}
                 by_school={@by_school}
                 departments={@departments}
+                available_terms={@available_terms}
+                selected_term_id={@selected_term_id}
               />
             <% :required_elements -> %>
               {live_render(@socket, SnowSeToolsWeb.Reports.RequiredElementsLive,
@@ -158,4 +178,72 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusLive do
     </Layouts.app>
     """
   end
+
+  defp list_available_terms do
+    case AvailableTermsDb.list_active_terms() do
+      {:ok, terms} ->
+        terms
+
+      {:error, reason} ->
+        Logger.error("SyllabusLive: failed to load available terms: #{inspect(reason)}")
+        []
+    end
+  end
+
+  defp normalize_term_id(term_id) when is_binary(term_id) and byte_size(term_id) == 0, do: nil
+  defp normalize_term_id(term_id) when is_binary(term_id), do: term_id
+  defp normalize_term_id(_term_id), do: nil
+
+  defp mode_from_params(%{"mode" => "search"}), do: :search
+  defp mode_from_params(%{"mode" => "school_overviews"}), do: :school_overviews
+  defp mode_from_params(%{"mode" => "required_elements"}), do: :required_elements
+  defp mode_from_params(%{"mode" => "ai_history"}), do: :ai_history
+  defp mode_from_params(%{"mode" => "settings"}), do: :settings
+  defp mode_from_params(_params), do: :search
+
+  defp syllabus_path(params: params, mode: mode_atom) do
+    params
+    |> Map.new()
+    |> Map.put("mode", Atom.to_string(mode_atom))
+    |> Enum.sort_by(fn {key, _value} -> key end)
+    |> URI.encode_query()
+    |> then(&"/syllabi?#{&1}")
+  end
+
+  defp default_term_id([]), do: nil
+
+  defp default_term_id(terms) do
+    now = Date.utc_today()
+
+    {term_id, _name} =
+      Enum.min_by(terms, fn {_id, name} ->
+        {year, season} = parse_season_year(name)
+        target_month = season_month(season)
+        target = Date.new!(year, target_month, 15)
+        abs(Date.diff(target, now))
+      end)
+
+    term_id
+  end
+
+  defp parse_season_year(name) do
+    today = Date.utc_today()
+
+    case String.split(name, " ", parts: 2) do
+      [season, year_str] ->
+        with {year, _} <- Integer.parse(year_str) do
+          {year, String.downcase(season)}
+        else
+          _ -> {today.year, :unknown}
+        end
+
+      _ ->
+        {today.year, :unknown}
+    end
+  end
+
+  defp season_month("fall"), do: 9
+  defp season_month("spring"), do: 3
+  defp season_month("summer"), do: 6
+  defp season_month(_), do: 1
 end

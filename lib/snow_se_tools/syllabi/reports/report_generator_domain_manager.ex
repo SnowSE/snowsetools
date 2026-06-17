@@ -72,8 +72,8 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
     GenServer.cast(__MODULE__, {:set_syllabi_codes, codes, term_id})
   end
 
-  def request_totals(pid) do
-    GenServer.cast(__MODULE__, {:request_totals, pid})
+  def request_totals(pid, term_id: term_id) do
+    GenServer.cast(__MODULE__, {:request_totals, pid, term_id})
   end
 
   def generate_async_all_unmet(required_element, exclude_code) do
@@ -150,9 +150,9 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
   end
 
   @impl true
-  def handle_cast({:request_totals, pid}, state) do
+  def handle_cast({:request_totals, pid, term_id}, state) do
     Task.start(fn ->
-      case GeneratedReportItemDB.totals_by_school() do
+      case GeneratedReportItemDB.totals_by_school(term_id) do
         {:ok, by_school} ->
           school_rows = Enum.map(by_school, &with_not_generated_for_school/1)
           grand_total = sum_school_totals(school_rows)

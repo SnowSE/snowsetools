@@ -227,12 +227,13 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
     end
   end
 
-  def totals_by_school do
+  def totals_by_school(term_id) do
     sql = """
     WITH scoped_syllabi AS (
       SELECT s.code, s.org_id
       FROM syllabi s
       WHERE s.org_id IS NOT NULL
+        AND s.term_id = $(term_id)
     ),
     latest_reports AS (
       SELECT DISTINCT ON (gr.syllabus_code) gr.id, gr.syllabus_code
@@ -253,7 +254,7 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
     GROUP BY ss.org_id
     """
 
-    case DbHelpers.run_sql(sql, %{}) do
+    case DbHelpers.run_sql(sql, %{"term_id" => term_id}) do
       {:error, _} = err -> err
       rows -> {:ok, rows}
     end

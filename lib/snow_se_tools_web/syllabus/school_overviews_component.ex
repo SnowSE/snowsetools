@@ -1,5 +1,6 @@
 defmodule SnowSeToolsWeb.Syllabus.SchoolOverviewsComponent do
   use SnowSeToolsWeb, :live_component
+  require Logger
 
   @color_positive "#71E48C9C"
   @color_negative "#7E122D"
@@ -15,6 +16,7 @@ defmodule SnowSeToolsWeb.Syllabus.SchoolOverviewsComponent do
       socket
       |> assign(assigns)
       |> assign_new(:chart_colors, fn -> chart_colors() end)
+      |> assign_new(:selected_term_id, fn -> nil end)
 
     socket =
       assign(
@@ -40,6 +42,27 @@ defmodule SnowSeToolsWeb.Syllabus.SchoolOverviewsComponent do
     ~H"""
     <div id={@id} class="max-w-5xl mx-auto px-6 py-10">
       <div class="space-y-10">
+        <div class="flex items-center gap-3">
+          <.form
+            for={to_form(%{})}
+            id="school-overviews-term-form"
+            phx-target={@myself}
+            phx-change="set_school_overview_term"
+          >
+            <select
+              name="term_id"
+              value={@selected_term_id}
+              class="min-w-56 bg-slate-800 border border-slate-700 text-slate-100 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+            >
+              <%= for {term_id, term_name} <- @available_terms do %>
+                <option value={term_id} selected={@selected_term_id == term_id}>
+                  {term_name}
+                </option>
+              <% end %>
+            </select>
+          </.form>
+        </div>
+
         <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
           <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
             <h2 class="text-sm font-medium text-slate-300 mb-4 text-center">Report Status</h2>
@@ -70,9 +93,10 @@ defmodule SnowSeToolsWeb.Syllabus.SchoolOverviewsComponent do
                   <h3 class="text-sm font-semibold text-slate-200 truncate text-center">
                     {row.department_name}
                   </h3>
-                  <div id={"school-chart-wrap-#{row.org_id}"} phx-update="ignore">
+                  <div id={"school-chart-wrap-#{row.org_id}"}>
                     <canvas
                       id={"school-chart-#{row.org_id}"}
+                      phx-update="ignore"
                       phx-hook=".SchoolChart"
                       height="50"
                       data-met={row.met}
@@ -236,5 +260,11 @@ defmodule SnowSeToolsWeb.Syllabus.SchoolOverviewsComponent do
         not_generated: row["not_generated"]
       }
     end)
+  end
+
+  def handle_event("set_school_overview_term", %{"term_id" => term_id}, socket) do
+    Logger.info("Term changed to #{term_id}, requesting new totals and updating charts")
+    send(self(), {:school_overview_term_changed, term_id})
+    {:noreply, socket}
   end
 end
