@@ -16,3 +16,5 @@ npm-debug.log
 .elixir_ls/
 .env
 *.env
+.expert/
+
