@@ -54,6 +54,7 @@ defmodule SnowSeTools.Application do
     if System.get_env("DATABASE_URL") do
       [
         SnowSeTools.Repo,
+        SnowSeTools.UserGroups.UserGroupDomainManager,
         SnowSeTools.AI.AsyncCompletions,
         SnowSeTools.Cache,
         SnowSeTools.Reports.ReportGeneratorDomainManger,

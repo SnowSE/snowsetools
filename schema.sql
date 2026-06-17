@@ -9,6 +9,26 @@ CREATE TABLE users (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE groups (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        TEXT        NOT NULL UNIQUE,
+  inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO groups (name)
+VALUES ('admin')
+ON CONFLICT (name) DO UPDATE
+SET updated_at = NOW();
+
+CREATE TABLE user_groups (
+  user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  group_id    UUID        NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, group_id)
+);
+
 CREATE TABLE syllabus_required_elements (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   name        TEXT        NOT NULL,

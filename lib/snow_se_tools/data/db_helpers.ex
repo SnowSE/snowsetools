@@ -16,7 +16,7 @@ defmodule SnowSeTools.Data.DbHelpers do
 
       Enum.map(result.rows || [], fn row ->
         Enum.zip(result.columns, row)
-        |> Enum.map(fn {col, val} -> {col, format_uuid_binary(val)} end)
+        |> Enum.map(fn {col, val} -> {col, format_db_value(val)} end)
         |> Enum.into(%{})
       end)
     rescue
@@ -61,13 +61,14 @@ defmodule SnowSeTools.Data.DbHelpers do
     {positional_sql, ordered_values}
   end
 
-  defp format_uuid_binary(<<a::4-bytes, b::2-bytes, c::2-bytes, d::2-bytes, e::6-bytes>>) do
+  defp format_db_value(<<a::4-bytes, b::2-bytes, c::2-bytes, d::2-bytes, e::6-bytes>>) do
     [a, b, c, d, e]
     |> Enum.map(&Base.encode16(&1, case: :lower))
     |> Enum.join("-")
   end
 
-  defp format_uuid_binary(val), do: val
+  defp format_db_value(val) when is_list(val), do: Enum.map(val, &format_db_value/1)
+  defp format_db_value(val), do: val
 
   @doc """
   Runs a transaction. Inside the callback, use `run_sql/2,3` as normal — any

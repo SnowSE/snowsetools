@@ -2,7 +2,7 @@ defmodule SnowSeToolsWeb.UserAuth do
   import Phoenix.LiveView
   import Phoenix.Component
   require Logger
-  alias SnowSeTools.Data.User
+  alias SnowSeTools.Data.{AccessControl, User}
 
   def on_mount(:ensure_authenticated, _params, session, socket) do
     user_result = session["current_user_id"] && User.get_by_id(session["current_user_id"])
@@ -24,6 +24,25 @@ defmodule SnowSeToolsWeb.UserAuth do
           |> redirect(to: "/auth/logout")
 
         {:halt, socket}
+    end
+  end
+
+  def on_mount(:ensure_admin, params, session, socket) do
+    case on_mount(:ensure_authenticated, params, session, socket) do
+      {:cont, socket} ->
+        if admin_user?(socket.assigns.current_user) do
+          {:cont, socket}
+        else
+          socket =
+            socket
+            |> put_flash(:error, "You do not have access to the admin area.")
+            |> redirect(to: "/home")
+
+          {:halt, socket}
+        end
+
+      other ->
+        other
     end
   end
 
@@ -82,4 +101,14 @@ defmodule SnowSeToolsWeb.UserAuth do
   end
 
   defp schedule_session_refresh(socket, _session), do: socket
+
+  defp admin_user?(%{id: user_id}) when is_binary(user_id) do
+    AccessControl.user_has_group?(user_id: user_id, group_name: "admin")
+  end
+
+  defp admin_user?(%{"id" => user_id}) when is_binary(user_id) do
+    AccessControl.user_has_group?(user_id: user_id, group_name: "admin")
+  end
+
+  defp admin_user?(_), do: false
 end

@@ -9,7 +9,13 @@ PROD_CONTAINER="postgres"
 LOCAL_CONTAINER="simplesyllabusreporter-db-1"
 LOCAL_USER="syllabus_user"
 LOCAL_DB="snow_se_tools_dev"
-DUMP_FILE="/tmp/prod_dump.sql"
+DUMP_FILE="$(mktemp /tmp/prod_dump.XXXXXX.sql)"
+
+cleanup() {
+  rm -f "$DUMP_FILE" "$DUMP_FILE.gz"
+}
+
+trap cleanup EXIT
 
 echo ">> Resolving production database credentials..."
 PROD_USER=$(kubectl exec -n "$NAMESPACE" "$PROD_POD" -c "$PROD_CONTAINER" -- printenv POSTGRES_USER 2>/dev/null || echo "postgres")
@@ -42,13 +48,18 @@ fi
 echo "    ✓ Sizes match"
 
 echo ">> Decompressing dump file..."
-gunzip "$DUMP_FILE.gz"
+gunzip -f "$DUMP_FILE.gz"
 
-echo ">> Restoring into local database..."
+echo ">> Recreating local database..."
+docker exec -i "$LOCAL_CONTAINER" psql -U "$LOCAL_USER" -d postgres -v ON_ERROR_STOP=1 <<SQL
+DROP DATABASE IF EXISTS "$LOCAL_DB" WITH (FORCE);
+CREATE DATABASE "$LOCAL_DB" OWNER "$LOCAL_USER";
+SQL
+
+echo ">> Restoring into fresh local database..."
 docker exec -i "$LOCAL_CONTAINER" psql -U "$LOCAL_USER" -d "$LOCAL_DB" < "$DUMP_FILE"
 
-rm -f "$DUMP_FILE"
-echo ">> Cleanup complete."
+echo ">> Local database restored."
 
 echo ">> Comparing row counts..."
 echo ""

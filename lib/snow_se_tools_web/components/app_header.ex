@@ -1,6 +1,8 @@
 defmodule SnowSeToolsWeb.AppHeader do
   use SnowSeToolsWeb, :html
 
+  alias SnowSeTools.Data.AccessControl
+
   attr :current_user, :map, default: nil
   attr :current_path, :string, default: nil
   slot :center
@@ -33,6 +35,14 @@ defmodule SnowSeToolsWeb.AppHeader do
           >
             Syllabi
           </.link>
+          <%= if admin_user?(@current_user) do %>
+            <.link
+              navigate={~p"/admin"}
+              class={nav_link_class(@current_path, ~p"/admin")}
+            >
+              Admin
+            </.link>
+          <% end %>
 
           <span class="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-300">
             <.icon name="hero-user-circle" class="size-4" />
@@ -70,4 +80,14 @@ defmodule SnowSeToolsWeb.AppHeader do
       )
     ]
   end
+
+  defp admin_user?(%{id: user_id}) when is_binary(user_id) do
+    AccessControl.user_has_group?(user_id: user_id, group_name: "admin")
+  end
+
+  defp admin_user?(%{"id" => user_id}) when is_binary(user_id) do
+    AccessControl.user_has_group?(user_id: user_id, group_name: "admin")
+  end
+
+  defp admin_user?(_), do: false
 end

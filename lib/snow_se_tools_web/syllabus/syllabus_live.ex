@@ -194,14 +194,16 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusLive do
   defp normalize_term_id(term_id) when is_binary(term_id), do: term_id
   defp normalize_term_id(_term_id), do: nil
 
-  defp mode_from_params(%{"mode" => "search"}), do: :search
-  defp mode_from_params(%{"mode" => "school_overviews"}), do: :school_overviews
-  defp mode_from_params(%{"mode" => "required_elements"}), do: :required_elements
-  defp mode_from_params(%{"mode" => "ai_history"}), do: :ai_history
-  defp mode_from_params(%{"mode" => "settings"}), do: :settings
-  defp mode_from_params(_params), do: :search
+  @doc false
+  def mode_from_params(%{"mode" => "search"}), do: :search
+  def mode_from_params(%{"mode" => "school_overviews"}), do: :school_overviews
+  def mode_from_params(%{"mode" => "required_elements"}), do: :required_elements
+  def mode_from_params(%{"mode" => "ai_history"}), do: :ai_history
+  def mode_from_params(%{"mode" => "settings"}), do: :settings
+  def mode_from_params(_params), do: :search
 
-  defp syllabus_path(params: params, mode: mode_atom) do
+  @doc false
+  def syllabus_path(params: params, mode: mode_atom) do
     params
     |> Map.new()
     |> Map.put("mode", Atom.to_string(mode_atom))

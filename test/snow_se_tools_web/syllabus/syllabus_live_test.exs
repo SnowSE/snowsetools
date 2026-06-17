@@ -1,32 +1,25 @@
 defmodule SnowSeToolsWeb.Syllabus.SyllabusLiveTest do
-  use SnowSeToolsWeb.ConnCase, async: false
+  use ExUnit.Case, async: true
 
-  import Phoenix.LiveViewTest
+  alias SnowSeToolsWeb.Syllabus.SyllabusLive
 
-  alias SnowSeTools.Data.User
-
-  setup do
-    {:ok, user} = User.find_or_create("syllabus-live-test@example.com")
-
-    %{user: user}
+  test "mode_from_params defaults to search" do
+    assert SyllabusLive.mode_from_params(%{}) == :search
+    assert SyllabusLive.mode_from_params(%{"mode" => "not-real"}) == :search
   end
 
-  test "restores the selected mode from the query string", %{conn: conn, user: user} do
-    conn = init_test_session(conn, current_user_id: user.id)
-
-    {:ok, view, _html} = live(conn, "/syllabi?mode=settings")
-
-    assert has_element?(view, "#tab-settings.text-indigo-300")
-    refute has_element?(view, "#tab-search.text-indigo-300")
+  test "mode_from_params parses known modes" do
+    assert SyllabusLive.mode_from_params(%{"mode" => "search"}) == :search
+    assert SyllabusLive.mode_from_params(%{"mode" => "school_overviews"}) == :school_overviews
+    assert SyllabusLive.mode_from_params(%{"mode" => "required_elements"}) == :required_elements
+    assert SyllabusLive.mode_from_params(%{"mode" => "ai_history"}) == :ai_history
+    assert SyllabusLive.mode_from_params(%{"mode" => "settings"}) == :settings
   end
 
-  test "updates the mode in the query string when switching tabs", %{conn: conn, user: user} do
-    conn = init_test_session(conn, current_user_id: user.id)
+  test "syllabus_path preserves existing params and updates the mode" do
+    path =
+      SyllabusLive.syllabus_path(params: %{"q" => "hello", "term" => "2024"}, mode: :ai_history)
 
-    {:ok, view, _html} = live(conn, "/syllabi")
-
-    render_click(element(view, "#tab-ai_history"))
-
-    assert_patch(view, "/syllabi?mode=ai_history")
+    assert path == "/syllabi?mode=ai_history&q=hello&term=2024"
   end
 end

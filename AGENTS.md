@@ -66,6 +66,55 @@ avoid empty catch-all clauses that hide errors
 
 Phoenix connects to Postgres via `Ecto.Repo` (no Ecto schemas). All queries use `DbHelpers.run_sql/2,3` with named parameters (`$(param_name)`), which are converted to positional Postgrex params at runtime. Query results are optionally validated against a Zoi schema.
 
+• Use DbHelpers.run_sql/3 with explicit sql, params, and a Zoi schema:
+```elixir
+  schema =
+    Zoi.object(%{
+      id: Zoi.uuid(),
+      email: Zoi.string()
+    })
+
+  sql = """
+  SELECT id, email
+  FROM users
+  WHERE id = $(user_id)
+  """
+
+  params = %{"user_id" => Uuid.to_binary(user_id)}
+
+  case DbHelpers.run_sql(sql, params, schema) do
+    [{user}] -> {:ok, user}
+    [] -> {:error, :not_found}
+    {:error, reason} -> {:error, reason}
+  end
+```
+
+UI updates should not talk to SQL directly. Flow should be:
+
+- LiveView handle_event/3 calls a domain manager with GenServer.cast/2
+- Domain manager does DB work
+- Domain manager sends results back with send(pid, ...) or PubSub
+- LiveView handles handle_info/2 and updates assigns or flashes
+
+LiveView
+
+```elixir
+  def handle_event("save", %{"group" => attrs}, socket) do
+    AdminDomainManager.create_group(pid: self(), group_params: attrs)
+    {:noreply, socket}
+  end
+
+  def handle_info({:admin_action_result, {:error, reason}}, socket) do
+    {:noreply, put_flash(socket, :error, inspect(reason))}
+  end
+```
+
+  Rule of thumb:
+
+  - DB access in data modules
+  - coordination in domain managers
+  - UI feedback in LiveView via handle_info/2, put_flash/3, assign/3, or send_update/2
+
 ## Dev Environment
 
 `docker compose up` starts two containers:
