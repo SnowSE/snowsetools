@@ -1,10 +1,22 @@
 defmodule SnowSeToolsWeb.Syllabus.SyllabusLive do
   use SnowSeToolsWeb, :live_view
   require Logger
+  alias SnowSeTools.Reports.ReportGeneratorDomainManger
+  alias SnowSeTools.Reports.ReportGenerationStatus
+  alias SnowSeTools.Syllabi.SyllabusDomainManager
 
   on_mount {SnowSeToolsWeb.UserAuth, :ensure_authenticated}
 
   def mount(_params, session, socket) do
+    socket =
+      if connected?(socket) do
+        ReportGenerationStatus.subscribe()
+        ReportGeneratorDomainManger.request_totals(self())
+        start_async(socket, :fetch_departments, fn -> SyllabusDomainManager.get_departments() end)
+      else
+        socket
+      end
+
     socket =
       socket
       |> assign(:page_title, "Syllabus Search")
@@ -12,8 +24,12 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusLive do
       |> assign(:mode, :search)
       |> assign(:search_live_pid, nil)
       |> assign(:search_params, %{})
+      |> assign(:totals, nil)
+      |> assign(:by_school, [])
+      |> assign(:departments, %{})
       |> assign(:modes,
         search: "Search Syllabi",
+        school_overviews: "School Overviews",
         required_elements: "Required Elements",
         ai_history: "AI History",
         settings: "Settings"
@@ -41,9 +57,35 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusLive do
     {:noreply, push_patch(socket, to: ~p"/syllabi?q=#{query}")}
   end
 
+  def handle_info({:totals_loaded, %{"totals" => totals, "by_school" => by_school}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:totals, totals)
+     |> assign(:by_school, by_school)}
+  end
+
+  def handle_info(%ReportGenerationStatus.PendingUpdate{}, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_info(%ReportGenerationStatus.ItemResult{}, socket) do
+    ReportGeneratorDomainManger.request_totals(self())
+    {:noreply, socket}
+  end
+
   def handle_info({:syllabus_search_live_ready, pid}, socket) when is_pid(pid) do
     send(pid, {:navigate_params, socket.assigns.search_params})
     {:noreply, assign(socket, :search_live_pid, pid)}
+  end
+
+  def handle_async(:fetch_departments, {:ok, {:ok, departments}}, socket) do
+    dept_map = Map.new(departments, fn d -> {d["entity_id"], d["name"]} end)
+    {:noreply, assign(socket, :departments, dept_map)}
+  end
+
+  def handle_async(:fetch_departments, result, socket) do
+    Logger.warning("SyllabusLive failed to load departments: #{inspect(result)}")
+    {:noreply, socket}
   end
 
   def render(assigns) do
@@ -87,6 +129,14 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusLive do
                   "parent_pid" => self() |> :erlang.pid_to_list() |> to_string()
                 }
               )}
+            <% :school_overviews -> %>
+              <.live_component
+                module={SnowSeToolsWeb.Syllabus.SchoolOverviewsComponent}
+                id="school-overviews"
+                totals={@totals}
+                by_school={@by_school}
+                departments={@departments}
+              />
             <% :required_elements -> %>
               {live_render(@socket, SnowSeToolsWeb.Reports.RequiredElementsLive,
                 id: "required-elements",
