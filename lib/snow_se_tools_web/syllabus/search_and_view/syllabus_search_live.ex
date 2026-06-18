@@ -316,11 +316,30 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
   defp list_available_terms do
     case AvailableTermsDb.list_active_terms() do
       {:ok, terms} ->
+        now = Date.utc_today()
+
         terms
+        |> Enum.map(fn {id, name} -> {id, name, term_distance(name, now)} end)
+        |> Enum.filter(fn {_id, _name, distance} -> abs(distance) <= 1 end)
+        |> Enum.sort_by(fn {_id, _name, distance} -> distance end)
+        |> Enum.map(fn {id, name, _distance} -> {id, name} end)
 
       {:error, reason} ->
         Logger.error("SyllabusSearchLive: failed to load available terms: #{inspect(reason)}")
         []
+    end
+  end
+
+  defp term_distance(name, date) do
+    {year, season} = parse_season_year(name)
+    month = season_month(season)
+
+    case Date.new(year, month, 15) do
+      {:ok, term_date} ->
+        div(Date.diff(term_date, date), 30)
+
+      _ ->
+        999
     end
   end
 

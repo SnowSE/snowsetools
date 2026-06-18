@@ -6,6 +6,7 @@ defmodule SnowSeToolsWeb.Syllabus.SchoolOverviewsComponent do
   @color_negative "#7E122D"
   @color_warning "#A0904F"
   @color_neutral "#475569"
+  @color_unpublished "#38bdf8"
   @color_border "#21252D"
   @color_legend "#94a3b8"
 
@@ -75,6 +76,7 @@ defmodule SnowSeToolsWeb.Syllabus.SchoolOverviewsComponent do
                 data-color-not-met={@chart_colors.not_met}
                 data-color-partially-met={@chart_colors.partially_met}
                 data-color-not-generated={@chart_colors.not_generated}
+                data-color-not-published={@chart_colors.not_published}
                 data-color-border={@chart_colors.border}
                 data-color-legend={@chart_colors.legend}
               ></canvas>
@@ -103,15 +105,17 @@ defmodule SnowSeToolsWeb.Syllabus.SchoolOverviewsComponent do
                       data-not-met={row.not_met}
                       data-partially-met={row.partially_met}
                       data-not-generated={row.not_generated}
+                      data-not-published={row.not_published}
                       data-color-met={@chart_colors.met}
                       data-color-not-met={@chart_colors.not_met}
                       data-color-partially-met={@chart_colors.partially_met}
                       data-color-not-generated={@chart_colors.not_generated}
+                      data-color-not-published={@chart_colors.not_published}
                       data-color-border={@chart_colors.border}
                       data-color-legend={@chart_colors.legend}
                     ></canvas>
                   </div>
-                  <div class="grid grid-cols-4 gap-1 text-center">
+                  <div class="grid grid-cols-2 gap-1 text-center sm:grid-cols-5">
                     <div class="rounded-lg bg-green-500/10 border border-green-500/20 py-1.5">
                       <div class="text-base font-bold text-green-200">{row.met}</div>
                       <div class="text-xs text-green-200/60">Met</div>
@@ -127,6 +131,10 @@ defmodule SnowSeToolsWeb.Syllabus.SchoolOverviewsComponent do
                     <div class="rounded-lg bg-slate-500/10 border border-slate-500/20 py-1.5">
                       <div class="text-base font-bold text-slate-200">{row.not_generated}</div>
                       <div class="text-xs text-slate-200/60">Not Generated</div>
+                    </div>
+                    <div class="rounded-lg bg-sky-500/10 border border-sky-500/20 py-1.5">
+                      <div class="text-base font-bold text-sky-200">{row.not_published}</div>
+                      <div class="text-xs text-sky-200/60">Not Published</div>
                     </div>
                   </div>
                 </.link>
@@ -144,10 +152,10 @@ defmodule SnowSeToolsWeb.Syllabus.SchoolOverviewsComponent do
               this.chart = new Chart(this.el, {
                 type: "doughnut",
                 data: {
-                  labels: ["Met", "Not Met", "Partially Met", "Not Generated"],
+                  labels: ["Met", "Not Met", "Partially Met", "Not Generated", "Not Published"],
                   datasets: [{
-                    data: [0, 0, 0, 0],
-                    backgroundColor: [d.colorMet, d.colorNotMet, d.colorPartiallyMet, d.colorNotGenerated],
+                    data: [0, 0, 0, 0, 0],
+                    backgroundColor: [d.colorMet, d.colorNotMet, d.colorPartiallyMet, d.colorNotGenerated, d.colorNotPublished],
                     borderColor: d.colorBorder,
                     borderWidth: 2,
                     hoverOffset: 6,
@@ -166,7 +174,7 @@ defmodule SnowSeToolsWeb.Syllabus.SchoolOverviewsComponent do
                 }
               })
               this.handleEvent("chart_data", data => {
-                this.chart.data.datasets[0].data = [data.met, data.not_met, data.partially_met, data.not_generated]
+                this.chart.data.datasets[0].data = [data.met, data.not_met, data.partially_met, data.not_generated, data.not_published]
                 this.chart.update()
               })
             },
@@ -182,7 +190,7 @@ defmodule SnowSeToolsWeb.Syllabus.SchoolOverviewsComponent do
             updated() {
               if (!this.chart) { this.chart = this.buildChart(); return }
               const d = this.el.dataset
-              this.chart.data.datasets[0].data = [+d.met, +d.notMet, +d.partiallyMet, +d.notGenerated]
+              this.chart.data.datasets[0].data = [+d.met, +d.notMet, +d.partiallyMet, +d.notGenerated, +d.notPublished]
               this.chart.update()
             },
             destroyed() { this.chart?.destroy() },
@@ -191,10 +199,10 @@ defmodule SnowSeToolsWeb.Syllabus.SchoolOverviewsComponent do
               return new Chart(this.el, {
                 type: "doughnut",
                 data: {
-                  labels: ["Met", "Not Met", "Partially Met", "Not Generated"],
+                  labels: ["Met", "Not Met", "Partially Met", "Not Generated", "Not Published"],
                   datasets: [{
-                    data: [+d.met, +d.notMet, +d.partiallyMet, +d.notGenerated],
-                    backgroundColor: [d.colorMet, d.colorNotMet, d.colorPartiallyMet, d.colorNotGenerated],
+                    data: [+d.met, +d.notMet, +d.partiallyMet, +d.notGenerated, +d.notPublished],
+                    backgroundColor: [d.colorMet, d.colorNotMet, d.colorPartiallyMet, d.colorNotGenerated, d.colorNotPublished],
                     borderColor: d.colorBorder,
                     borderWidth: 2,
                     hoverOffset: 4,
@@ -226,13 +234,21 @@ defmodule SnowSeToolsWeb.Syllabus.SchoolOverviewsComponent do
       not_met: @color_negative,
       partially_met: @color_warning,
       not_generated: @color_neutral,
+      not_published: @color_unpublished,
       border: @color_border,
       legend: @color_legend
     }
   end
 
   defp chart_data(nil),
-    do: %{met: 0, not_met: 0, partially_met: 0, not_generated: 0, total_syllabi: 0}
+    do: %{
+      met: 0,
+      not_met: 0,
+      partially_met: 0,
+      not_generated: 0,
+      not_published: 0,
+      total_syllabi: 0
+    }
 
   defp chart_data(totals) do
     %{
@@ -240,6 +256,7 @@ defmodule SnowSeToolsWeb.Syllabus.SchoolOverviewsComponent do
       not_met: Map.get(totals, "not_met", 0),
       partially_met: Map.get(totals, "partially_met", 0),
       not_generated: Map.get(totals, "not_generated", 0),
+      not_published: Map.get(totals, "not_published", 0),
       total_syllabi: Map.get(totals, "total_syllabi", 0)
     }
   end
@@ -257,7 +274,8 @@ defmodule SnowSeToolsWeb.Syllabus.SchoolOverviewsComponent do
         met: row["met"],
         not_met: row["not_met"],
         partially_met: row["partially_met"],
-        not_generated: row["not_generated"]
+        not_generated: row["not_generated"],
+        not_published: row["not_published"]
       }
     end)
   end

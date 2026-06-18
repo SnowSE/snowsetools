@@ -563,7 +563,8 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
         "not_met" => 0,
         "partially_met" => 0,
         "total_syllabi" => 0,
-        "not_generated" => 0
+        "not_generated" => 0,
+        "not_published" => 0
       },
       fn row, acc ->
         %{
@@ -571,7 +572,8 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
           "not_met" => acc["not_met"] + row["not_met"],
           "partially_met" => acc["partially_met"] + row["partially_met"],
           "total_syllabi" => acc["total_syllabi"] + row["total_syllabi"],
-          "not_generated" => acc["not_generated"] + row["not_generated"]
+          "not_generated" => acc["not_generated"] + row["not_generated"],
+          "not_published" => acc["not_published"] + row["not_published"]
         }
       end
     )

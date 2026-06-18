@@ -306,15 +306,6 @@ defmodule SnowSeTools.Syllabi.SyllabusDB do
     end
   end
 
-  # Extract email addresses from detail_data's editors field.
-  #
-  # The detail_data editors structure is:
-  # [
-  #   {
-  #     "role": {...},
-  #     "accounts": [{"email": "...", ...}]
-  #   }
-  # ]
   defp extract_linked_emails(nil, linked_email) when is_binary(linked_email),
     do: [linked_email]
 

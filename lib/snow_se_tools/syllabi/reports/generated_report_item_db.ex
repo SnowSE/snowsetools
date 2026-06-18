@@ -235,23 +235,68 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
       WHERE s.org_id IS NOT NULL
         AND s.term_id = $(term_id)
     ),
+    selected_snow_terms AS (
+      SELECT st.term_code, st.term_name
+      FROM snow_terms st
+      JOIN syllabus_available_terms sat ON sat.term_name = st.term_name
+      WHERE sat.term_id = $(term_id)
+    ),
+    org_subjects AS (
+      SELECT DISTINCT s.org_id, substring(s.title from '^([A-Z]+)') AS subject_code
+      FROM syllabi s
+      WHERE s.org_id IS NOT NULL
+        AND substring(s.title from '^([A-Z]+)') IS NOT NULL
+    ),
+    not_published_by_school AS (
+      SELECT
+        os.org_id,
+        COUNT(DISTINCT c.term_code || ':' || c.crn)::integer AS not_published
+      FROM snow_courses c
+      JOIN selected_snow_terms st ON st.term_code = c.term_code
+      JOIN org_subjects os ON os.subject_code = c.subject_code
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM syllabi s
+        WHERE s.term_name = st.term_name
+          AND s.title ILIKE '%(CRN: ' || c.crn || ')%'
+      )
+      GROUP BY os.org_id
+    ),
+    scoped_orgs AS (
+      SELECT org_id FROM scoped_syllabi
+      UNION
+      SELECT org_id FROM not_published_by_school
+    ),
     latest_reports AS (
       SELECT DISTINCT ON (gr.syllabus_code) gr.id, gr.syllabus_code
       FROM syllabus_generated_reports gr
       JOIN scoped_syllabi ss ON ss.code = gr.syllabus_code
       ORDER BY gr.syllabus_code, gr.inserted_at DESC
+    ),
+    published_by_school AS (
+      SELECT
+        ss.org_id,
+        COUNT(DISTINCT ss.code)::integer                                    AS total_syllabi,
+        COUNT(DISTINCT lr.id)::integer                                      AS syllabi_with_reports,
+        COUNT(gri.id) FILTER (WHERE gri.status = 'met')::integer           AS met,
+        COUNT(gri.id) FILTER (WHERE gri.status = 'not_met')::integer       AS not_met,
+        COUNT(gri.id) FILTER (WHERE gri.status = 'partially_met')::integer AS partially_met
+      FROM scoped_syllabi ss
+      LEFT JOIN latest_reports lr ON lr.syllabus_code = ss.code
+      LEFT JOIN syllabus_generated_report_items gri ON gri.generated_report_id = lr.id
+      GROUP BY ss.org_id
     )
     SELECT
-      ss.org_id,
-      COUNT(DISTINCT ss.code)::integer                                    AS total_syllabi,
-      COUNT(DISTINCT lr.id)::integer                                      AS syllabi_with_reports,
-      COUNT(gri.id) FILTER (WHERE gri.status = 'met')::integer           AS met,
-      COUNT(gri.id) FILTER (WHERE gri.status = 'not_met')::integer       AS not_met,
-      COUNT(gri.id) FILTER (WHERE gri.status = 'partially_met')::integer AS partially_met
-    FROM scoped_syllabi ss
-    LEFT JOIN latest_reports lr ON lr.syllabus_code = ss.code
-    LEFT JOIN syllabus_generated_report_items gri ON gri.generated_report_id = lr.id
-    GROUP BY ss.org_id
+      so.org_id,
+      COALESCE(pbs.total_syllabi, 0)::integer AS total_syllabi,
+      COALESCE(pbs.syllabi_with_reports, 0)::integer AS syllabi_with_reports,
+      COALESCE(pbs.met, 0)::integer AS met,
+      COALESCE(pbs.not_met, 0)::integer AS not_met,
+      COALESCE(pbs.partially_met, 0)::integer AS partially_met,
+      COALESCE(npbs.not_published, 0)::integer AS not_published
+    FROM scoped_orgs so
+    LEFT JOIN published_by_school pbs ON pbs.org_id = so.org_id
+    LEFT JOIN not_published_by_school npbs ON npbs.org_id = so.org_id
     """
 
     case DbHelpers.run_sql(sql, %{"term_id" => term_id}) do
