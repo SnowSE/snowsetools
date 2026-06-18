@@ -11,6 +11,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerList do
     {:ok,
      socket
      |> assign(:courses, assigns[:courses] || [])
+     |> assign(:academic_programs, assigns[:academic_programs] || [])
      |> assign(:query, assigns[:query] || "")
      |> assign(:selected_schedule_owner_keys, assigns[:selected_schedule_owner_keys] || [])}
   end
@@ -37,7 +38,11 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerList do
   def render(assigns) do
     assigns =
       assign_new(assigns, :schedule_owners, fn ->
-        ScheduleOwnerData.build_schedule_owners(assigns.courses, assigns.query)
+        ScheduleOwnerData.build_schedule_owners(
+          courses: assigns.courses,
+          query: assigns.query,
+          academic_programs: assigns.academic_programs
+        )
       end)
 
     ~H"""
@@ -87,6 +92,12 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerList do
       <span class="min-w-0">
         <span class="block truncate text-sm font-medium">{@schedule_owner.name}</span>
         <span class="block text-xs text-slate-500">{@schedule_owner.type_label}</span>
+        <span
+          :if={Map.get(@schedule_owner, :type) == :academic_program_semester}
+          class="mt-1 block text-xs text-slate-600"
+        >
+          {Map.get(@schedule_owner, :requirement_count, 0)} requirements
+        </span>
       </span>
       <span class="shrink-0 text-xs text-slate-400">{@schedule_owner.credit_count} cr.</span>
     </button>

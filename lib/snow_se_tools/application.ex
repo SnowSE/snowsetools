@@ -58,6 +58,7 @@ defmodule SnowSeTools.Application do
         SnowSeTools.AI.AsyncCompletions,
         SnowSeTools.Cache,
         SnowSeTools.Snow.SnowCourseCacheDomainManager,
+        SnowSeTools.AcademicPrograms.ProgramDomainManager,
         SnowSeTools.Reports.ReportGeneratorDomainManger,
         SnowSeTools.Syllabi.Syncing.SyllabusScraperAgent
       ]

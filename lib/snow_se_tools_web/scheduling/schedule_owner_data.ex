@@ -5,13 +5,13 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
   @default_start_minutes 8 * 60
   @default_end_minutes 17 * 60
 
-  def build_schedule_owners(courses, query) do
+  def build_schedule_owners(courses: courses, query: query, academic_programs: academic_programs) do
     normalized_query = normalize(query)
 
     courses
-    |> schedule_owner_entries()
+    |> schedule_owner_entries(academic_programs)
     |> Enum.filter(fn schedule_owner ->
-      normalized_query == "" or String.contains?(normalize(schedule_owner.name), normalized_query)
+      normalized_query == "" or query_matches?(schedule_owner.search_text, normalized_query)
     end)
     |> Enum.sort_by(fn schedule_owner ->
       {schedule_owner.type_order, String.downcase(schedule_owner.name)}
@@ -19,10 +19,14 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
     |> Enum.take(250)
   end
 
-  def selected_schedule_owners(courses, selected_schedule_owner_keys) do
+  def selected_schedule_owners(
+        courses: courses,
+        selected_schedule_owner_keys: selected_schedule_owner_keys,
+        academic_programs: academic_programs
+      ) do
     schedule_owners_by_key =
       courses
-      |> schedule_owner_entries()
+      |> schedule_owner_entries(academic_programs)
       |> Map.new(&{&1.key, &1})
 
     selected_schedule_owner_keys
@@ -30,8 +34,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
     |> Enum.reject(&is_nil/1)
   end
 
-  defp schedule_owner_entries(courses) do
-    professor_entries(courses) ++ room_entries(courses)
+  defp schedule_owner_entries(courses, academic_programs) do
+    professor_entries(courses) ++ program_semester_entries(courses, academic_programs) ++
+      room_entries(courses)
   end
 
   defp professor_entries(courses) do
@@ -81,9 +86,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
       key: schedule_owner_key(type, name),
       dom_id: schedule_owner_dom_id(type, name),
       type: type,
-      type_order: if(type == :professor, do: 0, else: 1),
-      type_label: if(type == :professor, do: "Professor", else: "Room"),
+      type_order: schedule_owner_type_order(type),
+      type_label: schedule_owner_type_label(type),
       name: name,
+      search_text: name,
       courses: Enum.uniq_by(courses, & &1["crn"]),
       credit_count: credit_count(courses),
       meetings_by_day: meetings_by_day,
@@ -91,6 +97,42 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
       start_minutes: start_minutes,
       end_minutes: end_minutes
     }
+  end
+
+  defp program_semester_entries(courses, academic_programs) do
+    Enum.flat_map(academic_programs, fn program ->
+      Enum.map(program["semesters"] || [], fn semester ->
+        semester_courses = semester["courses"] || []
+        matching_courses = courses_matching_requirements(courses: courses, required_courses: semester_courses)
+        name = "#{program["name"]} #{semester["name"]}"
+
+        build_schedule_owner(:academic_program_semester, name, matching_courses)
+        |> Map.merge(%{
+          key: schedule_owner_key(:academic_program_semester, "#{program["id"]}:#{semester["id"]}"),
+          dom_id: schedule_owner_dom_id(:academic_program_semester, "#{program["id"]}-#{semester["id"]}"),
+          type_order: 1,
+          type_label: "Program Semester",
+          program_name: program["name"],
+          semester_name: semester["name"],
+          requirement_count: length(semester_courses),
+          search_text: "#{program["name"]} #{semester["name"]}"
+        })
+      end)
+    end)
+  end
+
+  defp courses_matching_requirements(courses: courses, required_courses: required_courses) do
+    required_pairs =
+      MapSet.new(required_courses, fn course ->
+        {normalize_course_code(course["subject_code"]), normalize_course_code(course["course_number"])}
+      end)
+
+    Enum.filter(courses, fn course ->
+      MapSet.member?(
+        required_pairs,
+        {normalize_course_code(course["subject_code"]), normalize_course_code(course["course_number"])}
+      )
+    end)
   end
 
   defp meetings_by_day(type, name, courses) do
@@ -118,6 +160,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
 
   defp meeting_matches_schedule_owner?(:room, name, _course, meeting),
     do: room_name(meeting) == name
+
+  defp meeting_matches_schedule_owner?(:academic_program_semester, _name, _course, _meeting),
+    do: true
 
   defp meeting_from_course(course, meeting) do
     start_minutes = parse_minutes(meeting["start_time"])
@@ -197,6 +242,14 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
 
   defp schedule_owner_key(type, name), do: "#{type}:#{name}"
 
+  defp schedule_owner_type_order(:professor), do: 0
+  defp schedule_owner_type_order(:academic_program_semester), do: 1
+  defp schedule_owner_type_order(:room), do: 2
+
+  defp schedule_owner_type_label(:professor), do: "Professor"
+  defp schedule_owner_type_label(:academic_program_semester), do: "Program Semester"
+  defp schedule_owner_type_label(:room), do: "Room"
+
   defp schedule_owner_dom_id(type, name) do
     "#{type}-#{name}"
     |> String.downcase()
@@ -206,6 +259,17 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
 
   defp normalize(value) when is_binary(value), do: value |> String.downcase() |> String.trim()
   defp normalize(_value), do: ""
+
+  defp normalize_course_code(value) when is_binary(value), do: value |> String.trim() |> String.upcase()
+  defp normalize_course_code(_value), do: ""
+
+  defp query_matches?(value, normalized_query) do
+    search_text = normalize(value)
+
+    normalized_query
+    |> String.split(~r/\s+/, trim: true)
+    |> Enum.all?(&String.contains?(search_text, &1))
+  end
 
   defp blank?(value) when is_binary(value), do: String.trim(value) == ""
   defp blank?(_value), do: true

@@ -172,3 +172,37 @@ CREATE TABLE snow_section_students (
 );
 
 CREATE INDEX snow_section_students_term_crn_idx ON snow_section_students(term_code, crn);
+
+CREATE TABLE academic_programs (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        TEXT        NOT NULL UNIQUE,
+  inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE academic_program_semesters (
+  id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  academic_program_id UUID        NOT NULL REFERENCES academic_programs(id) ON DELETE CASCADE,
+  name                TEXT        NOT NULL,
+  position            INTEGER     NOT NULL DEFAULT 0,
+  inserted_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(academic_program_id, name)
+);
+
+CREATE INDEX academic_program_semesters_program_idx
+ON academic_program_semesters(academic_program_id, position);
+
+CREATE TABLE academic_program_semester_courses (
+  id                           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  academic_program_semester_id UUID        NOT NULL REFERENCES academic_program_semesters(id) ON DELETE CASCADE,
+  subject_code                 TEXT        NOT NULL,
+  course_number                TEXT        NOT NULL,
+  position                     INTEGER     NOT NULL DEFAULT 0,
+  inserted_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(academic_program_semester_id, subject_code, course_number)
+);
+
+CREATE INDEX academic_program_semester_courses_semester_idx
+ON academic_program_semester_courses(academic_program_semester_id, position);
