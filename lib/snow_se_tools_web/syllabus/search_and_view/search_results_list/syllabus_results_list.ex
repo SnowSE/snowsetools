@@ -129,11 +129,17 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchResultsList do
 
   # ----- handle_event -----
 
-  def handle_event("select", %{"code" => code, "title" => title, "term" => term}, socket) do
-    {:noreply,
-     push_patch(socket,
-       to: ~p"/syllabi?q=#{socket.assigns.query}&code=#{code}&title=#{title}&term=#{term}"
-     )}
+  def handle_event("select", %{"code" => code, "title" => title, "term" => term} = params, socket) do
+    query_params =
+      %{
+        "q" => socket.assigns.query,
+        "code" => code,
+        "title" => title,
+        "term" => term
+      }
+      |> maybe_put_snow_course_params(params)
+
+    {:noreply, push_patch(socket, to: ~p"/syllabi?#{query_params}")}
   end
 
   def handle_event("close_detail", _params, socket) do
@@ -204,7 +210,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchResultsList do
   def handle_async(:fetch_departments, _result, socket), do: {:noreply, socket}
 
   def handle_async(:search, {:ok, {:ok, %{items: docs, cached_at: cached_at}}}, socket) do
-    codes = Enum.map(docs, & &1["code"])
+    codes = published_codes(docs)
 
     if connected?(socket) do
       ReportGenerationStatus.request_pending(codes)
@@ -260,9 +266,9 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchResultsList do
       <% total_generated =
         @report_counts |> Map.values() |> Enum.flat_map(&Map.values/1) |> Enum.sum()
 
-      total_possible = map_size(@syllabi_docs) * @total_elements %>
+      total_possible = published_count(@syllabi_docs) * @total_elements %>
 
-      <%= if not @syllabi_empty? && @total_elements > 0 && !@loading_search do %>
+      <%= if not @syllabi_empty? && @total_elements > 0 && total_possible > 0 && !@loading_search do %>
         <div class="mb-3 shrink-0">
           <button
             id="generate-all-btn"
@@ -516,7 +522,11 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchResultsList do
   end
 
   defp missing_codes(syllabi_docs, report_counts, total_elements) do
-    syllabi_docs |> Map.keys() |> missing_codes_from_list(report_counts, total_elements)
+    syllabi_docs
+    |> Map.values()
+    |> Enum.filter(&published_doc?/1)
+    |> Enum.map(& &1["code"])
+    |> missing_codes_from_list(report_counts, total_elements)
   end
 
   defp missing_codes_from_list(codes, report_counts, total_elements) do
@@ -537,4 +547,33 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchResultsList do
     |> String.replace(~r/[^a-z0-9]+/, "-")
     |> String.trim("-")
   end
+
+  defp published_codes(docs) do
+    docs
+    |> Enum.filter(&published_doc?/1)
+    |> Enum.map(& &1["code"])
+  end
+
+  defp published_count(syllabi_docs) do
+    syllabi_docs
+    |> Map.values()
+    |> Enum.count(&published_doc?/1)
+  end
+
+  defp published_doc?(doc), do: doc["source"] != "snow_courses"
+
+  defp maybe_put_snow_course_params(query_params, %{"source" => "snow_courses"} = params) do
+    query_params
+    |> Map.put("source", "snow_courses")
+    |> Map.put("syllabus_status", "unpublished")
+    |> Map.put("term_code", params["term_code"] || "")
+    |> Map.put("crn", params["crn"] || "")
+    |> Map.put("subject_code", params["subject_code"] || "")
+    |> Map.put("course_number", params["course_number"] || "")
+    |> Map.put("section_number", params["section_number"] || "")
+    |> Map.put("course_name", params["course_name"] || "")
+    |> Map.put("primary_instructor_name", params["primary_instructor_name"] || "")
+  end
+
+  defp maybe_put_snow_course_params(query_params, _params), do: query_params
 end

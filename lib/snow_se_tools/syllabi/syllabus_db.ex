@@ -76,14 +76,87 @@ defmodule SnowSeTools.Syllabi.SyllabusDB do
 
   def list_by_org(org_id, term_id: term_id) when is_binary(org_id) do
     sql = """
-    SELECT s.list_data, s.list_cached_at
-    FROM syllabi s
-    WHERE s.org_id = ANY($(org_ids)::text[])
-      AND ($(term_id)::text IS NULL OR s.term_id = $(term_id))
-    ORDER BY COALESCE(s.title, s.course_name) ASC NULLS LAST
+    WITH selected_snow_terms AS (
+      SELECT st.term_code, st.term_name, sat.term_id AS syllabus_term_id
+      FROM snow_terms st
+      LEFT JOIN syllabus_available_terms sat ON sat.term_name = st.term_name
+      WHERE $(term_id)::text IS NULL OR sat.term_id = $(term_id)
+    ),
+    org_subjects AS (
+      SELECT DISTINCT substring(s.title from '^([A-Z]+)') AS subject_code
+      FROM syllabi s
+      WHERE s.org_id = ANY($(org_ids)::text[])
+        AND substring(s.title from '^([A-Z]+)') IS NOT NULL
+    ),
+    existing_syllabi AS (
+      SELECT s.list_data, s.list_cached_at, 0 AS source_order
+      FROM syllabi s
+      WHERE s.org_id = ANY($(org_ids)::text[])
+        AND ($(term_id)::text IS NULL OR s.term_id = $(term_id))
+    ),
+    missing_snow_courses AS (
+      SELECT
+        jsonb_build_object(
+          'code', 'snow-course-' || c.term_code || '-' || c.crn,
+          'title', c.subject_code || ' ' || c.course_number || ' ' || c.section_number || ' (CRN: ' || c.crn || ')',
+          'course_name', c.course_name,
+          'term_id', st.syllabus_term_id,
+          'term_name', st.term_name,
+          'term', st.term_name,
+          'entity_id', c.crn,
+          'entity_type', 'snow_course',
+          'family_name', 'snow_course',
+          'visibility', 'unpublished',
+          'source', 'snow_courses',
+          'syllabus_status', 'unpublished',
+          'org_id', $(org_id)::text,
+          '__org_id', $(org_id)::text,
+          'editors', COALESCE(instructors.editors, '[]'::jsonb),
+          'snow_course', jsonb_build_object(
+            'term_code', c.term_code,
+            'crn', c.crn,
+            'subject_code', c.subject_code,
+            'course_number', c.course_number,
+            'section_number', c.section_number,
+            'course_name', c.course_name,
+            'primary_instructor_name', c.primary_instructor_name
+          )
+        ) AS list_data,
+        c.cached_at AS list_cached_at,
+        1 AS source_order
+      FROM snow_courses c
+      JOIN selected_snow_terms st ON st.term_code = c.term_code
+      LEFT JOIN LATERAL (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'full_name', instructor->>'name',
+            'first_name', split_part(COALESCE(instructor->>'name', ''), ' ', 1),
+            'last_name', trim(regexp_replace(COALESCE(instructor->>'name', ''), '^\\S+\\s*', '')),
+            'has_headshot', false,
+            'accounts', jsonb_build_array(jsonb_build_object('email', instructor->>'email')),
+            'role', jsonb_build_object('role_types', jsonb_build_array('instructor'))
+          )
+        ) FILTER (WHERE instructor ? 'name' OR instructor ? 'email') AS editors
+        FROM jsonb_array_elements(COALESCE(c.data::jsonb->'instructors', '[]'::jsonb)) instructor
+      ) instructors ON TRUE
+      WHERE c.subject_code IN (SELECT subject_code FROM org_subjects)
+        AND NOT EXISTS (
+          SELECT 1
+          FROM syllabi s
+          WHERE s.term_name = st.term_name
+            AND s.title ILIKE '%(CRN: ' || c.crn || ')%'
+        )
+    )
+    SELECT list_data, list_cached_at
+    FROM (
+      SELECT * FROM existing_syllabi
+      UNION ALL
+      SELECT * FROM missing_snow_courses
+    ) results
+    ORDER BY source_order, COALESCE(list_data->>'title', list_data->>'course_name') ASC NULLS LAST
     """
 
-    case DbHelpers.run_sql(sql, %{"org_ids" => [org_id], "term_id" => term_id}) do
+    case DbHelpers.run_sql(sql, %{"org_ids" => [org_id], "org_id" => org_id, "term_id" => term_id}) do
       {:error, _} = err -> err
       [] -> {:ok, [], nil}
       rows -> {:ok, Enum.map(rows, & &1["list_data"]), oldest_cached_at(rows)}
@@ -103,11 +176,86 @@ defmodule SnowSeTools.Syllabi.SyllabusDB do
 
   def list_by_editor_email(email, term_id: term_id) do
     sql = """
-    SELECT s.list_data, s.list_cached_at
-    FROM syllabi s
-    WHERE $(email) = ANY(s.linked_emails)
-      AND ($(term_id)::text IS NULL OR s.term_id = $(term_id))
-    ORDER BY COALESCE(s.title, s.course_name) ASC NULLS LAST
+    WITH selected_snow_terms AS (
+      SELECT st.term_code, st.term_name, sat.term_id AS syllabus_term_id
+      FROM snow_terms st
+      LEFT JOIN syllabus_available_terms sat ON sat.term_name = st.term_name
+      WHERE $(term_id)::text IS NULL OR sat.term_id = $(term_id)
+    ),
+    existing_syllabi AS (
+      SELECT s.list_data, s.list_cached_at, 0 AS source_order
+      FROM syllabi s
+      WHERE EXISTS (
+          SELECT 1
+          FROM unnest(s.linked_emails) linked_email
+          WHERE lower(linked_email) = lower($(email))
+        )
+        AND ($(term_id)::text IS NULL OR s.term_id = $(term_id))
+    ),
+    missing_snow_courses AS (
+      SELECT
+        jsonb_build_object(
+          'code', 'snow-course-' || c.term_code || '-' || c.crn,
+          'title', c.subject_code || ' ' || c.course_number || ' ' || c.section_number || ' (CRN: ' || c.crn || ')',
+          'course_name', c.course_name,
+          'term_id', st.syllabus_term_id,
+          'term_name', st.term_name,
+          'term', st.term_name,
+          'entity_id', c.crn,
+          'entity_type', 'snow_course',
+          'family_name', 'snow_course',
+          'visibility', 'unpublished',
+          'source', 'snow_courses',
+          'syllabus_status', 'unpublished',
+          'org_id', NULL,
+          '__org_id', NULL,
+          'editors', COALESCE(instructors.editors, '[]'::jsonb),
+          'snow_course', jsonb_build_object(
+            'term_code', c.term_code,
+            'crn', c.crn,
+            'subject_code', c.subject_code,
+            'course_number', c.course_number,
+            'section_number', c.section_number,
+            'course_name', c.course_name,
+            'primary_instructor_name', c.primary_instructor_name
+          )
+        ) AS list_data,
+        c.cached_at AS list_cached_at,
+        1 AS source_order
+      FROM snow_courses c
+      JOIN selected_snow_terms st ON st.term_code = c.term_code
+      LEFT JOIN LATERAL (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'full_name', instructor->>'name',
+            'first_name', split_part(COALESCE(instructor->>'name', ''), ' ', 1),
+            'last_name', trim(regexp_replace(COALESCE(instructor->>'name', ''), '^\\S+\\s*', '')),
+            'has_headshot', false,
+            'accounts', jsonb_build_array(jsonb_build_object('email', instructor->>'email')),
+            'role', jsonb_build_object('role_types', jsonb_build_array('instructor'))
+          )
+        ) FILTER (WHERE instructor ? 'name' OR instructor ? 'email') AS editors
+        FROM jsonb_array_elements(COALESCE(c.data::jsonb->'instructors', '[]'::jsonb)) instructor
+      ) instructors ON TRUE
+      WHERE EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(COALESCE(c.data::jsonb->'instructors', '[]'::jsonb)) instructor
+          WHERE lower(instructor->>'email') = lower($(email))
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM syllabi s
+          WHERE s.term_name = st.term_name
+            AND s.title ILIKE '%(CRN: ' || c.crn || ')%'
+        )
+    )
+    SELECT list_data, list_cached_at
+    FROM (
+      SELECT * FROM existing_syllabi
+      UNION ALL
+      SELECT * FROM missing_snow_courses
+    ) results
+    ORDER BY source_order, COALESCE(list_data->>'title', list_data->>'course_name') ASC NULLS LAST
     """
 
     case DbHelpers.run_sql(sql, %{"email" => email, "term_id" => term_id}) do

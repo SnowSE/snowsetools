@@ -128,6 +128,13 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
 
     socket =
       cond do
+        code && code_changed? && snow_course_params?(params) ->
+          socket
+          |> ReportHandlers.clear_detail()
+          |> assign(:loading_detail, false)
+          |> assign(:detail_error, nil)
+          |> assign(:selected, snow_course_selection(params))
+
         code && code_changed? ->
           term_id = socket.assigns.selected_term_id
           ReportGeneratorDomainManger.request_items_for_code(code, self(), term_id: term_id)
@@ -379,5 +386,28 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
 
   defp state_payload(socket) do
     %{query: socket.assigns.query, term_id: socket.assigns.selected_term_id}
+  end
+
+  defp snow_course_params?(%{"source" => "snow_courses"}), do: true
+  defp snow_course_params?(_params), do: false
+
+  defp snow_course_selection(params) do
+    %{
+      "code" => params["code"],
+      "title" => params["title"] || params["code"],
+      "term" => params["term"] || "",
+      "term_name" => params["term"] || "",
+      "source" => "snow_courses",
+      "syllabus_status" => "unpublished",
+      "snow_course" => %{
+        "term_code" => params["term_code"] || "",
+        "crn" => params["crn"] || "",
+        "subject_code" => params["subject_code"] || "",
+        "course_number" => params["course_number"] || "",
+        "section_number" => params["section_number"] || "",
+        "course_name" => params["course_name"] || "",
+        "primary_instructor_name" => params["primary_instructor_name"] || ""
+      }
+    }
   end
 end

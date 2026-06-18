@@ -39,7 +39,12 @@ defmodule SnowSeToolsWeb.Syllabus.ProfessorSyllabusListItems do
         total_possible: total_possible,
         any_generating?: any_generating?,
         has_missing?: total_run < total_possible,
-        syllabus_codes: Jason.encode!(Enum.map(assigns.syllabi, & &1["code"]))
+        syllabus_codes:
+          Jason.encode!(
+            assigns.syllabi
+            |> Enum.reject(&unpublished_doc?/1)
+            |> Enum.map(& &1["code"])
+          )
       )
 
     ~H"""
@@ -117,7 +122,7 @@ defmodule SnowSeToolsWeb.Syllabus.ProfessorSyllabusListItems do
 
   defp syllabus_item(assigns) do
     selected? = assigns.selected && assigns.selected["code"] == assigns.doc["code"]
-    assigns = assign(assigns, selected?: selected?)
+    assigns = assign(assigns, selected?: selected?, unpublished?: unpublished_doc?(assigns.doc))
 
     ~H"""
     <% counts = Map.get(@report_counts, @doc["code"], %{}) %>
@@ -133,6 +138,14 @@ defmodule SnowSeToolsWeb.Syllabus.ProfessorSyllabusListItems do
       phx-value-code={@doc["code"]}
       phx-value-title={@doc["title"] || @doc["course_name"] || "Untitled"}
       phx-value-term={@doc["term_name"] || ""}
+      phx-value-source={@doc["source"]}
+      phx-value-term_code={get_in(@doc, ["snow_course", "term_code"])}
+      phx-value-crn={get_in(@doc, ["snow_course", "crn"])}
+      phx-value-subject_code={get_in(@doc, ["snow_course", "subject_code"])}
+      phx-value-course_number={get_in(@doc, ["snow_course", "course_number"])}
+      phx-value-section_number={get_in(@doc, ["snow_course", "section_number"])}
+      phx-value-course_name={get_in(@doc, ["snow_course", "course_name"])}
+      phx-value-primary_instructor_name={get_in(@doc, ["snow_course", "primary_instructor_name"])}
       phx-target={@target}
       class={[
         "group flex flex-col gap-0.5 p-2 rounded-lg cursor-pointer border transition-all relative",
@@ -152,8 +165,14 @@ defmodule SnowSeToolsWeb.Syllabus.ProfessorSyllabusListItems do
         <span :if={@doc["term_name"] || @doc["term"]} class="text-xs text-slate-400">
           {@doc["term_name"] || @doc["term"]}
         </span>
+        <span
+          :if={@unpublished?}
+          class="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-200"
+        >
+          Not published
+        </span>
       </div>
-      <%= if @total_elements > 0 do %>
+      <%= if @total_elements > 0 && !@unpublished? do %>
         <.report_completion_bar
           met={met}
           not_met={not_met}
@@ -187,15 +206,19 @@ defmodule SnowSeToolsWeb.Syllabus.ProfessorSyllabusListItems do
   defp professor_totals(syllabi, report_counts, generating_per_code, total_elements) do
     Enum.reduce(syllabi, {0, 0, 0, 0, 0, false}, fn doc,
                                                     {met, partial, not_met, run, possible, gen?} ->
-      counts = Map.get(report_counts, doc["code"], %{})
-      doc_met = Map.get(counts, "met", 0)
-      doc_partial = Map.get(counts, "partially_met", 0)
-      doc_not_met = Map.get(counts, "not_met", 0)
-      doc_run = doc_met + doc_partial + doc_not_met
-      doc_gen? = MapSet.size(Map.get(generating_per_code, doc["code"], MapSet.new())) > 0
+      if unpublished_doc?(doc) do
+        {met, partial, not_met, run, possible, gen?}
+      else
+        counts = Map.get(report_counts, doc["code"], %{})
+        doc_met = Map.get(counts, "met", 0)
+        doc_partial = Map.get(counts, "partially_met", 0)
+        doc_not_met = Map.get(counts, "not_met", 0)
+        doc_run = doc_met + doc_partial + doc_not_met
+        doc_gen? = MapSet.size(Map.get(generating_per_code, doc["code"], MapSet.new())) > 0
 
-      {met + doc_met, partial + doc_partial, not_met + doc_not_met, run + doc_run,
-       possible + total_elements, gen? || doc_gen?}
+        {met + doc_met, partial + doc_partial, not_met + doc_not_met, run + doc_run,
+         possible + total_elements, gen? || doc_gen?}
+      end
     end)
   end
 
@@ -205,4 +228,6 @@ defmodule SnowSeToolsWeb.Syllabus.ProfessorSyllabusListItems do
     |> String.replace(~r/[^a-z0-9]+/, "-")
     |> String.trim("-")
   end
+
+  defp unpublished_doc?(doc), do: doc["source"] == "snow_courses"
 end
