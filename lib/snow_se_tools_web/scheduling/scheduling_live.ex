@@ -210,8 +210,12 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
 
   defp list_terms do
     case SnowCourseCacheDb.list_terms_with_courses() do
-      {:error, _reason} -> []
-      terms -> terms
+      {:error, reason} ->
+        Logger.error("Scheduling: failed to list terms: #{inspect(reason)}")
+        []
+
+      terms ->
+        terms
     end
   end
 

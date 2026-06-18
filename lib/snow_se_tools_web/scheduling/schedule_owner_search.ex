@@ -1,13 +1,18 @@
 defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerSearch do
   use SnowSeToolsWeb, :live_component
+  require Logger
 
   alias SnowSeTools.Snow.SnowCourseCacheDb
 
   def mount(socket) do
     terms =
       case SnowCourseCacheDb.list_terms_with_courses() do
-        {:error, _reason} -> []
-        terms -> terms
+        {:error, reason} ->
+          Logger.error("ScheduleOwnerSearch: failed to list terms: #{inspect(reason)}")
+          []
+
+        terms ->
+          terms
       end
 
     {:ok,

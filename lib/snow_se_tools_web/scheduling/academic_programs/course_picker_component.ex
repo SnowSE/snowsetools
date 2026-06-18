@@ -50,6 +50,30 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
      |> assign(:active_suggestion_index, -1)}
   end
 
+  def handle_event("value_updated", %{"course" => course_data}, socket) do
+    semester_index = socket.assigns.semester_index
+    course_index = socket.assigns.course_index
+
+    value =
+      course_data
+      |> Map.get(to_string(semester_index), %{})
+      |> Map.get(to_string(course_index), "")
+
+    send_update(AcademicProgramEditorComponent,
+      id: "academic-program-editor",
+      update_course: {semester_index, course_index, value}
+    )
+
+    {:noreply,
+     socket
+     |> assign(:course_value, value)
+     |> assign(
+       :suggestions,
+       AcademicProgramCourseSearch.course_suggestions(socket.assigns.courses, value)
+     )
+     |> assign(:active_suggestion_index, -1)}
+  end
+
   def handle_event("select_suggestion", %{"value" => value}, socket) do
     semester_index = socket.assigns.semester_index
     course_index = socket.assigns.course_index

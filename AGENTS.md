@@ -16,8 +16,8 @@ socket
 
 LiveComponents do **not** run in their own process. They share the parent LiveView process and mailbox. As a result:
 
-* Do not subscribe to PubSub from a component.
-* Do not use components as the primary receiver of external process messages.
+* Do not subscribe to PubSub from a component, make a helper function in the component module and call the helper in the liveview
+* Do not use components as the primary receiver of external process messages, have the message go to the parent liveview and pass the messages to the cild component with send_update
 * Subscribe in the LiveView and handle PubSub messages in the LiveView's `handle_info/2`.
 
 Preferred pattern:
@@ -53,6 +53,21 @@ Rule of thumb:
 
 * LiveComponent = local UI state and rendering.
 * LiveView = PubSub subscriptions, process messages, external events, and coordination between components.
+
+
+## never silently fail
+
+never ignore reasons without logging them (ideally handle them)
+```elixir
+{:error, _reason} ->
+  {:noreply, socket}
+```
+do this instead
+```elixir
+{:error, reason} ->
+  Logger.error("error in <this scenario> #{io.inspect(reason)}")
+  {:noreply, socket}
+```
 
 ## general instructions
 

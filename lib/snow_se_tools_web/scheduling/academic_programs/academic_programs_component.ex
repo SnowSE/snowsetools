@@ -1,8 +1,10 @@
 defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
   use SnowSeToolsWeb, :live_component
+  require Logger
 
   import SnowSeToolsWeb.Scheduling.AcademicProgramListItemComponent, only: [program_item: 1]
 
+  alias SnowSeToolsWeb.Scheduling.AcademicProgramDisplayComponent
   alias SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent
 
   def update(assigns, socket) do
@@ -16,14 +18,18 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
   end
 
   def handle_event("select_program", %{"id" => id}, socket) do
-    program = Enum.find(socket.assigns.programs, &(&1["id"] == id))
+    {:noreply, assign(socket, :selected_program_id, id)}
+  end
 
-    send_update(AcademicProgramEditorComponent,
-      id: "academic-program-editor",
-      selected_program: program
+  def handle_event("new_program_from_list", _params, socket) do
+    send_update(AcademicProgramDisplayComponent,
+      id: "academic-program-display",
+      editing?: true,
+      program: nil,
+      courses: socket.assigns.courses
     )
 
-    {:noreply, assign(socket, :selected_program_id, id)}
+    {:noreply, assign(socket, :selected_program_id, nil)}
   end
 
   def handle_info({:academic_program_selected, id}, socket) do
@@ -36,7 +42,23 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
       action_result: result
     )
 
-    {:noreply, socket}
+    case result do
+      {:ok, _message, program} ->
+        if program do
+          send_update(AcademicProgramDisplayComponent,
+            id: "academic-program-display",
+            program: program
+          )
+
+          {:noreply, assign(socket, :program_view_mode, :display)}
+        else
+          {:noreply, socket}
+        end
+
+      {:error, reason} ->
+        Logger.error("AcademicPrograms: action result error #{inspect(reason)}")
+        {:noreply, socket}
+    end
   end
 
   def render(assigns) do
@@ -52,6 +74,16 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
             <p class="text-xs text-slate-500">Program semesters appear in schedule search.</p>
           </div>
         </div>
+
+        <button
+          id="new-program-from-list"
+          type="button"
+          phx-click="new_program_from_list"
+          phx-target={@myself}
+          class="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 transition hover:bg-indigo-500/25"
+        >
+          <.icon name="hero-plus" class="size-3.5" /> New Program
+        </button>
 
         <div id="academic-program-list" class="min-h-0 flex-1 space-y-2 overflow-y-auto pe-2">
           <div
@@ -72,8 +104,9 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
       </aside>
 
       <.live_component
-        module={AcademicProgramEditorComponent}
-        id="academic-program-editor"
+        module={AcademicProgramDisplayComponent}
+        id="academic-program-display"
+        program={Enum.find(@programs, &(&1["id"] == @selected_program_id))}
         courses={@courses}
       />
     </div>

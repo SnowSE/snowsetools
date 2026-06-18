@@ -137,28 +137,21 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
     end
   end
 
+  def handle_event("cancel_edit", _params, socket) do
+    send(self(), {:academic_programs, {:cancel_edit}})
+    {:noreply, socket}
+  end
+
   def render(assigns) do
     ~H"""
     <section class="min-h-0 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/45 p-4">
-      <div class="mb-4 flex items-start justify-between gap-3">
-        <div class="min-w-0">
-          <h2 class="text-base font-semibold text-slate-100">
-            {if @editing_id, do: "Edit Program", else: "New Program"}
-          </h2>
-          <p class="text-xs text-slate-500">
-            Define catalog requirements by planned academic semester.
-          </p>
-        </div>
-
-        <button
-          id="new-academic-program"
-          type="button"
-          phx-click="new_program"
-          phx-target={@myself}
-          class="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 transition hover:bg-indigo-500/25"
-        >
-          <.icon name="hero-plus" class="size-3.5" /> New
-        </button>
+      <div class="mb-4">
+        <h2 class="text-base font-semibold text-slate-100">
+          {if @editing_id, do: "Edit Program", else: "New Program"}
+        </h2>
+        <p class="text-xs text-slate-500">
+          Define catalog requirements by planned academic semester.
+        </p>
       </div>
 
       <div
@@ -269,7 +262,19 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
           <% end %>
         </div>
 
-        <div class="sticky bottom-0 mt-5 flex justify-end border-t border-slate-800 bg-slate-950/95 pt-3">
+        <div class="sticky bottom-0 mt-5 flex items-center justify-between border-t border-slate-800 bg-slate-950/95 pt-3">
+          <button
+            :if={@editing_id}
+            type="button"
+            phx-click="cancel_edit"
+            phx-target={@myself}
+            class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-slate-400 transition hover:bg-slate-800 hover:text-slate-200"
+          >
+            <.icon name="hero-x-mark" class="size-4" /> Cancel
+          </button>
+
+          <div :if={!@editing_id} />
+
           <button
             id="save-academic-program"
             type="button"
