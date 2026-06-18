@@ -54,16 +54,16 @@ defmodule SnowSeToolsWeb.Admin.SnowCacheComponent do
     {:noreply, assign(socket, :expanded_term_code, expanded_term_code)}
   end
 
-  def handle_event("open_sync_modal", %{"mode" => mode, "term_code" => term_code}, socket) do
+  def handle_event("open_sync_modal", %{"term_code" => term_code}, socket) do
     {:noreply,
      socket
      |> assign(
        modal_open?: true,
-       sync_mode: mode,
+       sync_mode: "courses",
        sync_term_code: term_code,
        sync_message: nil,
        sync_error: nil,
-       sync_form: to_form(%{"jwt_token" => ""}, as: :sync)
+       jwt_token: ""
      )}
   end
 
@@ -71,42 +71,23 @@ defmodule SnowSeToolsWeb.Admin.SnowCacheComponent do
     {:noreply, close_modal(socket)}
   end
 
-  def handle_event("sync", %{"sync" => %{"jwt_token" => jwt_token}}, socket) do
+  def handle_event("snow_jwt_submit", %{"snow_jwt_copy" => %{"jwt_token" => jwt_token}}, socket) do
     jwt_token = String.trim(jwt_token || "")
 
     if jwt_token == "" do
       {:noreply, assign(socket, :sync_error, "Paste your JWT before syncing.")}
     else
-      case socket.assigns.sync_mode do
-        "courses" ->
-          SnowCourseCacheDomainManager.sync_course_list(
-            pid: self(),
-            term_code: socket.assigns.sync_term_code,
-            jwt_token: jwt_token
-          )
+      SnowCourseCacheDomainManager.sync_course_list(
+        pid: self(),
+        term_code: socket.assigns.sync_term_code,
+        jwt_token: jwt_token
+      )
 
-          {:noreply,
-           socket
-           |> assign(:syncing, true)
-           |> assign(:sync_error, nil)
-           |> assign(:sync_message, nil)}
-
-        "rosters" ->
-          SnowCourseCacheDomainManager.sync_term_rosters(
-            pid: self(),
-            term_code: socket.assigns.sync_term_code,
-            jwt_token: jwt_token
-          )
-
-          {:noreply,
-           socket
-           |> assign(:syncing, true)
-           |> assign(:sync_error, nil)
-           |> assign(:sync_message, nil)}
-
-        _ ->
-          {:noreply, assign(socket, :sync_error, "Unknown sync action.")}
-      end
+      {:noreply,
+       socket
+       |> assign(:syncing, true)
+       |> assign(:sync_error, nil)
+       |> assign(:sync_message, nil)}
     end
   end
 
@@ -118,25 +99,15 @@ defmodule SnowSeToolsWeb.Admin.SnowCacheComponent do
     >
       <div class="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div class="space-y-2">
-          <h2 class="text-lg font-semibold text-slate-100">Cached Snow semesters</h2>
-          <p class="max-w-3xl text-sm leading-6 text-slate-400">
-            Download class lists from my.snow.edu, then expand a semester to inspect the cached tracked courses and refresh their rosters.
-          </p>
+          <h2 class="text-lg font-semibold text-slate-200">Cached Snow semesters</h2>
         </div>
       </div>
 
-      <div class="mb-5 grid gap-3 md:grid-cols-2">
-        <%= for shortcut <- semester_shortcuts() do %>
+      <div class="mb-5 flex flex-col gap-3">
+        <%= for shortcut <- semester_shortcuts(terms: @terms) do %>
           <article class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
             <div class="space-y-2">
-              <div class="flex flex-wrap items-center gap-2">
-                <h3 class="text-sm font-semibold uppercase tracking-[0.22em] text-slate-400">
-                  {shortcut.label}
-                </h3>
-                <span class="rounded-full bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-300">
-                  {shortcut.term_name}
-                </span>
-              </div>
+              <h3 class="text-base font-semibold text-slate-100">{shortcut.term_name}</h3>
               <p class="text-sm text-slate-500">Term code {shortcut.term_code}</p>
             </div>
 
@@ -145,29 +116,19 @@ defmodule SnowSeToolsWeb.Admin.SnowCacheComponent do
                 type="button"
                 phx-click="open_sync_modal"
                 phx-target={@myself}
-                phx-value-mode="courses"
                 phx-value-term_code={shortcut.term_code}
                 class="rounded-xl bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-400"
               >
                 Sync Class List
               </button>
-              <button
-                type="button"
-                phx-click="open_sync_modal"
-                phx-target={@myself}
-                phx-value-mode="rosters"
-                phx-value-term_code={shortcut.term_code}
-                disabled={not courses_cached_for_term?(terms: @terms, term_code: shortcut.term_code)}
-                class="rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition hover:bg-indigo-500/20 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-500"
-              >
-                Sync Rosters
-              </button>
             </div>
-
-            <p class="mt-3 text-xs leading-5 text-slate-500">
-              Roster sync becomes available after the class list is cached for this semester.
-            </p>
           </article>
+        <% end %>
+
+        <%= if semester_shortcuts(terms: @terms) == [] do %>
+          <div class="rounded-xl border border-slate-800 bg-slate-950/50 px-4 py-5 text-sm text-slate-400">
+            The current and next semesters are already cached locally.
+          </div>
         <% end %>
       </div>
 
@@ -213,9 +174,6 @@ defmodule SnowSeToolsWeb.Admin.SnowCacheComponent do
                     <span class="rounded-full bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-300">
                       {term["course_count"]} tracked courses
                     </span>
-                    <span class="rounded-full bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-300">
-                      {term["roster_count"]} cached rosters
-                    </span>
                   </div>
                   <p class="text-xs text-slate-500">
                     Term code {term["term_code"]} · cached {term["cached_at"]}
@@ -229,32 +187,15 @@ defmodule SnowSeToolsWeb.Admin.SnowCacheComponent do
               <%= if @expanded_term_code == term["term_code"] do %>
                 <div class="border-t border-slate-800 px-4 py-4">
                   <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-                    <p class="text-sm text-slate-300">
-                      These are the courses cached locally for this semester.
-                    </p>
-                    <div class="flex gap-2">
-                      <button
-                        type="button"
-                        phx-click="open_sync_modal"
-                        phx-target={@myself}
-                        phx-value-mode="courses"
-                        phx-value-term_code={term["term_code"]}
-                        class="rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-900"
-                      >
-                        Refresh Class List
-                      </button>
-                      <button
-                        type="button"
-                        phx-click="open_sync_modal"
-                        phx-target={@myself}
-                        phx-value-mode="rosters"
-                        phx-value-term_code={term["term_code"]}
-                        disabled={term["course_count"] == 0}
-                        class="rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-4 py-2 text-sm font-semibold text-indigo-100 transition hover:bg-indigo-500/20 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-500"
-                      >
-                        Refresh All Rosters
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      phx-click="open_sync_modal"
+                      phx-target={@myself}
+                      phx-value-term_code={term["term_code"]}
+                      class="rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-900"
+                    >
+                      Refresh Class List
+                    </button>
                   </div>
 
                   <%= if term["courses"] == [] do %>
@@ -285,12 +226,7 @@ defmodule SnowSeToolsWeb.Admin.SnowCacheComponent do
                                 {primary_instructor_text(course["primary_instructor_name"])}
                               </p>
                             </div>
-                            <div class="text-right">
-                              <p class="text-sm font-semibold text-slate-100">
-                                {course["roster_count"]} roster rows
-                              </p>
-                              <p class="text-xs text-slate-500">Cached {course["cached_at"]}</p>
-                            </div>
+                            <p class="text-xs text-slate-500">Cached {course["cached_at"]}</p>
                           </div>
                         </article>
                       <% end %>
@@ -308,54 +244,34 @@ defmodule SnowSeToolsWeb.Admin.SnowCacheComponent do
           <div class="space-y-5">
             <div class="space-y-2">
               <h3 class="text-xl font-semibold text-slate-100">
-                {modal_title(@sync_mode, @sync_term_code, @terms)}
+                {modal_title(term_code: @sync_term_code, terms: @terms)}
               </h3>
               <p class="text-sm leading-6 text-slate-300">
-                {modal_description(@sync_mode, @sync_term_code, @terms)}
+                {modal_description(term_code: @sync_term_code, terms: @terms)}
               </p>
             </div>
 
-            <.form
-              for={@sync_form}
-              id="snow-cache-sync-form"
-              phx-submit="sync"
-              phx-target={@myself}
-              class="space-y-4"
-            >
-              <label class="block space-y-2">
-                <span class="block text-sm font-medium text-slate-300">JWT token</span>
-                <input
-                  type="password"
-                  name={@sync_form[:jwt_token].name}
-                  value={@sync_form[:jwt_token].value}
-                  autocomplete="off"
-                  class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                  placeholder="Paste JWT from my.snow.edu"
-                />
-              </label>
+            <.live_component
+              module={SnowSeToolsWeb.Snow.SnowJwtCopy}
+              id="snow-jwt-copy"
+              target={@myself}
+              submit_event="snow_jwt_submit"
+              label="JWT token"
+              value=""
+              submit_label="Sync Class List"
+              show_helper={true}
+            />
 
-              <div class="flex justify-end gap-3">
-                <button
-                  type="button"
-                  phx-click="close_modal"
-                  phx-target={@myself}
-                  class="rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={@syncing}
-                  class="rounded-xl bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-                >
-                  <%= if @syncing do %>
-                    Syncing...
-                  <% else %>
-                    {modal_button_text(@sync_mode)}
-                  <% end %>
-                </button>
-              </div>
-            </.form>
+            <div class="flex justify-end gap-3">
+              <button
+                type="button"
+                phx-click="close_modal"
+                phx-target={@myself}
+                class="rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </.modal>
       <% end %>
@@ -372,9 +288,9 @@ defmodule SnowSeToolsWeb.Admin.SnowCacheComponent do
     |> assign_new(:sync_term_code, fn -> nil end)
     |> assign_new(:sync_message, fn -> nil end)
     |> assign_new(:sync_error, fn -> nil end)
+    |> assign_new(:jwt_token, fn -> nil end)
     |> assign_new(:snapshot_error, fn -> nil end)
     |> assign_new(:syncing, fn -> false end)
-    |> assign_new(:sync_form, fn -> to_form(%{"jwt_token" => ""}, as: :sync) end)
   end
 
   defp apply_sync_result(socket, {:ok, message}) do
@@ -385,14 +301,15 @@ defmodule SnowSeToolsWeb.Admin.SnowCacheComponent do
     |> assign(:modal_open?, false)
     |> assign(:sync_mode, nil)
     |> assign(:sync_term_code, nil)
-    |> assign(:sync_form, to_form(%{"jwt_token" => ""}, as: :sync))
+    |> assign(:jwt_token, nil)
   end
 
   defp apply_sync_result(socket, {:error, reason}) do
     assign(socket,
       sync_error: reason,
       sync_message: nil,
-      syncing: false
+      syncing: false,
+      jwt_token: nil
     )
   end
 
@@ -402,36 +319,19 @@ defmodule SnowSeToolsWeb.Admin.SnowCacheComponent do
       sync_error: nil,
       sync_message: nil,
       syncing: false,
-      sync_form: to_form(%{"jwt_token" => ""}, as: :sync)
+      jwt_token: nil
     )
   end
 
-  defp modal_button_text("courses"), do: "Sync Class List"
-  defp modal_button_text("rosters"), do: "Sync Rosters"
-  defp modal_button_text(_), do: "Sync"
-
-  defp modal_title("courses", term_code, terms) do
-    "Refresh class list for #{term_display_name(terms, term_code)}"
+  defp modal_title(term_code: term_code, terms: terms) do
+    "Refresh class list for #{term_display_name(terms: terms, term_code: term_code)}"
   end
 
-  defp modal_title("rosters", term_code, terms) do
-    "Refresh rosters for #{term_display_name(terms, term_code)}"
+  defp modal_description(term_code: term_code, terms: terms) do
+    "This will download the current class list for #{term_display_name(terms: terms, term_code: term_code)}."
   end
 
-  defp modal_title(_, _term_code, _terms), do: "Refresh cached Snow data"
-
-  defp modal_description("courses", term_code, terms) do
-    "This will download the current class list for #{term_display_name(terms, term_code)}."
-  end
-
-  defp modal_description("rosters", term_code, terms) do
-    "This will refresh the cached rosters for every tracked course in #{term_display_name(terms, term_code)}."
-  end
-
-  defp modal_description(_, _term_code, _terms),
-    do: "Paste the JWT cookie from my.snow.edu to continue."
-
-  defp term_display_name(terms, term_code) do
+  defp term_display_name(terms: terms, term_code: term_code) do
     case Enum.find_value(terms, fn term ->
            if term["term_code"] == term_code, do: term["term_name"]
          end) do
@@ -440,7 +340,7 @@ defmodule SnowSeToolsWeb.Admin.SnowCacheComponent do
     end
   end
 
-  defp semester_shortcuts do
+  defp semester_shortcuts(terms: terms) do
     current_term_code = current_term_code(Date.utc_today())
     next_term_code = next_term_code(current_term_code)
 
@@ -456,10 +356,11 @@ defmodule SnowSeToolsWeb.Admin.SnowCacheComponent do
         term_name: term_name_from_code(next_term_code)
       }
     ]
+    |> Enum.reject(&term_synced?(terms: terms, term_code: &1.term_code))
   end
 
-  defp courses_cached_for_term?(terms: terms, term_code: term_code) do
-    Enum.any?(terms, fn term -> term["term_code"] == term_code and term["course_count"] > 0 end)
+  defp term_synced?(terms: terms, term_code: term_code) do
+    Enum.any?(terms, &(&1["term_code"] == term_code))
   end
 
   defp current_term_code(%Date{month: month, year: year}) do
