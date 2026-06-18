@@ -41,8 +41,8 @@ defmodule SnowSeToolsWeb.UserAuth do
           {:halt, socket}
         end
 
-      other ->
-        other
+      {:halt, socket} ->
+        {:halt, socket}
     end
   end
 

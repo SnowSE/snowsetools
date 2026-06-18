@@ -363,4 +363,10 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
   defp instructor_name(nil), do: nil
   defp instructor_name(%{"name" => name}) when is_binary(name), do: name
   defp instructor_name(_), do: nil
+
+  def delete_term(term_code: term_code) do
+    sql = "DELETE FROM snow_terms WHERE term_code = $(term_code)"
+
+    DbHelpers.run_sql(sql, %{"term_code" => term_code})
+  end
 end

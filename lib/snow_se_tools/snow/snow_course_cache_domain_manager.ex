@@ -21,6 +21,10 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
     GenServer.cast(__MODULE__, {:sync_term_rosters, pid, term_code, jwt_token})
   end
 
+  def delete_term(pid: pid, term_code: term_code) do
+    GenServer.cast(__MODULE__, {:delete_term, pid, term_code})
+  end
+
   @impl true
   def init(:ok) do
     case SnowCourseCacheDb.bootstrap_cache_tables() do
@@ -46,6 +50,26 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
 
   def handle_cast({:sync_term_rosters, pid, term_code, jwt_token}, state) do
     Task.start(fn -> sync_term_rosters_async(pid, term_code, jwt_token) end)
+    {:noreply, state}
+  end
+
+  def handle_cast({:delete_term, pid, term_code}, state) do
+    case SnowCourseCacheDb.delete_term(term_code: term_code) do
+      {:error, reason} ->
+        AdminSnowCoursesUIMessages.send_snow_cache_action_result(
+          pid: pid,
+          result: {:error, reason}
+        )
+
+      _ ->
+        AdminSnowCoursesUIMessages.send_snow_cache_action_result(
+          pid: pid,
+          result: {:ok, "Deleted #{build_term_display_name(term_code)}."}
+        )
+
+        send_snapshot(pid)
+    end
+
     {:noreply, state}
   end
 
