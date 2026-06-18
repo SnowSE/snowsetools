@@ -5,6 +5,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   alias SnowSeTools.AcademicPrograms.{AcademicProgramPubSub, ProgramDomainManager}
   alias SnowSeTools.Snow.SnowCourseCacheDb
   alias SnowSeToolsWeb.Scheduling.AcademicProgramsComponent
+  alias SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent
   alias SnowSeToolsWeb.Scheduling.AcademicProgramStateUtils
   alias SnowSeToolsWeb.Scheduling.ScheduleOwnerData
   alias SnowSeToolsWeb.Scheduling.ScheduleOwnerList
@@ -29,6 +30,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
      |> assign(:selected_term_code, selected_term_code)
      |> assign(:courses, courses)
      |> assign(:academic_programs, [])
+     |> assign(:selected_program_id, nil)
      |> assign(:query, "")
      |> assign(:selected_schedule_owner_keys, [])
      |> assign(:mode, :viewer)
@@ -61,6 +63,19 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
 
   def handle_info({:selection_updated, selected_schedule_owner_keys}, socket) do
     {:noreply, assign(socket, :selected_schedule_owner_keys, selected_schedule_owner_keys)}
+  end
+
+  def handle_info({:academic_program_selected, id}, socket) do
+    {:noreply, assign(socket, :selected_program_id, id)}
+  end
+
+  def handle_info({:academic_programs, {:action_result, result}}, socket) do
+    send_update(AcademicProgramEditorComponent,
+      id: "academic-program-editor",
+      action_result: result
+    )
+
+    AcademicProgramStateUtils.handle_message({:action_result, result}, socket)
   end
 
   def handle_info({:academic_programs, message}, socket) do
@@ -117,7 +132,10 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
         <div class="min-h-0 flex-1">
           <%= case @mode do %>
             <% :viewer -> %>
-              <div id="scheduling-page" class="mx-auto flex h-full min-h-0 w-full max-w-[2000px] gap-4 p-4">
+              <div
+                id="scheduling-page"
+                class="mx-auto flex h-full min-h-0 w-full max-w-[2000px] gap-4 p-4"
+              >
                 <aside class="flex w-80 shrink-0 flex-col gap-3 pr-2">
                   <div class="flex items-center justify-between gap-2">
                     <h1 class="text-sm font-semibold text-slate-100">Scheduling</h1>
@@ -179,10 +197,12 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
               <.live_component
                 module={AcademicProgramsComponent}
                 id="academic-programs"
+                courses={@courses}
                 programs={@academic_programs}
+                selected_program_id={@selected_program_id}
               />
           <% end %>
-          </div>
+        </div>
       </div>
     </Layouts.app>
     """
@@ -218,5 +238,4 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   defp mode_from_params(_params), do: :viewer
 
   defp scheduling_path(mode: mode_atom), do: "/scheduling?mode=#{mode_atom}"
-
 end

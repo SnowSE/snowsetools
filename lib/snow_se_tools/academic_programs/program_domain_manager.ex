@@ -24,7 +24,6 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDomainManager do
     GenServer.cast(__MODULE__, {:delete_program, pid, id})
   end
 
-
   def init(:ok) do
     case ProgramDb.bootstrap_tables() do
       :ok ->
@@ -35,7 +34,6 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDomainManager do
         {:stop, reason}
     end
   end
-
 
   def handle_cast({:request_programs, pid}, state) do
     send_programs(pid)

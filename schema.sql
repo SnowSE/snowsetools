@@ -183,11 +183,10 @@ CREATE TABLE academic_programs (
 CREATE TABLE academic_program_semesters (
   id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   academic_program_id UUID        NOT NULL REFERENCES academic_programs(id) ON DELETE CASCADE,
-  name                TEXT        NOT NULL,
   position            INTEGER     NOT NULL DEFAULT 0,
   inserted_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(academic_program_id, name)
+  UNIQUE(academic_program_id, position)
 );
 
 CREATE INDEX academic_program_semesters_program_idx

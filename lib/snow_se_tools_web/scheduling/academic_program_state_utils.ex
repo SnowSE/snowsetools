@@ -19,11 +19,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramStateUtils do
 
   def handle_message({:action_result, {:ok, message, program}}, socket) do
     socket =
-      if program do
-        assign(socket, :last_saved_academic_program_id, program["id"])
-      else
-        socket
-      end
+      assign(socket, :selected_program_id, program && program["id"])
 
     {:noreply, LiveView.put_flash(socket, :info, message)}
   end

@@ -89,6 +89,23 @@ Phoenix connects to Postgres via `Ecto.Repo` (no Ecto schemas). All queries use 
   end
 ```
 
+Postgrex UUID params must be 16-byte binaries; convert UUID strings with SnowSeTools.Data.Uuid.to_binary/1
+before passing them to DbHelpers.run_sql/2,3.
+
+```elixir
+alias SnowSeTools.Data.{DbHelpers, Uuid}
+
+sql = """
+SELECT id, name
+FROM academic_programs
+WHERE id = $(id)
+"""
+
+params = %{"id" => Uuid.to_binary(program_id)}
+
+DbHelpers.run_sql(sql, params)
+```
+
 UI updates should not talk to SQL directly. Flow should be:
 
 - LiveView handle_event/3 calls a domain manager with GenServer.cast/2

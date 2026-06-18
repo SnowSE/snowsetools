@@ -1,5 +1,6 @@
 defmodule SnowSeTools.AcademicPrograms.ProgramDb do
   alias SnowSeTools.Data.DbHelpers
+  alias SnowSeTools.Data.Uuid
 
   @program_schema Zoi.object(%{
                     "id" => Zoi.uuid(),
@@ -22,12 +23,19 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
       CREATE TABLE IF NOT EXISTS academic_program_semesters (
         id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
         academic_program_id UUID        NOT NULL REFERENCES academic_programs(id) ON DELETE CASCADE,
-        name                TEXT        NOT NULL,
         position            INTEGER     NOT NULL DEFAULT 0,
         inserted_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        UNIQUE(academic_program_id, name)
+        UNIQUE(academic_program_id, position)
       )
+      """,
+      """
+      ALTER TABLE academic_program_semesters
+      DROP COLUMN IF EXISTS name
+      """,
+      """
+      CREATE UNIQUE INDEX IF NOT EXISTS academic_program_semesters_program_position_unique_idx
+      ON academic_program_semesters(academic_program_id, position)
       """,
       """
       CREATE TABLE IF NOT EXISTS academic_program_semester_courses (
@@ -114,14 +122,14 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
         WHERE id = $(id)
         """
 
-        case DbHelpers.run_sql(update_sql, %{"id" => id, "name" => name}) do
+        case DbHelpers.run_sql(update_sql, %{"id" => uuid_param(id), "name" => name}) do
           {:error, reason} ->
             {:error, reason}
 
           _rows ->
             case DbHelpers.run_sql(
                    "DELETE FROM academic_program_semesters WHERE academic_program_id = $(id)",
-                   %{"id" => id}
+                   %{"id" => uuid_param(id)}
                  ) do
               {:error, reason} ->
                 {:error, reason}
@@ -141,7 +149,7 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
   def delete_program(id: id) do
     sql = "DELETE FROM academic_programs WHERE id = $(id)"
 
-    case DbHelpers.run_sql(sql, %{"id" => id}) do
+    case DbHelpers.run_sql(sql, %{"id" => uuid_param(id)}) do
       {:error, _reason} = error -> error
       _rows -> :ok
     end
@@ -172,7 +180,7 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
     WHERE id = $(id)
     """
 
-    case DbHelpers.run_sql(sql, %{"id" => program_id}, @program_schema) do
+    case DbHelpers.run_sql(sql, %{"id" => uuid_param(program_id)}, @program_schema) do
       [program] -> {:ok, hydrate_program(program)}
       [] -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
@@ -189,13 +197,13 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
 
   defp list_semesters(program_id: program_id) do
     sql = """
-    SELECT id, name, position
+    SELECT id, position
     FROM academic_program_semesters
     WHERE academic_program_id = $(program_id)
-    ORDER BY position, lower(name)
+    ORDER BY position
     """
 
-    case DbHelpers.run_sql(sql, %{"program_id" => program_id}) do
+    case DbHelpers.run_sql(sql, %{"program_id" => uuid_param(program_id)}) do
       {:error, _reason} ->
         []
 
@@ -214,7 +222,7 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
     ORDER BY position, subject_code, course_number
     """
 
-    case DbHelpers.run_sql(sql, %{"semester_id" => semester_id}) do
+    case DbHelpers.run_sql(sql, %{"semester_id" => uuid_param(semester_id)}) do
       {:error, _reason} -> []
       courses -> courses
     end
@@ -225,7 +233,7 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
     |> normalize_semesters()
     |> Enum.with_index()
     |> Enum.reduce_while(:ok, fn {semester, index}, :ok ->
-      case insert_semester(program_id: program_id, semester: semester, position: index) do
+      case insert_semester(program_id: program_id, position: index) do
         {:ok, semester_id} ->
           case save_courses(semester_id: semester_id, courses: Map.get(semester, "courses", [])) do
             :ok -> {:cont, :ok}
@@ -238,16 +246,15 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
     end)
   end
 
-  defp insert_semester(program_id: program_id, semester: semester, position: position) do
+  defp insert_semester(program_id: program_id, position: position) do
     sql = """
-    INSERT INTO academic_program_semesters (academic_program_id, name, position)
-    VALUES ($(program_id), $(name), $(position))
+    INSERT INTO academic_program_semesters (academic_program_id, position)
+    VALUES ($(program_id), $(position))
     RETURNING id
     """
 
     params = %{
-      "program_id" => program_id,
-      "name" => normalize_name(Map.get(semester, "name")),
+      "program_id" => uuid_param(program_id),
       "position" => position
     }
 
@@ -274,7 +281,7 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
       """
 
       params = %{
-        "semester_id" => semester_id,
+        "semester_id" => uuid_param(semester_id),
         "subject_code" => course["subject_code"],
         "course_number" => course["course_number"],
         "position" => index
@@ -291,18 +298,17 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
     semesters
     |> Enum.map(fn semester ->
       %{
-        "name" => normalize_name(Map.get(semester, "name")),
         "courses" => Map.get(semester, "courses", [])
       }
     end)
-    |> Enum.reject(&(&1["name"] == ""))
   end
 
   defp normalize_courses(courses) do
     courses
     |> Enum.map(fn course ->
       %{
-        "subject_code" => course |> Map.get("subject_code", "") |> String.trim() |> String.upcase(),
+        "subject_code" =>
+          course |> Map.get("subject_code", "") |> String.trim() |> String.upcase(),
         "course_number" => course |> Map.get("course_number", "") |> String.trim()
       }
     end)
@@ -312,4 +318,7 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
 
   defp normalize_name(name) when is_binary(name), do: String.trim(name)
   defp normalize_name(_name), do: ""
+
+  defp uuid_param(<<_::16-bytes>> = value), do: value
+  defp uuid_param(value) when is_binary(value), do: Uuid.to_binary(value)
 end

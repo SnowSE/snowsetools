@@ -35,7 +35,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
   end
 
   defp schedule_owner_entries(courses, academic_programs) do
-    professor_entries(courses) ++ program_semester_entries(courses, academic_programs) ++
+    professor_entries(courses) ++
+      program_semester_entries(courses, academic_programs) ++
       room_entries(courses)
   end
 
@@ -101,21 +102,31 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
 
   defp program_semester_entries(courses, academic_programs) do
     Enum.flat_map(academic_programs, fn program ->
-      Enum.map(program["semesters"] || [], fn semester ->
+      Enum.with_index(program["semesters"] || [])
+      |> Enum.map(fn {semester, semester_index} ->
         semester_courses = semester["courses"] || []
-        matching_courses = courses_matching_requirements(courses: courses, required_courses: semester_courses)
-        name = "#{program["name"]} #{semester["name"]}"
+
+        matching_courses =
+          courses_matching_requirements(courses: courses, required_courses: semester_courses)
+
+        semester_name = semester_label(semester_index)
+        name = "#{program["name"]} #{semester_name}"
 
         build_schedule_owner(:academic_program_semester, name, matching_courses)
         |> Map.merge(%{
-          key: schedule_owner_key(:academic_program_semester, "#{program["id"]}:#{semester["id"]}"),
-          dom_id: schedule_owner_dom_id(:academic_program_semester, "#{program["id"]}-#{semester["id"]}"),
+          key:
+            schedule_owner_key(:academic_program_semester, "#{program["id"]}:#{semester["id"]}"),
+          dom_id:
+            schedule_owner_dom_id(
+              :academic_program_semester,
+              "#{program["id"]}-#{semester["id"]}"
+            ),
           type_order: 1,
           type_label: "Program Semester",
           program_name: program["name"],
-          semester_name: semester["name"],
+          semester_name: semester_name,
           requirement_count: length(semester_courses),
-          search_text: "#{program["name"]} #{semester["name"]}"
+          search_text: "#{program["name"]} #{semester_name}"
         })
       end)
     end)
@@ -124,13 +135,15 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
   defp courses_matching_requirements(courses: courses, required_courses: required_courses) do
     required_pairs =
       MapSet.new(required_courses, fn course ->
-        {normalize_course_code(course["subject_code"]), normalize_course_code(course["course_number"])}
+        {normalize_course_code(course["subject_code"]),
+         normalize_course_code(course["course_number"])}
       end)
 
     Enum.filter(courses, fn course ->
       MapSet.member?(
         required_pairs,
-        {normalize_course_code(course["subject_code"]), normalize_course_code(course["course_number"])}
+        {normalize_course_code(course["subject_code"]),
+         normalize_course_code(course["course_number"])}
       )
     end)
   end
@@ -260,7 +273,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
   defp normalize(value) when is_binary(value), do: value |> String.downcase() |> String.trim()
   defp normalize(_value), do: ""
 
-  defp normalize_course_code(value) when is_binary(value), do: value |> String.trim() |> String.upcase()
+  defp normalize_course_code(value) when is_binary(value),
+    do: value |> String.trim() |> String.upcase()
+
   defp normalize_course_code(_value), do: ""
 
   defp query_matches?(value, normalized_query) do
@@ -273,4 +288,18 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
 
   defp blank?(value) when is_binary(value), do: String.trim(value) == ""
   defp blank?(_value), do: true
+
+  defp semester_label(index) do
+    case index do
+      0 -> "Freshman first semester"
+      1 -> "Freshman second semester"
+      2 -> "Sophomore first semester"
+      3 -> "Sophomore second semester"
+      4 -> "Junior first semester"
+      5 -> "Junior second semester"
+      6 -> "Senior first semester"
+      7 -> "Senior second semester"
+      _ -> "Year #{div(index, 2) + 1} semester #{rem(index, 2) + 1}"
+    end
+  end
 end
