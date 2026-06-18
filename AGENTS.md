@@ -115,6 +115,24 @@ LiveView
   - coordination in domain managers
   - UI feedback in LiveView via handle_info/2, put_flash/3, assign/3, or send_update/2
 
+## LiveComponent Events
+
+When adding `phx-click`, `phx-change`, `phx-submit`, or any other LiveView event binding inside a LiveComponent, always
+set `phx-target={@myself}` unless the event is intentionally handled by the parent LiveView.
+
+```elixir
+<button
+  type="button"
+  phx-click="close"
+  phx-target={@myself}
+>
+  <.icon name="hero-x-mark" />
+</button>
+```
+
+LiveComponent events without phx-target={@myself} are sent to the parent LiveView, not the component. This often causes
+missing handler bugs when the component defines handle_event/3 but the event is never delivered to it.
+
 ## Dev Environment
 
 `docker compose up` starts two containers:

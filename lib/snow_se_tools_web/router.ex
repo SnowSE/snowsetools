@@ -30,6 +30,7 @@ defmodule SnowSeToolsWeb.Router do
 
     live "/home", Home.HomeLive
     live "/syllabi", Syllabus.SyllabusLive, :index
+    live "/scheduling", Scheduling.SchedulingLive, :index
     live "/admin", Admin.AdminLive
     live "/syllabi/report", Syllabus.SyllabusReportLive
   end

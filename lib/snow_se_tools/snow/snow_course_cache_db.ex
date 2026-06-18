@@ -318,6 +318,20 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
     DbHelpers.run_sql(sql, %{"term_code" => term_code}, @course_schema)
   end
 
+  def list_course_data_for_term(term_code: term_code) do
+    sql = """
+    SELECT c.data::jsonb AS data
+    FROM snow_courses c
+    WHERE c.term_code = $(term_code)
+    ORDER BY c.subject_code, c.course_number, c.section_number, c.crn
+    """
+
+    case DbHelpers.run_sql(sql, %{"term_code" => term_code}) do
+      {:error, _} = err -> err
+      rows -> {:ok, Enum.map(rows, & &1["data"])}
+    end
+  end
+
   def get_section_students(term_code: term_code, crn: crn) do
     sql = """
     SELECT data

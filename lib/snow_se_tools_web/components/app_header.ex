@@ -35,6 +35,12 @@ defmodule SnowSeToolsWeb.AppHeader do
           >
             Syllabi
           </.link>
+          <.link
+            navigate={~p"/scheduling"}
+            class={nav_link_class(@current_path, ~p"/scheduling")}
+          >
+            Scheduling
+          </.link>
           <%= if admin_user?(@current_user) do %>
             <.link
               navigate={~p"/admin"}
