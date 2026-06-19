@@ -165,6 +165,31 @@ set `phx-target={@myself}` unless the event is intentionally handled by the pare
 LiveComponent events without phx-target={@myself} are sent to the parent LiveView, not the component. This often causes
 missing handler bugs when the component defines handle_event/3 but the event is never delivered to it.
 
+## LiveComponents and communicating with their parents
+
+when a child live component needs to communicate with its parent pass a callback function for the events like so
+
+```elixir
+<.live_component
+  module={AcademicProgramDisplayComponent}
+  id="academic-program-display"
+  program={Enum.find(@programs, &(&1["id"] == @selected_program_id))}
+  courses={@courses}
+  on_edit_program={fn -> send_update(@myself, edit_program: @selected_program_id) end}
+/>
+```
+
+send_update will trigger a parents live components update function which can be handled with
+```elixir
+def update(%{edit_program: program_id}, socket) do
+  {:ok, socket
+
+  |> assign(:selected_program_id, program_id)
+  |> assign(:editing?, true)
+}
+end
+```
+
 ## Dev Environment
 
 `docker compose up` starts two containers:
