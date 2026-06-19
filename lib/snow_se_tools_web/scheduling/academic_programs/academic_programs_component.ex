@@ -11,7 +11,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
       socket
       |> assign(:courses, assigns[:courses] || [])
       |> assign(:programs, assigns[:programs] || [])
-      |> assign(:selected_program_id, assigns[:selected_program_id] || nil)
+      |> assign_new(:selected_program_id, fn -> nil end)
 
     socket =
       if Map.has_key?(assigns, :editing?) do
@@ -24,10 +24,21 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
   end
 
   def handle_event("select_program", %{"id" => id}, socket) do
+    send(self(), {:academic_program_selected, id})
     {:noreply, assign(socket, :selected_program_id, id)}
   end
 
+  def handle_event("edit_program", _params, socket) do
+    {:noreply, assign(socket, :editing?, true)}
+  end
+
+  def handle_event("cancel_edit", _params, socket) do
+    {:noreply, assign(socket, :editing?, false)}
+  end
+
   def handle_event("new_program_from_list", _params, socket) do
+    send(self(), {:academic_program_selected, nil})
+
     {:noreply,
      assign(socket, :selected_program_id, nil)
      |> assign(:editing?, true)}
@@ -100,6 +111,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
           id="academic-program-display"
           program={Enum.find(@programs, &(&1["id"] == @selected_program_id))}
           courses={@courses}
+          parent_id={@myself}
         />
       </div>
     </div>

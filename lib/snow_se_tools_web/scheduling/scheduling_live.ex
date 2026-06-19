@@ -47,14 +47,6 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
     {:noreply, push_patch(socket, to: scheduling_path(mode: mode_atom))}
   end
 
-  def handle_event("edit_program", _params, socket) do
-    {:noreply, assign(socket, :editing_program, true)}
-  end
-
-  def handle_event("cancel_edit", _params, socket) do
-    {:noreply, assign(socket, :editing_program, false)}
-  end
-
   def handle_event("clear_selected", _params, socket) do
     send(self(), {:selection_updated, []})
     {:noreply, socket}

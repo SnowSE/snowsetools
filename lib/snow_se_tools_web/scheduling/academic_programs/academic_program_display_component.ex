@@ -31,6 +31,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramDisplayComponent do
               id="edit-academic-program"
               type="button"
               phx-click="edit_program"
+              phx-target={@parent_id}
               class="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 transition hover:bg-indigo-500/25"
             >
               <.icon name="hero-pencil" class="size-3.5" /> Edit
