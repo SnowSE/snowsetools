@@ -37,8 +37,6 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
   end
 
   def handle_event("new_program_from_list", _params, socket) do
-    send(self(), {:academic_program_selected, nil})
-
     {:noreply,
      assign(socket, :selected_program_id, nil)
      |> assign(:editing?, true)}
