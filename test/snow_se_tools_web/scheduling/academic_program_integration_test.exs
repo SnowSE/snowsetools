@@ -40,6 +40,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramIntegrationTest do
     _ = :sys.get_state(ProgramDomainManager)
     _html = render(view)
 
+    assert view |> has_element?("#academic-program-display-name")
     assert has_element?(view, "#academic-program-display-name", "Civil Engineering")
     assert has_element?(view, "#academic-program-semester-0-course-0", "CE 2010")
   end

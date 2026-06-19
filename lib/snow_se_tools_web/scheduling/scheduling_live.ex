@@ -45,17 +45,21 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
       action_result: result
     )
 
-    socket =
-      case result do
-        {:ok, _message, _program} ->
-          assign(socket, :editing_program, false)
+    case result do
+      {:ok, _message, _program} ->
+        send_update(AcademicProgramsComponent,
+          id: "academic-programs",
+          cancel_edit: true
+        )
 
-        {:error, reason} ->
-          Logger.error("Scheduling: action result error #{inspect(reason)}")
-          socket
-      end
+      {:error, reason} ->
+        Logger.error("Scheduling: action result error #{inspect(reason)}")
+    end
 
-    AcademicProgramStateUtils.handle_message({:action_result, result}, socket)
+    {:noreply, new_socket} =
+      AcademicProgramStateUtils.handle_message({:action_result, result}, socket)
+
+    {:noreply, new_socket}
   end
 
   def handle_info({:academic_programs, message}, socket) do
