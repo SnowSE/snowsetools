@@ -18,6 +18,16 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
     course_value = AcademicProgramCourseSearch.course_input_value(assigns.course)
     suggestions = AcademicProgramCourseSearch.course_suggestions(assigns.courses, course_value)
 
+    matched_course_label =
+      if course_value != "" do
+        Enum.find_value(assigns.courses, fn course ->
+          case AcademicProgramCourseSearch.course_input_value(course) do
+            ^course_value -> Map.get(course, "name", "")
+            _ -> nil
+          end
+        end)
+      end
+
     socket =
       socket
       |> assign(:semester_index, assigns.semester_index)
@@ -27,6 +37,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
       |> assign(:course_value, course_value)
       |> assign(:suggestions, suggestions)
       |> assign(:focus_token, assigns.focus_token)
+      |> assign(:matched_course_label, matched_course_label)
 
     {:ok,
      assign_new(socket, :active_suggestion_index, fn -> -1 end)
@@ -76,20 +87,8 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
      |> assign(:active_suggestion_index, -1)}
   end
 
-  def handle_event("select_suggestion", %{"value" => value}, socket) do
-    semester_index = socket.assigns.semester_index
-    course_index = socket.assigns.course_index
-
-    send_update(AcademicProgramEditorComponent,
-      id: "academic-program-editor",
-      select_course: {semester_index, course_index, value}
-    )
-
-    {:noreply,
-     socket
-     |> assign(:course_value, value)
-     |> assign(:suggestions, [])
-     |> assign(:active_suggestion_index, -1)}
+  def handle_event("select_suggestion", %{"selected" => value}, socket) do
+    {:noreply, do_select_course(value, socket)}
   end
 
   def handle_event("focus", _params, socket) do
@@ -126,24 +125,12 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
         {:noreply, assign(socket, :active_suggestion_index, next_index)}
 
       "Enter" ->
-        semester_index = socket.assigns.semester_index
-        course_index = socket.assigns.course_index
-
         case Enum.at(suggestions, max(active_index, 0)) do
           nil ->
             {:noreply, socket}
 
           suggestion ->
-            send_update(AcademicProgramEditorComponent,
-              id: "academic-program-editor",
-              select_course: {semester_index, course_index, suggestion.value}
-            )
-
-            {:noreply,
-             socket
-             |> assign(:course_value, suggestion.value)
-             |> assign(:suggestions, [])
-             |> assign(:active_suggestion_index, -1)}
+            {:noreply, do_select_course(suggestion.value, socket)}
         end
 
       "Escape" ->
@@ -154,26 +141,54 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
     end
   end
 
+  defp do_select_course(value, socket) do
+    semester_index = socket.assigns.semester_index
+    course_index = socket.assigns.course_index
+
+    send_update(AcademicProgramEditorComponent,
+      id: "academic-program-editor",
+      select_course: {semester_index, course_index, value}
+    )
+
+    socket
+    |> assign(:course_value, value)
+    |> assign(:suggestions, [])
+    |> assign(:active_suggestion_index, -1)
+  end
+
   def render(assigns) do
     ~H"""
     <div class="relative min-w-0">
-      <input
-        id={"program-course-input-#{@semester_index}-#{@course_index}"}
-        name={"course[#{@semester_index}][#{@course_index}]"}
-        value={@course_value}
-        placeholder="MATH 1010"
-        autocomplete="off"
-        phx-hook=".CourseSuggestionInput"
-        data-semester-index={@semester_index}
-        data-course-index={@course_index}
-        data-autofocus-token={@focus_token}
-        phx-keydown="keydown"
-        phx-change="value_updated"
-        phx-focus="focus"
-        phx-blur="blur"
-        phx-target={@myself}
-        class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-sm uppercase text-slate-100 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
-      />
+      <label>
+        <span class="flex justify-between">
+          <span class="text-sm text-slate-400">
+            Course
+          </span>
+          <span
+            :if={@matched_course_label != nil}
+            class="text-sm text-indigo-200/70"
+          >
+            {@matched_course_label}
+          </span>
+        </span>
+        <input
+          id={"program-course-input-#{@semester_index}-#{@course_index}"}
+          name={"course[#{@semester_index}][#{@course_index}]"}
+          value={@course_value}
+          placeholder="MATH 1010"
+          autocomplete="off"
+          phx-hook=".CourseSuggestionInput"
+          data-semester-index={@semester_index}
+          data-course-index={@course_index}
+          data-autofocus-token={@focus_token}
+          phx-keydown="keydown"
+          phx-change="value_updated"
+          phx-focus="focus"
+          phx-blur="blur"
+          phx-target={@myself}
+          class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1.5 text-sm uppercase text-slate-100 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+        />
+      </label>
 
       <div
         :if={@focused and @course_value != "" and @suggestions != []}
@@ -185,9 +200,9 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
             id={"program-course-suggestion-#{@semester_index}-#{@course_index}-#{suggestion_index}"}
             type="button"
             phx-hook=".CourseSuggestionOption"
-            phx-mousedown="select_suggestion"
+            phx-click="select_suggestion"
             phx-target={@myself}
-            phx-value-value={suggestion.value}
+            phx-value-selected={suggestion.value}
             class={[
               "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition hover:bg-slate-900",
               @active_suggestion_index == suggestion_index && "bg-slate-900"
@@ -240,6 +255,10 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
           mounted() {
             this.el.addEventListener("mousedown", (event) => {
               event.preventDefault();
+              const input = this.el.closest(".relative").querySelector("input");
+              if (input) {
+                input.value = this.el.dataset.phxValueSelected;
+              }
             });
           },
         };

@@ -169,9 +169,6 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
         <h2 class="text-base font-semibold text-slate-100">
           {if @editing_id, do: "Edit Program", else: "New Program"}
         </h2>
-        <p class="text-xs text-slate-500">
-          Define catalog requirements by planned academic semester.
-        </p>
       </div>
 
       <div
@@ -199,20 +196,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
           class="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
         />
 
-        <div class="mt-5 space-y-3">
-          <div class="flex items-center justify-between gap-2">
-            <h3 class="text-sm font-semibold text-slate-200">Semesters</h3>
-            <button
-              id="add-program-semester"
-              type="button"
-              phx-click="add_semester"
-              phx-target={@myself}
-              class="inline-flex items-center gap-1 rounded-md border border-slate-700 px-2.5 py-1.5 text-xs font-medium text-slate-300 transition hover:border-slate-600 hover:bg-slate-900"
-            >
-              <.icon name="hero-plus" class="size-3.5" /> Semester
-            </button>
-          </div>
-
+        <div class="mt-5 space-3 grid grid-cols-2 gap-3">
           <div
             :if={@editor["semesters"] == []}
             class="rounded-lg border border-dashed border-slate-800 p-6 text-center text-sm text-slate-500"
@@ -276,13 +260,31 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
                   phx-click="add_course"
                   phx-target={@myself}
                   phx-value-semester_index={semester_index}
-                  class="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-slate-400 transition hover:bg-slate-800 hover:text-slate-200"
+                  class={[
+                    "inline-flex items-center gap-1 rounded-md",
+                    " px-2 py-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-slate-200"
+                  ]}
                 >
                   <.icon name="hero-plus" class="size-3.5" /> Course
                 </button>
               </div>
             </div>
           <% end %>
+          <button
+            id="add-program-semester"
+            type="button"
+            phx-click="add_semester"
+            phx-target={@myself}
+            class={[
+              "inline-flex items-center justify-center gap-1 rounded-md border border-dashed border-slate-700 ",
+              "p-3 font-medium text-slate-300 ",
+              "transition hover:border-slate-600 hover:bg-slate-900"
+            ]}
+          >
+            <span>
+              <.icon name="hero-plus" class="size-3.5" /> Add Semester
+            </span>
+          </button>
         </div>
 
         <div class="sticky bottom-0 mt-5 flex items-center justify-between border-t border-slate-800 bg-slate-950/95 pt-3">

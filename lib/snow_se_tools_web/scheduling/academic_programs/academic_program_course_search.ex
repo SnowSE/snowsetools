@@ -60,10 +60,33 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCourseSearch do
       end)
       |> Enum.map(&course_option/1)
       |> Enum.filter(fn option ->
-        fuzzy_match?(normalized_query, option.search_text)
+        search_fields = [
+          normalize(option.value),
+          normalize(option.label),
+          normalize(Map.get(option, :subject_code, "")),
+          normalize(Map.get(option, :course_number, ""))
+        ]
+
+        Enum.any?(search_fields, &String.contains?(&1, normalized_query))
       end)
       |> Enum.sort_by(fn option ->
-        {String.downcase(option.value), String.downcase(option.label)}
+        subject_code = normalize(Map.get(option, :subject_code, ""))
+        course_number = normalize(Map.get(option, :course_number, ""))
+        value = normalize(option.value)
+
+        subject_match? = String.contains?(subject_code, normalized_query)
+        number_match? = String.contains?(course_number, normalized_query)
+        value_match? = String.contains?(value, normalized_query)
+
+        priority =
+          cond do
+            subject_match? -> 0
+            number_match? -> 1
+            value_match? -> 2
+            true -> 3
+          end
+
+        {priority, String.downcase(option.value), String.downcase(option.label)}
       end)
       |> Enum.take(limit)
     end
@@ -72,28 +95,17 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCourseSearch do
   defp course_option(course) do
     value = course_input_value(course)
     label = Map.get(course, "name", "")
+    subject_code = Map.get(course, "subject_code", "")
+    course_number = Map.get(course, "course_number", "")
 
     %{
       value: value,
       label: label,
+      subject_code: subject_code,
+      course_number: course_number,
       search_text: normalize("#{value} #{label}")
     }
   end
-
-  defp fuzzy_match?("", _target), do: true
-
-  defp fuzzy_match?(search, target) do
-    match_subsequence?(String.graphemes(search), String.graphemes(target))
-  end
-
-  defp match_subsequence?([], _target), do: true
-  defp match_subsequence?(_search, []), do: false
-
-  defp match_subsequence?([char | search_rest], [char | target_rest]),
-    do: match_subsequence?(search_rest, target_rest)
-
-  defp match_subsequence?(search, [_char | target_rest]),
-    do: match_subsequence?(search, target_rest)
 
   defp normalize(value) when is_binary(value) do
     value

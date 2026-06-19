@@ -179,6 +179,8 @@ you can read current logs with `docker logs simplesyllabusreporter-app-1` be sur
 
 when checking if changes compile use `mix precommit` on the terminal (not in container)
 
+when running tests they will not work in the docker environment. run `mix precommit` or `mix test <file>` on the host to run tests.
+
 
 ## Data Flows
 
