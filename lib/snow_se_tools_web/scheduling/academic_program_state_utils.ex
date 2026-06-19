@@ -3,13 +3,13 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramStateUtils do
 
   require Logger
 
-  import Phoenix.Component, only: [assign: 2, assign: 3]
+  import Phoenix.Component, only: [assign: 3]
 
   alias Phoenix.LiveView
   alias SnowSeToolsWeb.Scheduling.ScheduleOwnerData
 
   def handle_message({:loaded, {:ok, programs}}, socket) do
-    {:noreply, assign_programs(socket: socket, programs: programs)}
+    {:noreply, assign(socket, :academic_programs, programs)}
   end
 
   def handle_message({:loaded, {:error, reason}}, socket) do
@@ -28,26 +28,16 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramStateUtils do
   def handle_message(diff, socket)
       when elem(diff, 0) in [:program_created, :program_updated, :program_deleted] do
     programs = apply_program_diff(programs: socket.assigns.academic_programs, diff: diff)
-    {:noreply, assign_programs(socket: socket, programs: programs)}
+    {:noreply, assign(socket, :academic_programs, programs)}
   end
 
-  defp assign_programs(socket: socket, programs: programs) do
-    selected_schedule_owner_keys =
-      selected_keys_available_after_program_update(socket: socket, programs: programs)
-
-    assign(socket,
-      academic_programs: programs,
-      selected_schedule_owner_keys: selected_schedule_owner_keys
-    )
-  end
-
-  defp selected_keys_available_after_program_update(socket: socket, programs: programs) do
-    selected_keys = MapSet.new(socket.assigns.selected_schedule_owner_keys)
+  def filter_selected_keys(selected_schedule_owner_keys, courses, query, programs) do
+    selected_keys = MapSet.new(selected_schedule_owner_keys)
 
     available_keys =
       ScheduleOwnerData.build_schedule_owners(
-        courses: socket.assigns.courses,
-        query: socket.assigns.query,
+        courses: courses,
+        query: query,
         academic_programs: programs
       )
       |> MapSet.new(& &1.key)
