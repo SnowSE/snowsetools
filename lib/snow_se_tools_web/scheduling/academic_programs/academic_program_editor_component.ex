@@ -157,11 +157,6 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
     end
   end
 
-  def handle_event("cancel_edit", _params, socket) do
-    send(self(), {:academic_programs, {:cancel_edit}})
-    {:noreply, socket}
-  end
-
   def render(assigns) do
     ~H"""
     <section class="min-h-0 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/45 p-4">
@@ -292,7 +287,6 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
             :if={@editing_id}
             type="button"
             phx-click="cancel_edit"
-            phx-target={@myself}
             class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-slate-400 transition hover:bg-slate-800 hover:text-slate-200"
           >
             <.icon name="hero-x-mark" class="size-4" /> Cancel
@@ -344,12 +338,12 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
           assign(socket, editing_id: nil, editor: blank_program(), course_focus_request: nil)
 
         _ ->
+          if program do
+            send(self(), {:academic_program_selected, program["id"]})
+          end
+
           socket
       end
-
-    if program do
-      send(self(), {:academic_program_selected, program["id"]})
-    end
 
     assign(socket, pending_action: nil)
   end

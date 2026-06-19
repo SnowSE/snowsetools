@@ -17,11 +17,8 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramStateUtils do
     {:noreply, LiveView.put_flash(socket, :error, "Could not load academic programs.")}
   end
 
-  def handle_message({:action_result, {:ok, message, program}}, socket) do
-    socket =
-      assign(socket, :selected_program_id, program && program["id"])
-
-    {:noreply, LiveView.put_flash(socket, :info, message)}
+  def handle_message({:action_result, {:ok, _message, program}}, socket) do
+    {:noreply, assign(socket, :selected_program_id, program && program["id"])}
   end
 
   def handle_message({:action_result, {:error, reason}}, socket) do

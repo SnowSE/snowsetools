@@ -1,70 +1,19 @@
 defmodule SnowSeToolsWeb.Scheduling.AcademicProgramDisplayComponent do
   use SnowSeToolsWeb, :live_component
 
-  alias SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent
-
   def update(assigns, socket) do
-    prev_program_id = get_in(socket.assigns, [:program, "id"])
-
     socket =
-      if Map.has_key?(assigns, :program) do
-        assign(socket, :program, assigns[:program])
-      else
-        assign_new(socket, :program, fn -> nil end)
-      end
-
-    socket =
-      if Map.has_key?(assigns, :courses) do
-        assign(socket, :courses, assigns[:courses])
-      else
-        assign_new(socket, :courses, fn -> [] end)
-      end
-
-    new_program_id = get_in(socket.assigns, [:program, "id"])
-    program_changed? = prev_program_id != new_program_id
-
-    socket =
-      cond do
-        Map.has_key?(assigns, :editing?) -> assign(socket, :editing?, assigns[:editing?])
-        program_changed? -> assign(socket, :editing?, false)
-        true -> assign_new(socket, :editing?, fn -> false end)
-      end
+      socket
+      |> assign(:program, Map.get(assigns, :program))
+      |> assign(:courses, Map.get(assigns, :courses, []))
 
     {:ok, socket}
-  end
-
-  def handle_event("edit_program", _params, socket) do
-    {:noreply, assign(socket, :editing?, true)}
-  end
-
-  def handle_event("cancel_edit", _params, socket) do
-    {:noreply, assign(socket, :editing?, false)}
   end
 
   def render(assigns) do
     ~H"""
     <div>
-      <div :if={@editing?}>
-        <.live_component
-          module={AcademicProgramEditorComponent}
-          id="academic-program-editor"
-          courses={@courses}
-          selected_program={@program}
-        />
-        <div class="mt-3 flex justify-end gap-2">
-          <button
-            id="cancel-edit-program"
-            type="button"
-            phx-click="cancel_edit"
-            phx-target={@myself}
-            class="rounded-md bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-slate-600"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-
-      <div :if={@program && !@editing?}>
+      <div :if={@program}>
         <div class="min-h-0 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/45 p-4">
           <div class="mb-4 flex items-start justify-between gap-3">
             <div>
@@ -82,7 +31,6 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramDisplayComponent do
               id="edit-academic-program"
               type="button"
               phx-click="edit_program"
-              phx-target={@myself}
               class="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 transition hover:bg-indigo-500/25"
             >
               <.icon name="hero-pencil" class="size-3.5" /> Edit
@@ -132,7 +80,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramDisplayComponent do
       </div>
 
       <div
-        :if={!@program && !@editing?}
+        :if={!@program}
         class="min-h-0 flex items-center justify-center rounded-lg border border-dashed border-slate-800 bg-slate-950/45"
       >
         <p class="text-sm text-slate-500">Select a program to view details.</p>

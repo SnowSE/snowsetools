@@ -1,6 +1,5 @@
 defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
   use SnowSeToolsWeb, :live_component
-  require Logger
 
   import SnowSeToolsWeb.Scheduling.AcademicProgramListItemComponent, only: [program_item: 1]
 
@@ -14,6 +13,13 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
       |> assign(:programs, assigns[:programs] || [])
       |> assign(:selected_program_id, assigns[:selected_program_id] || nil)
 
+    socket =
+      if Map.has_key?(assigns, :editing?) do
+        assign(socket, :editing?, assigns[:editing?])
+      else
+        assign_new(socket, :editing?, fn -> false end)
+      end
+
     {:ok, socket}
   end
 
@@ -22,43 +28,9 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
   end
 
   def handle_event("new_program_from_list", _params, socket) do
-    send_update(AcademicProgramDisplayComponent,
-      id: "academic-program-display",
-      editing?: true,
-      program: nil,
-      courses: socket.assigns.courses
-    )
-
-    {:noreply, assign(socket, :selected_program_id, nil)}
-  end
-
-  def handle_info({:academic_program_selected, id}, socket) do
-    {:noreply, assign(socket, :selected_program_id, id)}
-  end
-
-  def handle_info({:academic_programs, {:action_result, result}}, socket) do
-    send_update(AcademicProgramEditorComponent,
-      id: "academic-program-editor",
-      action_result: result
-    )
-
-    case result do
-      {:ok, _message, program} ->
-        if program do
-          send_update(AcademicProgramDisplayComponent,
-            id: "academic-program-display",
-            program: program
-          )
-
-          {:noreply, assign(socket, :program_view_mode, :display)}
-        else
-          {:noreply, socket}
-        end
-
-      {:error, reason} ->
-        Logger.error("AcademicPrograms: action result error #{inspect(reason)}")
-        {:noreply, socket}
-    end
+    {:noreply,
+     assign(socket, :selected_program_id, nil)
+     |> assign(:editing?, true)}
   end
 
   def render(assigns) do
@@ -103,12 +75,33 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
         </div>
       </aside>
 
-      <.live_component
-        module={AcademicProgramDisplayComponent}
-        id="academic-program-display"
-        program={Enum.find(@programs, &(&1["id"] == @selected_program_id))}
-        courses={@courses}
-      />
+      <div :if={@editing?}>
+        <.live_component
+          module={AcademicProgramEditorComponent}
+          id="academic-program-editor"
+          courses={@courses}
+          selected_program={Enum.find(@programs, &(&1["id"] == @selected_program_id))}
+        />
+        <div class="mt-3 flex justify-end gap-2">
+          <button
+            id="cancel-edit-program"
+            type="button"
+            phx-click="cancel_edit"
+            class="rounded-md bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-slate-600"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      <div :if={!@editing?}>
+        <.live_component
+          module={AcademicProgramDisplayComponent}
+          id="academic-program-display"
+          program={Enum.find(@programs, &(&1["id"] == @selected_program_id))}
+          courses={@courses}
+        />
+      </div>
     </div>
     """
   end

@@ -31,6 +31,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
      |> assign(:courses, courses)
      |> assign(:academic_programs, [])
      |> assign(:selected_program_id, nil)
+     |> assign(:editing_program, false)
      |> assign(:query, "")
      |> assign(:selected_schedule_owner_keys, [])
      |> assign(:mode, :viewer)
@@ -44,6 +45,14 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   def handle_event("switch_mode", %{"mode" => mode}, socket) do
     mode_atom = String.to_existing_atom(mode)
     {:noreply, push_patch(socket, to: scheduling_path(mode: mode_atom))}
+  end
+
+  def handle_event("edit_program", _params, socket) do
+    {:noreply, assign(socket, :editing_program, true)}
+  end
+
+  def handle_event("cancel_edit", _params, socket) do
+    {:noreply, assign(socket, :editing_program, false)}
   end
 
   def handle_event("clear_selected", _params, socket) do
@@ -74,6 +83,16 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
       id: "academic-program-editor",
       action_result: result
     )
+
+    socket =
+      case result do
+        {:ok, _message, _program} ->
+          assign(socket, :editing_program, false)
+
+        {:error, reason} ->
+          Logger.error("Scheduling: action result error #{inspect(reason)}")
+          socket
+      end
 
     AcademicProgramStateUtils.handle_message({:action_result, result}, socket)
   end
@@ -200,6 +219,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
                 courses={@courses}
                 programs={@academic_programs}
                 selected_program_id={@selected_program_id}
+                editing?={@editing_program}
               />
           <% end %>
         </div>
