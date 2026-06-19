@@ -13,7 +13,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerList do
      |> assign(:courses, assigns[:courses] || [])
      |> assign(:academic_programs, assigns[:academic_programs] || [])
      |> assign(:query, assigns[:query] || "")
-     |> assign(:selected_schedule_owner_keys, assigns[:selected_schedule_owner_keys] || [])}
+     |> assign(:selected_schedule_owner_keys, assigns[:selected_schedule_owner_keys] || [])
+     |> assign(:on_selection_updated, assigns[:on_selection_updated])}
   end
 
   def handle_event("toggle_schedule_owner", %{"key" => key}, socket) do
@@ -26,12 +27,12 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerList do
         selected ++ [key]
       end
 
-    send(self(), {:selection_updated, updated})
+    socket.assigns.on_selection_updated.(updated)
     {:noreply, socket}
   end
 
   def handle_event("clear_selected", _params, socket) do
-    send(self(), {:selection_updated, []})
+    socket.assigns.on_selection_updated.([])
     {:noreply, socket}
   end
 

@@ -4,6 +4,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
   @days ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 
   attr :schedule_owner, :map, required: true
+  attr :on_close_schedule, :any, required: true
 
   def render(assigns) do
     assigns =
@@ -49,7 +50,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
   end
 
   def handle_event("close", _params, socket) do
-    send(self(), {:close_schedule, socket.assigns.schedule_owner.key})
+    socket.assigns.on_close_schedule.(socket.assigns.schedule_owner.key)
     {:noreply, socket}
   end
 

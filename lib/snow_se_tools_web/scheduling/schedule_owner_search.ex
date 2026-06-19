@@ -24,23 +24,20 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerSearch do
     {:ok,
      socket
      |> assign(:query, assigns[:query] || "")
-     |> assign(:selected_term_code, assigns[:selected_term_code])}
+     |> assign(:selected_term_code, assigns[:selected_term_code])
+     |> assign(:on_search_updated, assigns[:on_search_updated])}
   end
 
   def handle_event("set_term", %{"term_code" => term_code}, socket) do
     query = socket.assigns.query
-    send(self(), {:search_updated, %{term_code: term_code, query: query}})
+    socket.assigns.on_search_updated.(term_code, query)
 
     {:noreply, assign(socket, :selected_term_code, term_code)}
   end
 
   def handle_event("search", %{"query" => query}, socket) do
     selected_term_code = socket.assigns.selected_term_code
-
-    send(
-      self(),
-      {:search_updated, %{term_code: selected_term_code, query: query}}
-    )
+    socket.assigns.on_search_updated.(selected_term_code, query)
 
     {:noreply, assign(socket, :query, query)}
   end

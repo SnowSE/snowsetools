@@ -188,7 +188,16 @@ def update(%{edit_program: program_id}, socket) do
   |> assign(:editing?, true)
 }
 end
+
+def update(assigns, socket) do
+  {:ok,
+    socket
+    |> assign(:on_edit_program, assigns[:on_edit_program])} # needed to store callback
+end
+
 ```
+
+
 
 ## Dev Environment
 

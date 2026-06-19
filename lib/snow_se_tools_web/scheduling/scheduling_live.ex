@@ -46,11 +46,10 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   end
 
   def handle_event("clear_selected", _params, socket) do
-    send(self(), {:selection_updated, []})
-    {:noreply, socket}
+    {:noreply, assign(socket, :selected_schedule_owner_keys, [])}
   end
 
-  def handle_info({:search_updated, %{term_code: term_code, query: query}}, socket) do
+  def handle_info({:search_updated, term_code, query}, socket) do
     courses = load_courses(term_code)
 
     {:noreply,
@@ -64,6 +63,10 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
     {:noreply, assign(socket, :selected_schedule_owner_keys, selected_schedule_owner_keys)}
   end
 
+  def handle_info({:close_schedule, key}, socket) do
+    updated = Enum.reject(socket.assigns.selected_schedule_owner_keys, &(&1 == key))
+    {:noreply, assign(socket, :selected_schedule_owner_keys, updated)}
+  end
 
   def handle_info({:academic_programs, {:action_result, result}}, socket) do
     send_update(AcademicProgramEditorComponent,
@@ -88,14 +91,24 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
     AcademicProgramStateUtils.handle_message(message, socket)
   end
 
-  def handle_info({:close_schedule, key}, socket) do
-    updated = Enum.reject(socket.assigns.selected_schedule_owner_keys, &(&1 == key))
-    {:noreply, assign(socket, :selected_schedule_owner_keys, updated)}
-  end
-
   def render(assigns) do
+    on_search_updated = fn term_code, query ->
+      send(self(), {:search_updated, term_code, query})
+    end
+
+    on_selection_updated = fn keys ->
+      send(self(), {:selection_updated, keys})
+    end
+
+    on_close_schedule = fn key ->
+      send(self(), {:close_schedule, key})
+    end
+
     assigns =
       assigns
+      |> assign(:on_search_updated, on_search_updated)
+      |> assign(:on_selection_updated, on_selection_updated)
+      |> assign(:on_close_schedule, on_close_schedule)
       |> assign(
         :selected_schedule_owners,
         ScheduleOwnerData.selected_schedule_owners(
@@ -167,6 +180,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
                     id="schedule-owner-search"
                     selected_term_code={@selected_term_code}
                     query={@query}
+                    on_search_updated={@on_search_updated}
                   />
 
                   <.live_component
@@ -176,6 +190,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
                     academic_programs={@academic_programs}
                     query={@query}
                     selected_schedule_owner_keys={@selected_schedule_owner_keys}
+                    on_selection_updated={@on_selection_updated}
                   />
                 </aside>
 
@@ -194,6 +209,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
                         module={WeekSchedule}
                         id={"schedule-#{schedule_owner.dom_id}"}
                         schedule_owner={schedule_owner}
+                        on_close_schedule={@on_close_schedule}
                       />
                     <% end %>
                   </div>
