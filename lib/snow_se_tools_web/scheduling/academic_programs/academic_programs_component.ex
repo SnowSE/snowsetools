@@ -11,7 +11,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
       socket
       |> assign(:courses, assigns[:courses] || [])
       |> assign(:programs, assigns[:programs] || [])
-      |> assign_new(:selected_program_id, fn -> nil end)
+      |> assign(:selected_program_id, assigns[:selected_program_id])
 
     socket =
       if Map.has_key?(assigns, :editing?) do
@@ -91,18 +91,9 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
           module={AcademicProgramEditorComponent}
           id="academic-program-editor"
           courses={@courses}
+          parent_id={@myself}
           selected_program={Enum.find(@programs, &(&1["id"] == @selected_program_id))}
         />
-        <div class="mt-3 flex justify-end gap-2">
-          <button
-            id="cancel-edit-program"
-            type="button"
-            phx-click="cancel_edit"
-            class="rounded-md bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-slate-600"
-          >
-            Cancel
-          </button>
-        </div>
       </div>
 
       <div :if={!@editing?}>

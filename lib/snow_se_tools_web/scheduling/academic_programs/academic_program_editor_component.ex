@@ -9,6 +9,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
     socket =
       socket
       |> assign(:courses, Map.get(assigns, :courses, socket.assigns[:courses] || []))
+      |> assign(:parent_id, Map.get(assigns, :parent_id))
       |> assign_new(:editing_id, fn -> nil end)
       |> assign_new(:editor, fn -> blank_program() end)
       |> assign_new(:pending_action, fn -> nil end)
@@ -287,6 +288,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
             :if={@editing_id}
             type="button"
             phx-click="cancel_edit"
+            phx-target={@parent_id}
             class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-slate-400 transition hover:bg-slate-800 hover:text-slate-200"
           >
             <.icon name="hero-x-mark" class="size-4" /> Cancel

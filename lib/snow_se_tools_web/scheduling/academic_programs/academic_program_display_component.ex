@@ -6,6 +6,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramDisplayComponent do
       socket
       |> assign(:program, Map.get(assigns, :program))
       |> assign(:courses, Map.get(assigns, :courses, []))
+      |> assign(:parent_id, Map.get(assigns, :parent_id))
 
     {:ok, socket}
   end
