@@ -114,7 +114,8 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
                 courses={@courses}
                 programs={@academic_programs}
               />
-          <% end %></div>
+          <% end %>
+        </div>
       </div>
     </Layouts.app>
     """

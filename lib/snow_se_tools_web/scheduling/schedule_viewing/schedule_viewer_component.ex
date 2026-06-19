@@ -24,6 +24,25 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerComponent do
      |> assign(:selected_schedule_owner_keys, [])}
   end
 
+  def update(%{search_updated: %{term_code: term_code, query: query}}, socket) do
+    courses = load_courses(term_code)
+
+    {:ok,
+     socket
+     |> assign(:selected_term_code, term_code)
+     |> assign(:courses, courses)
+     |> assign(:query, query)}
+  end
+
+  def update(%{selection_updated: %{keys: keys}}, socket) do
+    {:ok, assign(socket, :selected_schedule_owner_keys, keys)}
+  end
+
+  def update(%{close_schedule: %{key: key}}, socket) do
+    updated = Enum.reject(socket.assigns.selected_schedule_owner_keys, &(&1 == key))
+    {:ok, assign(socket, :selected_schedule_owner_keys, updated)}
+  end
+
   def update(assigns, socket) do
     academic_programs = assigns[:academic_programs] || socket.assigns.academic_programs
 
@@ -49,43 +68,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerComponent do
     {:noreply, assign(socket, :selected_schedule_owner_keys, [])}
   end
 
-  def handle_info(%{event: "search_updated", payload: %{term_code: term_code, query: query}}, socket) do
-    courses = load_courses(term_code)
-
-    {:noreply,
-     socket
-     |> assign(:selected_term_code, term_code)
-     |> assign(:courses, courses)
-     |> assign(:query, query)}
-  end
-
-  def handle_info(%{event: "selection_updated", payload: %{keys: keys}}, socket) do
-    {:noreply, assign(socket, :selected_schedule_owner_keys, keys)}
-  end
-
-  def handle_info(%{event: "close_schedule", payload: %{key: key}}, socket) do
-    updated = Enum.reject(socket.assigns.selected_schedule_owner_keys, &(&1 == key))
-    {:noreply, assign(socket, :selected_schedule_owner_keys, updated)}
-  end
-
   def render(assigns) do
-    on_search_updated = fn term_code, query ->
-      send(self(), %{event: "search_updated", payload: %{term_code: term_code, query: query}})
-    end
-
-    on_selection_updated = fn keys ->
-      send(self(), %{event: "selection_updated", payload: %{keys: keys}})
-    end
-
-    on_close_schedule = fn key ->
-      send(self(), %{event: "close_schedule", payload: %{key: key}})
-    end
-
     assigns =
       assigns
-      |> assign(:on_search_updated, on_search_updated)
-      |> assign(:on_selection_updated, on_selection_updated)
-      |> assign(:on_close_schedule, on_close_schedule)
       |> assign(
         :selected_schedule_owners,
         ScheduleOwnerData.selected_schedule_owners(
@@ -127,7 +112,11 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerComponent do
           id="schedule-owner-search"
           selected_term_code={@selected_term_code}
           query={@query}
-          on_search_updated={@on_search_updated}
+          on_search_updated={
+            fn term_code, query ->
+              send_update(@myself, search_updated: %{term_code: term_code, query: query})
+            end
+          }
         />
 
         <.live_component
@@ -137,7 +126,11 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerComponent do
           academic_programs={@academic_programs}
           query={@query}
           selected_schedule_owner_keys={@selected_schedule_owner_keys}
-          on_selection_updated={@on_selection_updated}
+          on_selection_updated={
+            fn keys ->
+              send_update(@myself, selection_updated: %{keys: keys})
+            end
+          }
         />
       </aside>
 
@@ -156,7 +149,11 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerComponent do
               module={WeekSchedule}
               id={"schedule-#{schedule_owner.dom_id}"}
               schedule_owner={schedule_owner}
-              on_close_schedule={@on_close_schedule}
+              on_close_schedule={
+                fn key ->
+                  send_update(@myself, close_schedule: %{key: key})
+                end
+              }
             />
           <% end %>
         </div>

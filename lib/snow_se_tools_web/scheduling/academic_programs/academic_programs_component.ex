@@ -10,11 +10,10 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
   end
 
   def update(%{edit_program: program_id}, socket) do
-    {:ok, socket
-
-    |> assign(:selected_program_id, program_id)
-    |> assign(:editing?, true)
-  }
+    {:ok,
+     socket
+     |> assign(:selected_program_id, program_id)
+     |> assign(:editing?, true)}
   end
 
   def update(%{select_program: program}, socket) do
