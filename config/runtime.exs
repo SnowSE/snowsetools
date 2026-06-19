@@ -30,18 +30,11 @@ config :snow_se_tools, SnowSeToolsWeb.Endpoint,
   http: [port: env!("PORT", :integer, 4000), ip: {0, 0, 0, 0}]
 
 if System.get_env("DATABASE_URL") do
-  if config_env() == :test do
-    config :snow_se_tools, SnowSeTools.Repo,
-      url: env!("DATABASE_URL", :string!),
-      pool: Ecto.Adapters.SQL.Sandbox,
-      pool_size: env!("POOL_SIZE", :integer, 5)
-  else
-    config :snow_se_tools, SnowSeTools.Repo,
-      url: env!("DATABASE_URL", :string!),
-      pool_size: env!("POOL_SIZE", :integer, 20),
-      queue_target: 500,
-      queue_interval: 1000
-  end
+  config :snow_se_tools, SnowSeTools.Repo,
+    url: env!("DATABASE_URL", :string!),
+    pool_size: env!("POOL_SIZE", :integer, 20),
+    queue_target: 500,
+    queue_interval: 1000
 end
 
 if config_env() == :prod do

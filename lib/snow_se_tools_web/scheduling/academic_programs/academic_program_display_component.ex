@@ -68,7 +68,9 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramDisplayComponent do
         <div class="min-h-0 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/45 p-4">
           <div class="mb-4 flex items-start justify-between gap-3">
             <div>
-              <h2 class="text-base font-semibold text-slate-100">{@program["name"]}</h2>
+              <h2 id="academic-program-display-name" class="text-base font-semibold text-slate-100">
+                {@program["name"]}
+              </h2>
               <p class="text-xs text-slate-500">
                 {length(@program["semesters"] || [])} semesters · {total_courses(
                   @program["semesters"] || []
@@ -87,11 +89,14 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramDisplayComponent do
             </button>
           </div>
 
-          <div class="space-y-3">
+          <div class="space-y-3 grid grid-cols-2">
             <%= for {semester, semester_index} <- Enum.with_index(@program["semesters"]) do %>
               <div class="rounded-lg border border-slate-800 bg-slate-900/35 p-3">
                 <div class="mb-2 flex items-center justify-between">
-                  <span class="text-sm font-medium text-slate-100">
+                  <span
+                    id={"academic-program-semester-#{semester_index}-label"}
+                    class="text-sm font-medium text-slate-100"
+                  >
                     {semester_label(semester_index)}
                   </span>
                   <span class="text-xs text-slate-500">
@@ -101,7 +106,10 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramDisplayComponent do
 
                 <div :if={(semester["courses"] || []) != []} class="flex flex-wrap gap-1.5">
                   <%= for course <- semester["courses"] do %>
-                    <span class="inline-flex items-center rounded-md bg-slate-800 px-2 py-0.5 text-xs text-slate-300">
+                    <span
+                      id={"academic-program-semester-#{semester_index}-course-#{course["position"] || 0}"}
+                      class="inline-flex items-center rounded-md bg-slate-800 px-2 py-0.5 text-xs text-slate-300"
+                    >
                       {course_label(course)}
                     </span>
                   <% end %>

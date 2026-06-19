@@ -8,6 +8,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
   attr :course_index, :integer, required: true
   attr :course, :map, required: true
   attr :courses, :list, required: true
+  attr :focus_token, :integer, default: nil
 
   def mount(socket) do
     {:ok, assign(socket, active_suggestion_index: -1, focused: false)}
@@ -25,6 +26,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
       |> assign(:courses, assigns.courses)
       |> assign(:course_value, course_value)
       |> assign(:suggestions, suggestions)
+      |> assign(:focus_token, assigns.focus_token)
 
     {:ok,
      assign_new(socket, :active_suggestion_index, fn -> -1 end)
@@ -164,6 +166,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
         phx-hook=".CourseSuggestionInput"
         data-semester-index={@semester_index}
         data-course-index={@course_index}
+        data-autofocus-token={@focus_token}
         phx-keydown="keydown"
         phx-change="value_updated"
         phx-focus="focus"
@@ -202,20 +205,31 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
       <script :type={Phoenix.LiveView.ColocatedHook} name=".CourseSuggestionInput">
         export default {
           mounted() {
-            this.handleEvent("academic_program_course_selected", (payload) => {
-              if (
-                this.el.dataset.semesterIndex === String(payload.semester_index) &&
-                this.el.dataset.courseIndex === String(payload.course_index)
-              ) {
-                this.el.value = payload.value;
-                this.el.dispatchEvent(new Event("input", { bubbles: true }));
-              }
-            });
+            this.focusWhenRequested();
 
             this.el.addEventListener("keydown", (event) => {
               if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(event.key)) {
                 event.preventDefault();
               }
+            });
+          },
+
+          updated() {
+            this.focusWhenRequested();
+          },
+
+          focusWhenRequested() {
+            const token = this.el.dataset.autofocusToken;
+
+            if (!token || token === this.lastAutofocusToken) {
+              return;
+            }
+
+            this.lastAutofocusToken = token;
+
+            requestAnimationFrame(() => {
+              this.el.focus();
+              this.el.select();
             });
           },
         };

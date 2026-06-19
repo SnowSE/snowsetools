@@ -2,7 +2,7 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDomainManager do
   use GenServer
   require Logger
 
-  alias SnowSeTools.AcademicPrograms.{AcademicProgramPubSub, ProgramDb}
+  alias SnowSeTools.AcademicPrograms.{AcademicProgramPubSub, ProgramAttrs, ProgramDb}
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
@@ -12,12 +12,12 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDomainManager do
     GenServer.cast(__MODULE__, {:request_programs, pid})
   end
 
-  def create_program(pid: pid, attrs: attrs) when is_pid(pid) do
-    GenServer.cast(__MODULE__, {:create_program, pid, attrs})
+  def create_program(pid: pid, program: %ProgramAttrs{} = program) when is_pid(pid) do
+    GenServer.cast(__MODULE__, {:create_program, pid, program})
   end
 
-  def update_program(pid: pid, id: id, attrs: attrs) when is_pid(pid) do
-    GenServer.cast(__MODULE__, {:update_program, pid, id, attrs})
+  def update_program(pid: pid, id: id, program: %ProgramAttrs{} = program) when is_pid(pid) do
+    GenServer.cast(__MODULE__, {:update_program, pid, id, program})
   end
 
   def delete_program(pid: pid, id: id) when is_pid(pid) do
@@ -40,25 +40,31 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDomainManager do
     {:noreply, state}
   end
 
-  def handle_cast({:create_program, pid, attrs}, state) do
-    result = ProgramDb.create_program(attrs: attrs)
+  def handle_cast({:create_program, pid, %ProgramAttrs{} = program}, state) do
+    result = ProgramDb.create_program(program: program)
     send(pid, {:academic_programs, {:action_result, result_message(result, "created")}})
 
     case result do
-      {:ok, program} -> AcademicProgramPubSub.broadcast_program_created(program)
-      {:error, _reason} -> :ok
+      {:ok, program} ->
+        AcademicProgramPubSub.broadcast_program_created(program)
+
+      {:error, reason} ->
+        Logger.error("Academic program create failed reason=#{inspect(reason)}")
     end
 
     {:noreply, state}
   end
 
-  def handle_cast({:update_program, pid, id, attrs}, state) do
-    result = ProgramDb.update_program(id: id, attrs: attrs)
+  def handle_cast({:update_program, pid, id, %ProgramAttrs{} = program}, state) do
+    result = ProgramDb.update_program(id: id, program: program)
     send(pid, {:academic_programs, {:action_result, result_message(result, "updated")}})
 
     case result do
-      {:ok, program} -> AcademicProgramPubSub.broadcast_program_updated(program)
-      {:error, _reason} -> :ok
+      {:ok, program} ->
+        AcademicProgramPubSub.broadcast_program_updated(program)
+
+      {:error, reason} ->
+        Logger.error("Academic program update failed id=#{inspect(id)} reason=#{inspect(reason)}")
     end
 
     {:noreply, state}
@@ -69,8 +75,11 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDomainManager do
     send(pid, {:academic_programs, {:action_result, delete_message(result)}})
 
     case result do
-      :ok -> AcademicProgramPubSub.broadcast_program_deleted(id)
-      {:error, _reason} -> :ok
+      :ok ->
+        AcademicProgramPubSub.broadcast_program_deleted(id)
+
+      {:error, reason} ->
+        Logger.error("Academic program delete failed id=#{inspect(id)} reason=#{inspect(reason)}")
     end
 
     {:noreply, state}

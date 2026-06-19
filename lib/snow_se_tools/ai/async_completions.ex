@@ -179,6 +179,22 @@ defmodule SnowSeTools.AI.AsyncCompletions do
 
   @spec complete_sync([message()], [option()]) :: {result(), String.t() | nil}
   defp complete_sync(messages, opts) do
+    if Application.get_env(:snow_se_tools, :mock_external_dependencies?, false) do
+      mocked_completion(opts)
+    else
+      request_completion(messages, opts)
+    end
+  end
+
+  defp mocked_completion(opts) do
+    if opts[:schema] do
+      {{:ok, %{}}, nil}
+    else
+      {{:ok, "Mock AI completion"}, nil}
+    end
+  end
+
+  defp request_completion(messages, opts) do
     config = Application.fetch_env!(:snow_se_tools, :ai)
 
     Logger.info(

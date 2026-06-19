@@ -1,7 +1,7 @@
 defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
   use SnowSeToolsWeb, :live_component
 
-  alias SnowSeTools.AcademicPrograms.ProgramDomainManager
+  alias SnowSeTools.AcademicPrograms.{ProgramAttrs, ProgramDomainManager}
   alias SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker
   alias SnowSeToolsWeb.Scheduling.AcademicProgramCourseSearch
 
@@ -13,6 +13,8 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
       |> assign_new(:editor, fn -> blank_program() end)
       |> assign_new(:pending_action, fn -> nil end)
       |> assign_new(:error, fn -> nil end)
+      |> assign_new(:course_focus_request, fn -> nil end)
+      |> assign_new(:course_focus_token, fn -> 0 end)
 
     socket =
       case assigns[:selected_program] do
@@ -32,14 +34,19 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
     socket =
       case assigns[:select_course] do
         {semester_index, course_index, value} ->
-          socket =
-            update(socket, :editor, &update_course(&1, semester_index, course_index, value))
+          {editor, focus_target} =
+            select_course_and_focus_next(
+              editor: socket.assigns.editor,
+              semester_index: semester_index,
+              course_index: course_index,
+              value: value
+            )
 
-          push_event(socket, "academic_program_course_selected", %{
-            semester_index: semester_index,
-            course_index: course_index,
-            value: value
-          })
+          assign_course_focus_request(
+            socket: socket,
+            editor: editor,
+            focus_target: focus_target
+          )
 
         _ ->
           socket
@@ -59,7 +66,8 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
        editing_id: nil,
        editor: blank_program(),
        pending_action: nil,
-       error: nil
+       error: nil,
+       course_focus_request: nil
      )}
   end
 
@@ -84,6 +92,14 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
      update(socket, :editor, &update_course(&1, semester_index, course_index, course_value))}
   end
 
+  def handle_event("update_editor", params, socket) when is_map(params) do
+    socket =
+      socket
+      |> update(:editor, &update_editor_from_form(&1, params))
+
+    {:noreply, socket}
+  end
+
   def handle_event("remove_semester", %{"index" => index}, socket) do
     {:noreply, update(socket, :editor, &remove_semester(&1, parse_index(index)))}
   end
@@ -106,25 +122,29 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
   end
 
   def handle_event("save_program", _params, socket) do
-    attrs = socket.assigns.editor
+    case ProgramAttrs.parse(socket.assigns.editor) do
+      {:ok, program} ->
+        socket =
+          assign(socket,
+            pending_action: if(socket.assigns.editing_id, do: :update, else: :create),
+            error: nil
+          )
 
-    socket =
-      assign(socket,
-        pending_action: if(socket.assigns.editing_id, do: :update, else: :create),
-        error: nil
-      )
+        if socket.assigns.editing_id do
+          ProgramDomainManager.update_program(
+            pid: self(),
+            id: socket.assigns.editing_id,
+            program: program
+          )
+        else
+          ProgramDomainManager.create_program(pid: self(), program: program)
+        end
 
-    if socket.assigns.editing_id do
-      ProgramDomainManager.update_program(
-        pid: self(),
-        id: socket.assigns.editing_id,
-        attrs: attrs
-      )
-    else
-      ProgramDomainManager.create_program(pid: self(), attrs: attrs)
+        {:noreply, socket}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, pending_action: nil, error: reason)}
     end
-
-    {:noreply, socket}
   end
 
   def handle_event("delete_program", _params, socket) do
@@ -233,6 +253,9 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
                       course_index={course_index}
                       course={course}
                       courses={@courses}
+                      focus_token={
+                        course_focus_token(@course_focus_request, semester_index, course_index)
+                      }
                     />
                     <button
                       type="button"
@@ -302,7 +325,8 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
       editing_id: program["id"],
       editor: editor_from_program(program),
       pending_action: nil,
-      error: nil
+      error: nil,
+      course_focus_request: nil
     )
   end
 
@@ -311,9 +335,14 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
 
     socket =
       case socket.assigns.pending_action do
-        :create -> assign(socket, editing_id: nil, editor: blank_program())
-        :delete -> assign(socket, editing_id: nil, editor: blank_program())
-        _ -> socket
+        :create ->
+          assign(socket, editing_id: nil, editor: blank_program(), course_focus_request: nil)
+
+        :delete ->
+          assign(socket, editing_id: nil, editor: blank_program(), course_focus_request: nil)
+
+        _ ->
+          socket
       end
 
     if program do
@@ -382,6 +411,51 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
     end)
   end
 
+  defp select_course_and_focus_next(
+         editor: editor,
+         semester_index: semester_index,
+         course_index: course_index,
+         value: value
+       ) do
+    updated_editor = update_course(editor, semester_index, course_index, value)
+
+    if last_course?(
+         editor: updated_editor,
+         semester_index: semester_index,
+         course_index: course_index
+       ) do
+      {
+        add_course(updated_editor, semester_index),
+        %{semester_index: semester_index, course_index: course_index + 1}
+      }
+    else
+      {
+        updated_editor,
+        %{semester_index: semester_index, course_index: course_index + 1}
+      }
+    end
+  end
+
+  defp last_course?(editor: editor, semester_index: semester_index, course_index: course_index) do
+    courses =
+      editor
+      |> Map.get("semesters", [])
+      |> Enum.at(semester_index, %{})
+      |> Map.get("courses", [])
+
+    course_index == length(courses) - 1
+  end
+
+  defp assign_course_focus_request(socket: socket, editor: editor, focus_target: focus_target) do
+    token = socket.assigns.course_focus_token + 1
+
+    assign(socket,
+      editor: editor,
+      course_focus_token: token,
+      course_focus_request: Map.put(focus_target, :token, token)
+    )
+  end
+
   defp remove_course(editor, semester_index, course_index) do
     update_in(editor, ["semesters"], fn semesters ->
       List.update_at(semesters, semester_index, fn semester ->
@@ -406,6 +480,31 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
     end)
   end
 
+  defp update_editor_from_form(editor, params) do
+    editor
+    |> maybe_update_name(params)
+    |> update_courses_from_form(params)
+  end
+
+  defp maybe_update_name(editor, %{"name" => name}), do: Map.put(editor, "name", name)
+  defp maybe_update_name(editor, _params), do: editor
+
+  defp update_courses_from_form(editor, %{"course" => course_params})
+       when is_map(course_params) do
+    Enum.reduce(course_params, editor, fn {semester_index, courses}, editor ->
+      Enum.reduce(courses || %{}, editor, fn {course_index, course_value}, editor ->
+        update_course(
+          editor,
+          parse_index(semester_index),
+          parse_index(course_index),
+          course_value
+        )
+      end)
+    end)
+  end
+
+  defp update_courses_from_form(editor, _params), do: editor
+
   defp parse_index(value) when is_binary(value) do
     case Integer.parse(value) do
       {index, ""} -> index
@@ -422,6 +521,21 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
     |> Map.get(Integer.to_string(semester_index), %{})
     |> Map.get(Integer.to_string(course_index), "")
   end
+
+  defp course_focus_token(
+         %{
+           semester_index: request_semester_index,
+           course_index: request_course_index,
+           token: token
+         },
+         semester_index,
+         course_index
+       )
+       when request_semester_index == semester_index and request_course_index == course_index do
+    token
+  end
+
+  defp course_focus_token(_focus_request, _semester_index, _course_index), do: nil
 
   defp semester_label(index) do
     case index do

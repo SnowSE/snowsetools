@@ -1,4 +1,7 @@
 defmodule SnowSeTools.AcademicPrograms.ProgramDb do
+  require Logger
+
+  alias SnowSeTools.AcademicPrograms.{CourseAttrs, ProgramAttrs, SemesterAttrs}
   alias SnowSeTools.Data.DbHelpers
   alias SnowSeTools.Data.Uuid
 
@@ -87,8 +90,8 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
     end
   end
 
-  def create_program(attrs: attrs) do
-    name = normalize_name(Map.get(attrs, "name"))
+  def create_program(program: %ProgramAttrs{name: raw_name, semesters: semesters}) do
+    name = normalize_name(raw_name)
 
     if name == "" do
       {:error, "Program name is required."}
@@ -96,7 +99,7 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
       DbHelpers.transaction(fn ->
         case insert_program(name: name) do
           {:ok, program_id} ->
-            save_semesters(program_id: program_id, semesters: Map.get(attrs, "semesters", []))
+            save_semesters(program_id: program_id, semesters: semesters)
             |> case do
               :ok -> get_program(program_id: program_id)
               {:error, reason} -> {:error, reason}
@@ -109,8 +112,8 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
     end
   end
 
-  def update_program(id: id, attrs: attrs) do
-    name = normalize_name(Map.get(attrs, "name"))
+  def update_program(id: id, program: %ProgramAttrs{name: raw_name, semesters: semesters}) do
+    name = normalize_name(raw_name)
 
     if name == "" do
       {:error, "Program name is required."}
@@ -135,7 +138,7 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
                 {:error, reason}
 
               _rows ->
-                save_semesters(program_id: id, semesters: Map.get(attrs, "semesters", []))
+                save_semesters(program_id: id, semesters: semesters)
                 |> case do
                   :ok -> get_program(program_id: id)
                   {:error, reason} -> {:error, reason}
@@ -204,7 +207,8 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
     """
 
     case DbHelpers.run_sql(sql, %{"program_id" => uuid_param(program_id)}) do
-      {:error, _reason} ->
+      {:error, reason} ->
+        Logger.error("Failed to list academic program semesters reason=#{inspect(reason)}")
         []
 
       semesters ->
@@ -223,19 +227,22 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
     """
 
     case DbHelpers.run_sql(sql, %{"semester_id" => uuid_param(semester_id)}) do
-      {:error, _reason} -> []
-      courses -> courses
+      {:error, reason} ->
+        Logger.error("Failed to list academic program semester courses reason=#{inspect(reason)}")
+        []
+
+      courses ->
+        courses
     end
   end
 
   defp save_semesters(program_id: program_id, semesters: semesters) when is_list(semesters) do
     semesters
-    |> normalize_semesters()
     |> Enum.with_index()
-    |> Enum.reduce_while(:ok, fn {semester, index}, :ok ->
+    |> Enum.reduce_while(:ok, fn {%SemesterAttrs{} = semester, index}, :ok ->
       case insert_semester(program_id: program_id, position: index) do
         {:ok, semester_id} ->
-          case save_courses(semester_id: semester_id, courses: Map.get(semester, "courses", [])) do
+          case save_courses(semester_id: semester_id, courses: semester.courses) do
             :ok -> {:cont, :ok}
             {:error, reason} -> {:halt, {:error, reason}}
           end
@@ -294,22 +301,12 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
     end)
   end
 
-  defp normalize_semesters(semesters) do
-    semesters
-    |> Enum.map(fn semester ->
-      %{
-        "courses" => Map.get(semester, "courses", [])
-      }
-    end)
-  end
-
   defp normalize_courses(courses) do
     courses
-    |> Enum.map(fn course ->
+    |> Enum.map(fn %CourseAttrs{} = course ->
       %{
-        "subject_code" =>
-          course |> Map.get("subject_code", "") |> String.trim() |> String.upcase(),
-        "course_number" => course |> Map.get("course_number", "") |> String.trim()
+        "subject_code" => course.subject_code |> String.trim() |> String.upcase(),
+        "course_number" => course.course_number |> String.trim()
       }
     end)
     |> Enum.reject(&(&1["subject_code"] == "" or &1["course_number"] == ""))
