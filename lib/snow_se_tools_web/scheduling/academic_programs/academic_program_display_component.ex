@@ -6,9 +6,15 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramDisplayComponent do
       socket
       |> assign(:program, Map.get(assigns, :program))
       |> assign(:courses, Map.get(assigns, :courses, []))
-      |> assign(:parent_id, Map.get(assigns, :parent_id))
+      |> assign(:on_edit_program, Map.get(assigns, :on_edit_program))
 
     {:ok, socket}
+  end
+
+  def handle_event("edit_program", _params, socket) do
+    socket.assigns.on_edit_program.()
+
+    {:noreply, socket}
   end
 
   def render(assigns) do
@@ -32,7 +38,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramDisplayComponent do
               id="edit-academic-program"
               type="button"
               phx-click="edit_program"
-              phx-target={@parent_id}
+              phx-target={@myself}
               class="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 transition hover:bg-indigo-500/25"
             >
               <.icon name="hero-pencil" class="size-3.5" /> Edit

@@ -30,8 +30,6 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
      |> assign(:selected_term_code, selected_term_code)
      |> assign(:courses, courses)
      |> assign(:academic_programs, [])
-     |> assign(:selected_program_id, nil)
-     |> assign(:editing_program, false)
      |> assign(:query, "")
      |> assign(:selected_schedule_owner_keys, [])
      |> assign(:mode, :viewer)
@@ -66,9 +64,6 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
     {:noreply, assign(socket, :selected_schedule_owner_keys, selected_schedule_owner_keys)}
   end
 
-  def handle_info({:academic_program_selected, id}, socket) do
-    {:noreply, assign(socket, :selected_program_id, id)}
-  end
 
   def handle_info({:academic_programs, {:action_result, result}}, socket) do
     send_update(AcademicProgramEditorComponent,
@@ -210,8 +205,6 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
                 id="academic-programs"
                 courses={@courses}
                 programs={@academic_programs}
-                selected_program_id={@selected_program_id}
-                editing?={@editing_program}
               />
           <% end %>
         </div>

@@ -1,44 +1,41 @@
 defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
   use SnowSeToolsWeb, :live_component
 
-  import SnowSeToolsWeb.Scheduling.AcademicProgramListItemComponent, only: [program_item: 1]
-
   alias SnowSeToolsWeb.Scheduling.AcademicProgramDisplayComponent
   alias SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent
+  alias SnowSeToolsWeb.Scheduling.AcademicProgramListItemComponent
+
+  def update(%{cancel_edit: true}, socket) do
+    {:ok, socket |> assign(:editing?, false)}
+  end
+
+  def update(%{edit_program: program_id}, socket) do
+    {:ok, socket
+
+    |> assign(:selected_program_id, program_id)
+    |> assign(:editing?, true)
+  }
+  end
+
+  def update(%{select_program: program}, socket) do
+    {:ok, socket |> assign(:selected_program_id, program["id"]) |> assign(:editing?, false)}
+  end
 
   def update(assigns, socket) do
     socket =
       socket
       |> assign(:courses, assigns[:courses] || [])
       |> assign(:programs, assigns[:programs] || [])
-      |> assign(:selected_program_id, assigns[:selected_program_id])
-
-    socket =
-      if Map.has_key?(assigns, :editing?) do
-        assign(socket, :editing?, assigns[:editing?])
-      else
-        assign_new(socket, :editing?, fn -> false end)
-      end
+      |> assign_new(:selected_program_id, fn -> nil end)
+      |> assign_new(:editing?, fn -> false end)
 
     {:ok, socket}
   end
 
-  def handle_event("select_program", %{"id" => id}, socket) do
-    send(self(), {:academic_program_selected, id})
-    {:noreply, assign(socket, :selected_program_id, id)}
-  end
-
-  def handle_event("edit_program", _params, socket) do
-    {:noreply, assign(socket, :editing?, true)}
-  end
-
-  def handle_event("cancel_edit", _params, socket) do
-    {:noreply, assign(socket, :editing?, false)}
-  end
-
   def handle_event("new_program_from_list", _params, socket) do
     {:noreply,
-     assign(socket, :selected_program_id, nil)
+     socket
+     |> assign(:selected_program_id, nil)
      |> assign(:editing?, true)}
   end
 
@@ -75,10 +72,12 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
           </div>
 
           <%= for program <- @programs do %>
-            <.program_item
+            <.live_component
+              module={AcademicProgramListItemComponent}
+              id={"academic-program-item-#{program["id"]}"}
               program={program}
-              selected={@selected_program_id == program["id"]}
-              target={@myself}
+              is_selected={@selected_program_id == program["id"]}
+              on_program_selected={fn program -> send_update(@myself, select_program: program) end}
             />
           <% end %>
         </div>
@@ -89,8 +88,8 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
           module={AcademicProgramEditorComponent}
           id="academic-program-editor"
           courses={@courses}
-          parent_id={@myself}
           selected_program={Enum.find(@programs, &(&1["id"] == @selected_program_id))}
+          on_cancel_edit={fn -> send_update(@myself, cancel_edit: true) end}
         />
       </div>
 
@@ -100,7 +99,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
           id="academic-program-display"
           program={Enum.find(@programs, &(&1["id"] == @selected_program_id))}
           courses={@courses}
-          parent_id={@myself}
+          on_edit_program={fn -> send_update(@myself, edit_program: @selected_program_id) end}
         />
       </div>
     </div>

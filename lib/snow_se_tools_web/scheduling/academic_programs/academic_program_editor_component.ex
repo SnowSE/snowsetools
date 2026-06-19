@@ -8,8 +8,8 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
   def update(assigns, socket) do
     socket =
       socket
+      |> assign(:on_cancel_edit, Map.get(assigns, :on_cancel_edit))
       |> assign(:courses, Map.get(assigns, :courses, socket.assigns[:courses] || []))
-      |> assign(:parent_id, Map.get(assigns, :parent_id))
       |> assign_new(:editing_id, fn -> nil end)
       |> assign_new(:editor, fn -> blank_program() end)
       |> assign_new(:pending_action, fn -> nil end)
@@ -158,6 +158,12 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
     end
   end
 
+  def handle_event("cancel_edit", _params, socket) do
+    socket.assigns.on_cancel_edit.()
+
+    {:noreply, assign(socket, editing_id: nil, editor: blank_program(), error: nil)}
+  end
+
   def render(assigns) do
     ~H"""
     <section class="min-h-0 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/45 p-4">
@@ -288,7 +294,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditorComponent do
             :if={@editing_id}
             type="button"
             phx-click="cancel_edit"
-            phx-target={@parent_id}
+            phx-target={@myself}
             class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-slate-400 transition hover:bg-slate-800 hover:text-slate-200"
           >
             <.icon name="hero-x-mark" class="size-4" /> Cancel
