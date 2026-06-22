@@ -1,13 +1,25 @@
 defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
   use SnowSeToolsWeb, :html
 
-  alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramEditorView
+  alias Phoenix.LiveView
+  alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramEditor
 
-  attr :courses, :list, required: true
-  attr :programs, :list, required: true
-  attr :selected_program_id, :string, default: nil
-  attr :editing?, :boolean, default: false
-  attr :editor_state, :map, required: true
+  defstruct [:key, :selected_program_id, :editing?, :editor_key]
+
+  def assign_component(socket, key, opts \\ []) do
+    socket
+    |> assign(
+      key,
+      socket.assigns[key] ||
+        %__MODULE__{
+          key: key,
+          selected_program_id: nil,
+          editing?: false,
+          editor_key: opts[:editor_key] || :academic_program_editor
+        }
+    )
+    |> maybe_attach_hooks()
+  end
 
   def render(assigns) do
     assigns = assign(assigns, :selected_program, selected_program(assigns))
@@ -45,21 +57,101 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
           <.program_list_item
             :for={program <- @programs}
             program={program}
-            is_selected={@selected_program_id == program["id"]}
+            is_selected={@state.selected_program_id == program["id"]}
           />
         </div>
       </aside>
 
-      <div :if={@editing?}>
-        <AcademicProgramEditorView.render
-          courses={@courses}
-          editor_state={@editor_state}
-        />
+      <div :if={@state.editing?}>
+        <AcademicProgramEditor.render state={@editor_state} courses={@courses} />
       </div>
 
-      <.program_display :if={!@editing?} program={@selected_program} />
+      <.program_display :if={!@state.editing?} program={@selected_program} />
     </div>
     """
+  end
+
+  def maybe_attach_hooks(socket) do
+    if Map.get(socket.private, :academic_programs_panel_hooks_attached?) do
+      socket
+    else
+      socket
+      |> LiveView.attach_hook("academic-programs-panel:event", :handle_event, &hooked_event/3)
+      |> put_in([Access.key(:private), :academic_programs_panel_hooks_attached?], true)
+    end
+  end
+
+  def hooked_event("academic-programs:new", _params, socket) do
+    panel_state = panel_state(socket)
+    editor_key = panel_state.editor_key
+
+    {:halt,
+     socket
+     |> assign(panel_key(socket), %{panel_state | selected_program_id: nil, editing?: true})
+     |> assign(editor_key, AcademicProgramEditor.reset(socket.assigns[editor_key]))}
+  end
+
+  def hooked_event("academic-programs:select", %{"program_id" => program_id}, socket) do
+    {:halt,
+     assign(socket, panel_key(socket), %{
+       panel_state(socket)
+       | selected_program_id: program_id,
+         editing?: false
+     })}
+  end
+
+  def hooked_event("academic-programs:edit", _params, socket) do
+    panel_state = panel_state(socket)
+
+    selected_program =
+      selected_program(socket.assigns.academic_programs, panel_state.selected_program_id)
+
+    case selected_program do
+      nil ->
+        {:halt, socket}
+
+      program ->
+        {:halt,
+         socket
+         |> assign(panel_key(socket), %{panel_state | editing?: true})
+         |> assign(
+           panel_state.editor_key,
+           AcademicProgramEditor.load_program(socket.assigns[panel_state.editor_key], program)
+         )}
+    end
+  end
+
+  def hooked_event("academic-programs:cancel-edit", _params, socket) do
+    panel_state = panel_state(socket)
+
+    {:halt,
+     socket
+     |> assign(panel_key(socket), %{panel_state | editing?: false})
+     |> assign(
+       panel_state.editor_key,
+       AcademicProgramEditor.reset(socket.assigns[panel_state.editor_key])
+     )}
+  end
+
+  def hooked_event(_event, _params, socket), do: {:cont, socket}
+
+  def apply_action_result(socket, result) do
+    panel_state = panel_state(socket)
+    editor_state = socket.assigns[panel_state.editor_key]
+    updated_editor = AcademicProgramEditor.apply_action_result(editor_state, result)
+
+    socket =
+      socket
+      |> assign(panel_state.editor_key, updated_editor)
+      |> maybe_select_program_from_result(result)
+
+    case result do
+      {:ok, _message, _program} ->
+        assign(socket, panel_key(socket), %{panel_state(socket) | editing?: false})
+
+      _ ->
+        socket
+    end
   end
 
   attr :program, :map, required: true
@@ -170,9 +262,21 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
     """
   end
 
-  defp selected_program(assigns) do
-    Enum.find(assigns.programs, &(&1["id"] == assigns.selected_program_id))
+  defp selected_program(assigns),
+    do: selected_program(assigns.programs, assigns.state.selected_program_id)
+
+  defp selected_program(programs, selected_program_id) do
+    Enum.find(programs, &(&1["id"] == selected_program_id))
   end
+
+  defp panel_key(_socket), do: :academic_programs_panel
+  defp panel_state(socket), do: socket.assigns[panel_key(socket)]
+
+  defp maybe_select_program_from_result(socket, {:ok, _message, %{"id" => program_id}}) do
+    assign(socket, panel_key(socket), %{panel_state(socket) | selected_program_id: program_id})
+  end
+
+  defp maybe_select_program_from_result(socket, _result), do: socket
 
   defp course_label(course) do
     subject = Map.get(course, "subject_code", "")
@@ -187,22 +291,16 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
   end
 
   defp total_courses(semesters) do
-    Enum.reduce(semesters, 0, fn semester, acc ->
-      acc + length(semester["courses"] || [])
-    end)
+    Enum.reduce(semesters, 0, fn semester, acc -> acc + length(semester["courses"] || []) end)
   end
 
-  defp semester_label(index) do
-    case index do
-      0 -> "Freshman first semester"
-      1 -> "Freshman second semester"
-      2 -> "Sophomore first semester"
-      3 -> "Sophomore second semester"
-      4 -> "Junior first semester"
-      5 -> "Junior second semester"
-      6 -> "Senior first semester"
-      7 -> "Senior second semester"
-      _ -> "Year #{div(index, 2) + 1} semester #{rem(index, 2) + 1}"
-    end
-  end
+  defp semester_label(0), do: "Freshman first semester"
+  defp semester_label(1), do: "Freshman second semester"
+  defp semester_label(2), do: "Sophomore first semester"
+  defp semester_label(3), do: "Sophomore second semester"
+  defp semester_label(4), do: "Junior first semester"
+  defp semester_label(5), do: "Junior second semester"
+  defp semester_label(6), do: "Senior first semester"
+  defp semester_label(7), do: "Senior second semester"
+  defp semester_label(index), do: "Year #{div(index, 2) + 1} semester #{rem(index, 2) + 1}"
 end

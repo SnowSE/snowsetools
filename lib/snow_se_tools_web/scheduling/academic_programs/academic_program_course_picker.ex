@@ -73,6 +73,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
           </button>
         <% end %>
       </div>
+
       <script :type={Phoenix.LiveView.ColocatedHook} name=".CourseSuggestionInput">
         export default {
           mounted() {

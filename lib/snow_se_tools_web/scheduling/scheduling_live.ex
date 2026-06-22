@@ -2,10 +2,10 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   use SnowSeToolsWeb, :live_view
   require Logger
 
-  alias SnowSeTools.AcademicPrograms.{AcademicProgramPubSub, ProgramAttrs, ProgramDomainManager}
+  alias SnowSeTools.AcademicPrograms.{AcademicProgramPubSub, ProgramDomainManager}
   alias SnowSeTools.Snow.SnowCourseCacheDb
+  alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramEditor
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel
-  alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsState
   alias SnowSeToolsWeb.Scheduling.AcademicProgramStateUtils
   alias SnowSeToolsWeb.Scheduling.ScheduleViewerComponent
 
@@ -26,9 +26,10 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
      |> assign(:page_title, "Scheduling")
      |> assign(:courses, courses)
      |> assign(:academic_programs, [])
-     |> assign(:academic_programs_selected_program_id, nil)
-     |> assign(:academic_programs_editing?, false)
-     |> assign(:academic_programs_editor_state, AcademicProgramsState.new_editor_state())
+     |> AcademicProgramEditor.assign_component(:academic_program_editor)
+     |> AcademicProgramsPanel.assign_component(:academic_programs_panel,
+       editor_key: :academic_program_editor
+     )
      |> assign(:mode, :viewer)
      |> assign(:modes, viewer: "Schedule Viewer", programs: "Academic Programs")}
   end
@@ -42,307 +43,16 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
     {:noreply, push_patch(socket, to: scheduling_path(mode: mode_atom))}
   end
 
-  def handle_event("academic-programs:new", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:academic_programs_selected_program_id, nil)
-     |> assign(:academic_programs_editing?, true)
-     |> assign(:academic_programs_editor_state, AcademicProgramsState.new_editor_state())}
-  end
-
-  def handle_event("academic-programs:select", %{"program_id" => program_id}, socket) do
-    {:noreply,
-     socket
-     |> assign(:academic_programs_selected_program_id, program_id)
-     |> assign(:academic_programs_editing?, false)}
-  end
-
-  def handle_event("academic-programs:edit", _params, socket) do
-    selected_program = selected_program(socket)
-
-    case selected_program do
-      nil ->
-        Logger.error("SchedulingLive: edit requested without a selected academic program")
-        {:noreply, socket}
-
-      program ->
-        {:noreply,
-         socket
-         |> assign(:academic_programs_editing?, true)
-         |> assign(
-           :academic_programs_editor_state,
-           AcademicProgramsState.load_program(
-             socket.assigns.academic_programs_editor_state,
-             program
-           )
-         )}
-    end
-  end
-
-  def handle_event("academic-programs:cancel-edit", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:academic_programs_editing?, false)
-     |> assign(
-       :academic_programs_editor_state,
-       AcademicProgramsState.reset_editor(socket.assigns.academic_programs_editor_state)
-     )}
-  end
-
-  def handle_event("academic-programs-editor:update", params, socket) when is_map(params) do
-    {:noreply,
-     assign(
-       socket,
-       :academic_programs_editor_state,
-       AcademicProgramsState.update_editor_from_form(
-         socket.assigns.academic_programs_editor_state,
-         params
-       )
-     )}
-  end
-
-  def handle_event(
-        "academic-programs-picker:update",
-        %{"semester_index" => semester_index, "course_index" => course_index, "value" => value},
-        socket
-      ) do
-    {:noreply,
-     assign(
-       socket,
-       :academic_programs_editor_state,
-       AcademicProgramsState.picker_update(
-         socket.assigns.academic_programs_editor_state,
-         AcademicProgramsState.parse_index(semester_index),
-         AcademicProgramsState.parse_index(course_index),
-         value
-       )
-     )}
-  end
-
-  def handle_event(
-        "academic-programs-picker:update",
-        %{
-          "_target" => ["course", semester_index, course_index]
-        } = params,
-        socket
-      ) do
-    value =
-      params
-      |> Map.get("course", %{})
-      |> Map.get(semester_index, %{})
-      |> Map.get(course_index, "")
-
-    {:noreply,
-     assign(
-       socket,
-       :academic_programs_editor_state,
-       AcademicProgramsState.picker_update(
-         socket.assigns.academic_programs_editor_state,
-         AcademicProgramsState.parse_index(semester_index),
-         AcademicProgramsState.parse_index(course_index),
-         value
-       )
-     )}
-  end
-
-  def handle_event(
-        "academic-programs-picker:update",
-        %{"course" => course_params, "value" => value},
-        socket
-      )
-      when is_map(course_params) do
-    {semester_index, course_index} = first_course_param_indexes(course_params)
-
-    {:noreply,
-     assign(
-       socket,
-       :academic_programs_editor_state,
-       AcademicProgramsState.picker_update(
-         socket.assigns.academic_programs_editor_state,
-         semester_index,
-         course_index,
-         value
-       )
-     )}
-  end
-
-  def handle_event(
-        "academic-programs-picker:focus",
-        %{"semester_index" => semester_index, "course_index" => course_index},
-        socket
-      ) do
-    {:noreply,
-     assign(
-       socket,
-       :academic_programs_editor_state,
-       AcademicProgramsState.picker_focus(
-         socket.assigns.academic_programs_editor_state,
-         AcademicProgramsState.parse_index(semester_index),
-         AcademicProgramsState.parse_index(course_index)
-       )
-     )}
-  end
-
-  def handle_event(
-        "academic-programs-picker:blur",
-        %{"semester_index" => semester_index, "course_index" => course_index},
-        socket
-      ) do
-    {:noreply,
-     assign(
-       socket,
-       :academic_programs_editor_state,
-       AcademicProgramsState.picker_blur(
-         socket.assigns.academic_programs_editor_state,
-         AcademicProgramsState.parse_index(semester_index),
-         AcademicProgramsState.parse_index(course_index)
-       )
-     )}
-  end
-
-  def handle_event(
-        "academic-programs-picker:keydown",
-        %{"semester_index" => semester_index, "course_index" => course_index, "key" => key},
-        socket
-      ) do
-    {:noreply,
-     assign(
-       socket,
-       :academic_programs_editor_state,
-       AcademicProgramsState.picker_keydown(
-         socket.assigns.academic_programs_editor_state,
-         socket.assigns.courses,
-         AcademicProgramsState.parse_index(semester_index),
-         AcademicProgramsState.parse_index(course_index),
-         key
-       )
-     )}
-  end
-
-  def handle_event(
-        "academic-programs-picker:select",
-        %{
-          "semester_index" => semester_index,
-          "course_index" => course_index,
-          "selected" => value
-        },
-        socket
-      ) do
-    {:noreply,
-     assign(
-       socket,
-       :academic_programs_editor_state,
-       AcademicProgramsState.select_course(
-         socket.assigns.academic_programs_editor_state,
-         AcademicProgramsState.parse_index(semester_index),
-         AcademicProgramsState.parse_index(course_index),
-         value
-       )
-     )}
-  end
-
-  def handle_event("academic-programs-editor:add-semester", _params, socket) do
-    {:noreply,
-     assign(
-       socket,
-       :academic_programs_editor_state,
-       AcademicProgramsState.add_semester(socket.assigns.academic_programs_editor_state)
-     )}
-  end
-
-  def handle_event("academic-programs-editor:remove-semester", %{"index" => index}, socket) do
-    {:noreply,
-     assign(
-       socket,
-       :academic_programs_editor_state,
-       AcademicProgramsState.remove_semester(
-         socket.assigns.academic_programs_editor_state,
-         AcademicProgramsState.parse_index(index)
-       )
-     )}
-  end
-
-  def handle_event(
-        "academic-programs-editor:add-course",
-        %{"semester_index" => semester_index},
-        socket
-      ) do
-    {:noreply,
-     assign(
-       socket,
-       :academic_programs_editor_state,
-       AcademicProgramsState.add_course(
-         socket.assigns.academic_programs_editor_state,
-         AcademicProgramsState.parse_index(semester_index)
-       )
-     )}
-  end
-
-  def handle_event(
-        "academic-programs-editor:remove-course",
-        %{"semester_index" => semester_index, "course_index" => course_index},
-        socket
-      ) do
-    {:noreply,
-     assign(
-       socket,
-       :academic_programs_editor_state,
-       AcademicProgramsState.remove_course(
-         socket.assigns.academic_programs_editor_state,
-         AcademicProgramsState.parse_index(semester_index),
-         AcademicProgramsState.parse_index(course_index)
-       )
-     )}
-  end
-
-  def handle_event("academic-programs-editor:save", _params, socket) do
-    editor_state = socket.assigns.academic_programs_editor_state
-
-    case ProgramAttrs.parse(editor_state.editor) do
-      {:ok, program} ->
-        updated_editor_state = AcademicProgramsState.start_save(editor_state)
-
-        if updated_editor_state.editing_id do
-          ProgramDomainManager.update_program(
-            pid: self(),
-            id: updated_editor_state.editing_id,
-            program: program
-          )
-        else
-          ProgramDomainManager.create_program(pid: self(), program: program)
-        end
-
-        {:noreply, assign(socket, :academic_programs_editor_state, updated_editor_state)}
-
-      {:error, reason} ->
-        {:noreply,
-         assign(
-           socket,
-           :academic_programs_editor_state,
-           %{editor_state | pending_action: nil, error: inspect(reason)}
-         )}
-    end
-  end
-
   def handle_info({:academic_programs, {:action_result, result}}, socket) do
-    updated_socket =
-      socket
-      |> assign(
-        :academic_programs_editor_state,
-        AcademicProgramsState.apply_action_result(
-          socket.assigns.academic_programs_editor_state,
-          result
-        )
-      )
-      |> handle_action_result_socket(result)
+    updated_socket = AcademicProgramsPanel.apply_action_result(socket, result)
 
     updated_socket =
       case result do
-        {:ok, _message, _program} ->
-          assign(updated_socket, :academic_programs_editing?, false)
-
         {:error, reason} ->
           Logger.error("Scheduling: action result error #{inspect(reason)}")
+          updated_socket
+
+        _ ->
           updated_socket
       end
 
@@ -407,9 +117,8 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
               <AcademicProgramsPanel.render
                 courses={@courses}
                 programs={@academic_programs}
-                selected_program_id={@academic_programs_selected_program_id}
-                editing?={@academic_programs_editing?}
-                editor_state={@academic_programs_editor_state}
+                state={@academic_programs_panel}
+                editor_state={@academic_program_editor}
               />
           <% end %>
         </div>
@@ -452,42 +161,4 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
         []
     end
   end
-
-  defp selected_program(socket) do
-    Enum.find(
-      socket.assigns.academic_programs,
-      &(&1["id"] == socket.assigns.academic_programs_selected_program_id)
-    )
-  end
-
-  defp first_course_param_indexes(course_params) do
-    case Enum.at(course_params, 0) do
-      {semester_index, nested_courses} when is_map(nested_courses) ->
-        case Enum.at(nested_courses, 0) do
-          {course_index, _value} ->
-            {
-              AcademicProgramsState.parse_index(semester_index),
-              AcademicProgramsState.parse_index(course_index)
-            }
-
-          _ ->
-            {0, 0}
-        end
-
-      _ ->
-        {0, 0}
-    end
-  end
-
-  defp handle_action_result_socket(socket, {:ok, _message, program}) do
-    case program do
-      %{"id" => program_id} ->
-        assign(socket, :academic_programs_selected_program_id, program_id)
-
-      _ ->
-        socket
-    end
-  end
-
-  defp handle_action_result_socket(socket, _result), do: socket
 end

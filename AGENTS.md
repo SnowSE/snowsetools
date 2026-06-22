@@ -146,7 +146,7 @@ LiveView
   - DB access in data modules
   - coordination in domain managers
   - UI feedback in LiveView via handle_info/2, put_flash/3, assign/3, or send_update/2
-
+<!-- 
 ## LiveComponent Events
 
 When adding `phx-click`, `phx-change`, `phx-submit`, or any other LiveView event binding inside a LiveComponent, always
@@ -163,11 +163,11 @@ set `phx-target={@myself}` unless the event is intentionally handled by the pare
 ```
 
 LiveComponent events without phx-target={@myself} are sent to the parent LiveView, not the component. This often causes
-missing handler bugs when the component defines handle_event/3 but the event is never delivered to it.
+missing handler bugs when the component defines handle_event/3 but the event is never delivered to it. -->
 
 ## Stateful Widgets via Hooked Function Components
 
-State lives as a struct in `socket.assigns`. Hooks intercept the parent LiveView's lifecycle. Rendering is a pure function component.
+State lives as a struct in `socket.assigns`. Hooks intercept the parent LiveView's lifecycle. Rendering is a pure function component. Event hooks should be defined and implemented in the same file that manages the UI for that data.
 
 ```elixir
 defmodule ChatWidget do
@@ -223,6 +223,61 @@ def render(assigns),
 ```
 
 Hooks attach once regardless of instance count. `:halt` stops propagation; `:cont` passes through. Always use `:cont` for `handle_info` and `handle_params`. Pass streams as a separate template attribute rather than embedding in the struct.
+
+
+
+When html conponents are rendered in a list, we still want the componnet to own its data logic, identify individual instances with unique ID's
+
+```elixir
+def assign_component(socket, id) do
+  socket
+  |> assign(:"item_#{id}", %ItemWidget{key: :"item_#{id}", id: id})
+  |> maybe_attach_hooks()
+end
+
+defp hooked_event("item-widget:toggle", %{"item-id" => id}, socket) do
+  key = :"item_#{id}"
+  {:halt, update(socket, key, &%{&1 | expanded: !&1.expanded})}
+end
+
+defp hooked_event(_event, _params, socket), do: {:cont, socket}
+```
+
+The ID travels with every event as a `phx-value-*` or hidden field:
+
+```elixir
+def render(assigns) do
+  ~H"""
+  <div>
+    <button phx-click="item-widget:toggle" phx-value-item-id={@state.id}>
+      Toggle
+    </button>
+    <div :if={@state.expanded}>...</div>
+  </div>
+  """
+end
+```
+
+Mount by mapping over your list:
+
+```elixir
+def mount(_params, _session, socket) do
+  socket = Enum.reduce(items, socket, fn item, acc ->
+    ItemWidget.assign_component(acc, item.id)
+  end)
+  {:ok, socket}
+end
+
+def render(assigns) do
+  ~H"""
+  <div :for={{_key, state} <- Enum.filter(@assigns, &match?({_, %ItemWidget{}}, &1))}>
+    <ItemWidget.render state={state} />
+  </div>
+  """
+end
+```
+
+The main constraint: all list items share one set of hooks, so event names must be namespaced and every handler must identify the target instance via the ID rather than assuming a single widget exists.
 
 ---
 
