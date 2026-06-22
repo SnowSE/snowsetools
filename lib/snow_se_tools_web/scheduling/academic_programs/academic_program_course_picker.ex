@@ -191,7 +191,6 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
     """
   end
 
-
   def hooked_event(
         "academic-programs-picker:update",
         %{"semester_index" => semester_index, "course_index" => course_index, "value" => value},

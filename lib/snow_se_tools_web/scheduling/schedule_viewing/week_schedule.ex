@@ -1,10 +1,9 @@
 defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
-  use SnowSeToolsWeb, :live_component
+  use SnowSeToolsWeb, :html
 
   @days ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 
   attr :schedule_owner, :map, required: true
-  attr :on_close_schedule, :any, required: true
 
   def render(assigns) do
     assigns =
@@ -35,8 +34,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
         </div>
         <button
           type="button"
-          phx-click="close"
-          phx-target={@myself}
+          phx-click="schedule-viewer:close_schedule"
+          phx-value-key={@schedule_owner.key}
           class="rounded p-1 text-slate-500 transition hover:bg-slate-900 hover:text-slate-200"
           aria-label="Remove schedule"
         >
@@ -47,11 +46,6 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
       <.schedule_grid schedule_owner={@schedule_owner} />
     </section>
     """
-  end
-
-  def handle_event("close", _params, socket) do
-    socket.assigns.on_close_schedule.(socket.assigns.schedule_owner.key)
-    {:noreply, socket}
   end
 
   attr :schedule_owner, :map, required: true

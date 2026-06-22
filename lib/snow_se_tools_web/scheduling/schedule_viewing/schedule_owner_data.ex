@@ -1,6 +1,4 @@
 defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
-  @moduledoc false
-
   @days ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
   @default_start_minutes 8 * 60
   @default_end_minutes 17 * 60

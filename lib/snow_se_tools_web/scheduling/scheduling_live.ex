@@ -8,7 +8,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   alias SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel
   alias SnowSeToolsWeb.Scheduling.AcademicProgramStateUtils
-  alias SnowSeToolsWeb.Scheduling.ScheduleViewerComponent
+  alias SnowSeToolsWeb.Scheduling.ScheduleViewer
 
   on_mount {SnowSeToolsWeb.UserAuth, :ensure_authenticated}
 
@@ -25,8 +25,13 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
     {:ok,
      socket
      |> assign(:page_title, "Scheduling")
+     |> assign(:terms, terms)
      |> assign(:courses, courses)
      |> assign(:academic_programs, [])
+     |> ScheduleViewer.assign_component(:schedule_viewer,
+       selected_term_code: selected_term_code,
+       courses: courses
+     )
      |> AcademicProgramEditor.assign_component(:academic_program_editor)
      |> AcademicProgramCoursePicker.assign_component(:academic_program_course_picker,
        editor_key: :academic_program_editor,
@@ -71,12 +76,15 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   def handle_info({:academic_programs, message}, socket) do
     {:noreply, new_socket} = AcademicProgramStateUtils.handle_message(message, socket)
 
-    if socket.assigns.mode == :viewer do
-      send_update(ScheduleViewerComponent,
-        id: "schedule-viewer",
-        academic_programs: Map.get(new_socket.assigns, :academic_programs, [])
-      )
-    end
+    new_socket =
+      if new_socket.assigns.mode == :viewer do
+        ScheduleViewer.apply_academic_programs(
+          new_socket,
+          Map.get(new_socket.assigns, :academic_programs, [])
+        )
+      else
+        new_socket
+      end
 
     {:noreply, new_socket}
   end
@@ -114,10 +122,9 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
         <div class="min-h-0 flex-1">
           <%= case @mode do %>
             <% :viewer -> %>
-              <.live_component
-                module={ScheduleViewerComponent}
-                id="schedule-viewer"
-                academic_programs={@academic_programs}
+              <ScheduleViewer.render
+                state={@schedule_viewer}
+                terms={@terms}
               />
             <% :programs -> %>
               <AcademicProgramsPanel.render
