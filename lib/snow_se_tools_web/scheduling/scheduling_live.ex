@@ -26,6 +26,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
      |> assign(:page_title, "Scheduling")
      |> assign(:courses, courses)
      |> assign(:academic_programs, [])
+     |> assign(:selected_program_id, nil)
      |> assign(:mode, :viewer)
      |> assign(:modes, viewer: "Schedule Viewer", programs: "Academic Programs")}
   end
@@ -117,6 +118,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
                 id="academic-programs"
                 courses={@courses}
                 programs={@academic_programs}
+                selected_program_id={@selected_program_id}
               />
           <% end %>
         </div>

@@ -25,7 +25,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramsComponent do
       socket
       |> assign(:courses, assigns[:courses] || [])
       |> assign(:programs, assigns[:programs] || [])
-      |> assign_new(:selected_program_id, fn -> nil end)
+      |> assign(:selected_program_id, Map.get(assigns, :selected_program_id))
       |> assign_new(:editing?, fn -> false end)
 
     {:ok, socket}
