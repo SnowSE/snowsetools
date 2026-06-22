@@ -5,6 +5,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   alias SnowSeTools.AcademicPrograms.{AcademicProgramPubSub, ProgramDomainManager}
   alias SnowSeTools.Snow.SnowCourseCacheDb
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramEditor
+  alias SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel
   alias SnowSeToolsWeb.Scheduling.AcademicProgramStateUtils
   alias SnowSeToolsWeb.Scheduling.ScheduleViewerComponent
@@ -27,8 +28,12 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
      |> assign(:courses, courses)
      |> assign(:academic_programs, [])
      |> AcademicProgramEditor.assign_component(:academic_program_editor)
-     |> AcademicProgramsPanel.assign_component(:academic_programs_panel,
+     |> AcademicProgramCoursePicker.assign_component(:academic_program_course_picker,
        editor_key: :academic_program_editor
+     )
+     |> AcademicProgramsPanel.assign_component(:academic_programs_panel,
+       editor_key: :academic_program_editor,
+       picker_key: :academic_program_course_picker
      )
      |> assign(:mode, :viewer)
      |> assign(:modes, viewer: "Schedule Viewer", programs: "Academic Programs")}
@@ -119,6 +124,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
                 programs={@academic_programs}
                 state={@academic_programs_panel}
                 editor_state={@academic_program_editor}
+                picker_state={@academic_program_course_picker}
               />
           <% end %>
         </div>

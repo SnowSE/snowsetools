@@ -1,16 +1,76 @@
 defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
   use SnowSeToolsWeb, :html
 
-  attr :semester_index, :integer, required: true
-  attr :course_index, :integer, required: true
-  attr :course_value, :string, required: true
-  attr :suggestions, :list, required: true
-  attr :matched_course_label, :string, default: nil
-  attr :focus_token, :integer, default: nil
-  attr :open?, :boolean, default: false
-  attr :active_suggestion_index, :integer, default: -1
+  import Phoenix.LiveView
+  require Logger
+
+  alias SnowSeToolsWeb.Scheduling.AcademicProgramCourseSearch
+
+  defstruct [
+    :key,
+    :editor_key,
+    :editor,
+    :course_focus_request,
+    :course_focus_token,
+    :picker_open,
+    :picker_active_indexes
+  ]
+
+  def assign_component(socket, key, opts \\ []) do
+    socket
+    |> assign(
+      key,
+      socket.assigns[key] ||
+        %__MODULE__{
+          key: key,
+          editor_key: opts[:editor_key] || :academic_program_editor,
+          editor: nil,
+          course_focus_request: nil,
+          course_focus_token: 0,
+          picker_open: %{},
+          picker_active_indexes: %{}
+        }
+    )
+    |> maybe_attach_hooks()
+  end
+
+  def reset(state) do
+    %__MODULE__{} = state
+
+    %{
+      state
+      | course_focus_request: nil,
+        picker_open: %{},
+        picker_active_indexes: %{}
+    }
+  end
+
+  def render_assigns(state, editor_state, courses, semester_index, course_index) do
+    %{
+      course_value: picker_course_value(editor_state, semester_index, course_index),
+      suggestions: picker_suggestions(editor_state, courses, semester_index, course_index),
+      matched_course_label:
+        picker_matched_course_label(editor_state, courses, semester_index, course_index),
+      focus_token: course_focus_token(state.course_focus_request, semester_index, course_index),
+      open?: picker_open?(state, semester_index, course_index),
+      active_suggestion_index: picker_active_index(state, semester_index, course_index)
+    }
+  end
 
   def render(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :render_state,
+        render_assigns(
+          assigns.state,
+          assigns.editor,
+          assigns.courses,
+          assigns.semester_index,
+          assigns.course_index
+        )
+      )
+
     ~H"""
     <div class="relative min-w-0">
       <label>
@@ -19,22 +79,22 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
             Course
           </span>
           <span
-            :if={@matched_course_label != nil}
+            :if={@render_state.matched_course_label != nil}
             class="text-sm text-indigo-200/70"
           >
-            {@matched_course_label}
+            {@render_state.matched_course_label}
           </span>
         </span>
         <input
           id={"program-course-input-#{@semester_index}-#{@course_index}"}
           name={"course[#{@semester_index}][#{@course_index}]"}
-          value={@course_value}
+          value={@render_state.course_value}
           placeholder="MATH 1010"
           autocomplete="off"
           phx-hook=".CourseSuggestionInput"
           data-semester-index={@semester_index}
           data-course-index={@course_index}
-          data-autofocus-token={@focus_token}
+          data-autofocus-token={@render_state.focus_token}
           phx-keydown="academic-programs-picker:keydown"
           phx-change="academic-programs-picker:update"
           phx-focus="academic-programs-picker:focus"
@@ -46,11 +106,13 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
       </label>
 
       <div
-        :if={@open? and @course_value != "" and @suggestions != []}
+        :if={
+          @render_state.open? and @render_state.course_value != "" and @render_state.suggestions != []
+        }
         id={"program-course-suggestions-#{@semester_index}-#{@course_index}"}
         class="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto overflow-hidden rounded-md border border-slate-700 bg-slate-950 shadow-xl"
       >
-        <%= for {suggestion, suggestion_index} <- Enum.with_index(@suggestions) do %>
+        <%= for {suggestion, suggestion_index} <- Enum.with_index(@render_state.suggestions) do %>
           <button
             id={"program-course-suggestion-#{@semester_index}-#{@course_index}-#{suggestion_index}"}
             type="button"
@@ -61,7 +123,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
             phx-value-selected={suggestion.value}
             class={[
               "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition hover:bg-slate-900",
-              @active_suggestion_index == suggestion_index && "bg-slate-900"
+              @render_state.active_suggestion_index == suggestion_index && "bg-slate-900"
             ]}
           >
             <span class="min-w-0 truncate font-medium text-slate-100">
@@ -123,4 +185,386 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
     </div>
     """
   end
+
+  def hooked_event("academic-programs-editor:update", _params, socket), do: {:cont, socket}
+
+  def hooked_event(
+        "academic-programs-picker:update",
+        %{"semester_index" => semester_index, "course_index" => course_index, "value" => value},
+        socket
+      ) do
+    semester_index = parse_index(semester_index)
+    course_index = parse_index(course_index)
+
+    {:halt,
+     update_socket(socket, fn state, editor ->
+       {picker_update(state, semester_index, course_index, value),
+        update_course(editor, semester_index, course_index, value)}
+     end)}
+  end
+
+  def hooked_event(
+        "academic-programs-picker:update",
+        %{"_target" => ["course", semester_index, course_index]} = params,
+        socket
+      ) do
+    value =
+      params
+      |> Map.get("course", %{})
+      |> Map.get(semester_index, %{})
+      |> Map.get(course_index, "")
+
+    semester_index = parse_index(semester_index)
+    course_index = parse_index(course_index)
+
+    {:halt,
+     update_socket(socket, fn state, editor ->
+       {picker_update(state, semester_index, course_index, value),
+        update_course(editor, semester_index, course_index, value)}
+     end)}
+  end
+
+  def hooked_event(
+        "academic-programs-picker:update",
+        %{"course" => course_params, "value" => value},
+        socket
+      )
+      when is_map(course_params) do
+    {semester_index, course_index} = first_course_param_indexes(course_params)
+
+    {:halt,
+     update_socket(socket, fn state, editor ->
+       {picker_update(state, semester_index, course_index, value),
+        update_course(editor, semester_index, course_index, value)}
+     end)}
+  end
+
+  def hooked_event(
+        "academic-programs-picker:focus",
+        %{"semester_index" => semester_index, "course_index" => course_index},
+        socket
+      ) do
+    {:halt,
+     update_socket(socket, fn state, editor ->
+       {picker_focus(state, parse_index(semester_index), parse_index(course_index)), editor}
+     end)}
+  end
+
+  def hooked_event(
+        "academic-programs-picker:blur",
+        %{"semester_index" => semester_index, "course_index" => course_index},
+        socket
+      ) do
+    {:halt,
+     update_socket(socket, fn state, editor ->
+       {picker_blur(state, parse_index(semester_index), parse_index(course_index)), editor}
+     end)}
+  end
+
+  def hooked_event(
+        "academic-programs-picker:keydown",
+        %{"semester_index" => semester_index, "course_index" => course_index, "key" => key},
+        socket
+      ) do
+    semester_index = parse_index(semester_index)
+    course_index = parse_index(course_index)
+    state = picker_state(socket)
+    editor = editor_state(socket)
+    courses = socket.assigns.courses
+
+    case key do
+      "ArrowDown" ->
+        {:halt,
+         assign(
+           socket,
+           state_key(socket),
+           state
+           |> put_picker_open(semester_index, course_index, true)
+           |> put_picker_active_index(
+             semester_index,
+             course_index,
+             next_active_index(state, editor, courses, semester_index, course_index, 1)
+           )
+         )}
+
+      "ArrowUp" ->
+        {:halt,
+         assign(
+           socket,
+           state_key(socket),
+           state
+           |> put_picker_open(semester_index, course_index, true)
+           |> put_picker_active_index(
+             semester_index,
+             course_index,
+             next_active_index(state, editor, courses, semester_index, course_index, -1)
+           )
+         )}
+
+      "Enter" ->
+        case Enum.at(
+               picker_suggestions(editor, courses, semester_index, course_index),
+               max(picker_active_index(state, semester_index, course_index), 0)
+             ) do
+          nil ->
+            {:halt, socket}
+
+          suggestion ->
+            {:halt,
+             update_socket(socket, fn current_state, current_editor ->
+               select_course(
+                 current_state,
+                 current_editor,
+                 semester_index,
+                 course_index,
+                 suggestion.value
+               )
+             end)}
+        end
+
+      "Escape" ->
+        {:halt,
+         assign(
+           socket,
+           state_key(socket),
+           state
+           |> put_picker_open(semester_index, course_index, false)
+           |> put_picker_active_index(semester_index, course_index, -1)
+         )}
+
+      _ ->
+        {:halt, socket}
+    end
+  end
+
+  def hooked_event(
+        "academic-programs-picker:select",
+        %{
+          "semester_index" => semester_index,
+          "course_index" => course_index,
+          "selected" => value
+        },
+        socket
+      ) do
+    {:halt,
+     update_socket(socket, fn current_state, current_editor ->
+       select_course(
+         current_state,
+         current_editor,
+         parse_index(semester_index),
+         parse_index(course_index),
+         value
+       )
+     end)}
+  end
+
+  def hooked_event("academic-programs-picker:" <> rest, params, socket) do
+    Logger.info("Received unhandled academic-programs-picker event academic-programs-picker:#{rest} with params: #{inspect(params)}")
+     {:halt, socket}
+  end
+
+  def hooked_event(_event, _params, socket), do: {:cont, socket}
+
+  defp maybe_attach_hooks(socket) do
+    if first_instance?(socket) do
+      socket
+      |> attach_hook("academic-programs-picker:event", :handle_event, &hooked_event/3)
+    else
+      socket
+    end
+  end
+
+  defp first_instance?(socket) do
+    Enum.count(socket.assigns, fn {_, v} -> match?(%__MODULE__{}, v) end) == 1
+  end
+
+  defp update_socket(socket, updater) do
+    state = %{picker_state(socket) | editor: editor_state(socket)}
+    editor = state.editor
+    {updated_state, updated_editor} = updater.(state, editor)
+
+    socket
+    |> assign(state_key(socket), updated_state)
+    |> assign(editor_key(updated_state), updated_editor)
+  end
+
+  defp picker_state(socket), do: socket.assigns[state_key(socket)]
+  defp editor_state(socket), do: socket.assigns[editor_key(picker_state(socket))]
+  defp state_key(socket), do: picker_state_key(socket.assigns)
+  defp editor_key(state), do: state.editor_key
+
+  defp picker_state_key(assigns) do
+    Enum.find_value(assigns, fn
+      {key, %__MODULE__{}} -> key
+      _ -> nil
+    end)
+  end
+
+  defp picker_update(state, semester_index, course_index, course_value) do
+    state
+    |> update_course(semester_index, course_index, course_value)
+    |> put_picker_active_index(semester_index, course_index, -1)
+    |> put_picker_open(semester_index, course_index, String.trim(course_value) != "")
+  end
+
+  defp picker_focus(state, semester_index, course_index),
+    do: put_picker_open(state, semester_index, course_index, true)
+
+  defp picker_blur(state, semester_index, course_index),
+    do: put_picker_open(state, semester_index, course_index, false)
+
+  defp next_active_index(state, editor, courses, semester_index, course_index, delta) do
+    suggestions = picker_suggestions(editor, courses, semester_index, course_index)
+    active_index = picker_active_index(state, semester_index, course_index)
+
+    case delta do
+      1 ->
+        if suggestions == [], do: -1, else: min(active_index + 1, length(suggestions) - 1)
+
+      -1 ->
+        if suggestions == [], do: -1, else: max(active_index - 1, 0)
+    end
+  end
+
+  defp add_course(editor_state, semester_index) do
+    semesters =
+      editor_state.editor
+      |> Map.get("semesters", [])
+      |> List.update_at(semester_index, fn semester ->
+        update_in(semester["courses"], &(&1 ++ [%{"subject_code" => "", "course_number" => ""}]))
+      end)
+
+    %{editor_state | editor: Map.put(editor_state.editor, "semesters", semesters)}
+  end
+
+  defp update_course(editor_state, semester_index, course_index, course_value) do
+    {subject_code, course_number} = AcademicProgramCourseSearch.parse_course_input(course_value)
+
+    semesters =
+      editor_state.editor
+      |> Map.get("semesters", [])
+      |> List.update_at(semester_index, fn semester ->
+        update_in(semester["courses"], fn courses ->
+          List.update_at(courses, course_index, fn course ->
+            course
+            |> Map.put("subject_code", subject_code)
+            |> Map.put("course_number", course_number)
+          end)
+        end)
+      end)
+
+    %{editor_state | editor: Map.put(editor_state.editor, "semesters", semesters)}
+  end
+
+  defp select_course(state, editor_state, semester_index, course_index, value) do
+    updated_editor = update_course(editor_state, semester_index, course_index, value)
+    semesters = Map.get(updated_editor.editor, "semesters", [])
+    courses = semesters |> Enum.at(semester_index, %{}) |> Map.get("courses", [])
+
+    next_editor =
+      if course_index == length(courses) - 1,
+        do: add_course(updated_editor, semester_index),
+        else: updated_editor
+
+    token = state.course_focus_token + 1
+
+    next_state = %{
+      state
+      | course_focus_token: token,
+        course_focus_request: %{
+          semester_index: semester_index,
+          course_index: course_index + 1,
+          token: token
+        },
+        picker_open: Map.put(state.picker_open, picker_key(semester_index, course_index), false),
+        picker_active_indexes:
+          Map.put(state.picker_active_indexes, picker_key(semester_index, course_index), -1)
+    }
+
+    {next_state, next_editor}
+  end
+
+  defp picker_course_value(editor_state, semester_index, course_index) do
+    editor_state.editor
+    |> Map.get("semesters", [])
+    |> Enum.at(semester_index, %{})
+    |> Map.get("courses", [])
+    |> Enum.at(course_index, %{})
+    |> AcademicProgramCourseSearch.course_input_value()
+  end
+
+  defp picker_suggestions(editor_state, courses, semester_index, course_index) do
+    AcademicProgramCourseSearch.course_suggestions(
+      courses,
+      picker_course_value(editor_state, semester_index, course_index)
+    )
+  end
+
+  defp picker_matched_course_label(editor_state, courses, semester_index, course_index) do
+    course_value = picker_course_value(editor_state, semester_index, course_index)
+
+    if course_value != "" do
+      Enum.find_value(courses, fn course ->
+        case AcademicProgramCourseSearch.course_input_value(course) do
+          ^course_value -> Map.get(course, "name", "")
+          _ -> nil
+        end
+      end)
+    end
+  end
+
+  defp picker_active_index(state, semester_index, course_index) do
+    Map.get(state.picker_active_indexes, picker_key(semester_index, course_index), -1)
+  end
+
+  defp picker_open?(state, semester_index, course_index) do
+    Map.get(state.picker_open, picker_key(semester_index, course_index), false)
+  end
+
+  defp course_focus_token(course_focus_request, semester_index, course_index) do
+    case course_focus_request do
+      %{semester_index: ^semester_index, course_index: ^course_index, token: token} -> token
+      _ -> nil
+    end
+  end
+
+  defp put_picker_open(state, semester_index, course_index, open?) do
+    %{
+      state
+      | picker_open: Map.put(state.picker_open, picker_key(semester_index, course_index), open?)
+    }
+  end
+
+  defp put_picker_active_index(state, semester_index, course_index, index) do
+    %{
+      state
+      | picker_active_indexes:
+          Map.put(state.picker_active_indexes, picker_key(semester_index, course_index), index)
+    }
+  end
+
+  defp parse_index(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {index, ""} -> index
+      _ -> 0
+    end
+  end
+
+  defp parse_index(value) when is_integer(value), do: value
+  defp parse_index(_value), do: 0
+
+  defp first_course_param_indexes(course_params) do
+    case Enum.at(course_params, 0) do
+      {semester_index, nested_courses} when is_map(nested_courses) ->
+        case Enum.at(nested_courses, 0) do
+          {course_index, _value} -> {parse_index(semester_index), parse_index(course_index)}
+          _ -> {0, 0}
+        end
+
+      _ ->
+        {0, 0}
+    end
+  end
+
+  defp picker_key(semester_index, course_index), do: {semester_index, course_index}
 end

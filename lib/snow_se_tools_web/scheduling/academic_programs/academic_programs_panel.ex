@@ -2,9 +2,10 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
   use SnowSeToolsWeb, :html
 
   alias Phoenix.LiveView
+  alias SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramEditor
 
-  defstruct [:key, :selected_program_id, :editing?, :editor_key]
+  defstruct [:key, :selected_program_id, :editing?, :editor_key, :picker_key]
 
   def assign_component(socket, key, opts \\ []) do
     socket
@@ -15,7 +16,8 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
           key: key,
           selected_program_id: nil,
           editing?: false,
-          editor_key: opts[:editor_key] || :academic_program_editor
+          editor_key: opts[:editor_key] || :academic_program_editor,
+          picker_key: opts[:picker_key] || :academic_program_course_picker
         }
     )
     |> maybe_attach_hooks()
@@ -63,7 +65,11 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
       </aside>
 
       <div :if={@state.editing?}>
-        <AcademicProgramEditor.render state={@editor_state} courses={@courses} />
+        <AcademicProgramEditor.render
+          state={@editor_state}
+          picker_state={@picker_state}
+          courses={@courses}
+        />
       </div>
 
       <.program_display :if={!@state.editing?} program={@selected_program} />
@@ -84,11 +90,13 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
   def hooked_event("academic-programs:new", _params, socket) do
     panel_state = panel_state(socket)
     editor_key = panel_state.editor_key
+    picker_key = panel_state.picker_key
 
     {:halt,
      socket
      |> assign(panel_key(socket), %{panel_state | selected_program_id: nil, editing?: true})
-     |> assign(editor_key, AcademicProgramEditor.reset(socket.assigns[editor_key]))}
+     |> assign(editor_key, AcademicProgramEditor.reset(socket.assigns[editor_key]))
+     |> assign(picker_key, AcademicProgramCoursePicker.reset(socket.assigns[picker_key]))}
   end
 
   def hooked_event("academic-programs:select", %{"program_id" => program_id}, socket) do
@@ -117,6 +125,10 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
          |> assign(
            panel_state.editor_key,
            AcademicProgramEditor.load_program(socket.assigns[panel_state.editor_key], program)
+         )
+         |> assign(
+           panel_state.picker_key,
+           AcademicProgramCoursePicker.reset(socket.assigns[panel_state.picker_key])
          )}
     end
   end
@@ -130,6 +142,10 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
      |> assign(
        panel_state.editor_key,
        AcademicProgramEditor.reset(socket.assigns[panel_state.editor_key])
+     )
+     |> assign(
+       panel_state.picker_key,
+       AcademicProgramCoursePicker.reset(socket.assigns[panel_state.picker_key])
      )}
   end
 
@@ -147,7 +163,12 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
 
     case result do
       {:ok, _message, _program} ->
-        assign(socket, panel_key(socket), %{panel_state(socket) | editing?: false})
+        socket
+        |> assign(panel_key(socket), %{panel_state(socket) | editing?: false})
+        |> assign(
+          panel_state.picker_key,
+          AcademicProgramCoursePicker.reset(socket.assigns[panel_state.picker_key])
+        )
 
       _ ->
         socket
