@@ -68,7 +68,8 @@ defmodule SnowSeTools.MixProject do
       {:zoi, "~> 0.18"},
       {:dotenvy, "~> 1.1.1"},
       {:oidcc_plug, "~> 0.4.0"},
-      {:dialyxir, "~> 1.4", only: :test, runtime: false}
+      {:dialyxir, "~> 1.4", only: :test, runtime: false},
+      {:live_debugger, "~> 1.0.1", only: :dev}
     ]
   end
 

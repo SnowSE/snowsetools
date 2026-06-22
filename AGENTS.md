@@ -197,7 +197,66 @@ end
 
 ```
 
+## Stateful Widgets via Hooked Function Components
 
+State lives as a struct in `socket.assigns`. Hooks intercept the parent LiveView's lifecycle. Rendering is a pure function component.
+
+```elixir
+defmodule ChatWidget do
+  defstruct [:key, :topic]
+
+  def assign_component(socket, key, opts \\ []) do
+    socket
+    |> assign(key, %ChatWidget{key: key, topic: opts[:topic] || "chat:global"})
+    |> maybe_attach_hooks()
+  end
+
+  defp maybe_attach_hooks(socket) do
+    if single_instance?(socket) do
+      socket
+      |> LiveView.attach_hook("chat:event",  :handle_event,  &hooked_event/3)
+      |> LiveView.attach_hook("chat:info",   :handle_info,   &hooked_info/2)
+      |> LiveView.attach_hook("chat:params", :handle_params, &hooked_params/3)
+    else
+      socket
+    end
+  end
+
+  defp hooked_event("chat-widget:send", %{"chat-widget-key" => k, "message" => msg}, socket) do
+    state = socket.assigns[String.to_existing_atom(k)]
+    ChatContext.send_message(msg, state.topic)
+    {:halt, socket}
+  end
+  defp hooked_event(_event, _params, socket), do: {:cont, socket}
+
+  defp hooked_info({:new_message, msg}, socket),
+    do: {:cont, update_matching_widgets(socket, msg)}
+  defp hooked_info(_msg, socket), do: {:cont, socket}
+
+  def render(assigns) do
+    ~H"""
+    <form phx-submit="chat-widget:send">
+      <input type="hidden" name="chat-widget-key" value={@state.key} />
+      <input type="text" name="message" />
+    </form>
+    """
+  end
+end
+```
+
+Parent usage:
+
+```elixir
+def mount(_params, _session, socket),
+  do: {:ok, socket |> ChatWidget.assign_component(:chat)}
+
+def render(assigns),
+  do: ~H"<ChatWidget.render state={@chat} message_stream={@streams.chat} />"
+```
+
+Hooks attach once regardless of instance count. `:halt` stops propagation; `:cont` passes through. Always use `:cont` for `handle_info` and `handle_params`. Pass streams as a separate template attribute rather than embedding in the struct.
+
+---
 
 ## Dev Environment
 

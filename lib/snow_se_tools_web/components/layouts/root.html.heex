@@ -29,6 +29,7 @@
         window.addEventListener("phx:set-theme", (e) => setTheme(e.target.dataset.phxTheme));
       })();
     </script>
+    <%= Application.get_env(:live_debugger, :live_debugger_tags) %>
   </head>
   <body>
     {@inner_content}

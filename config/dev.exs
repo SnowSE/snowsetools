@@ -81,3 +81,8 @@ config :phoenix_live_view,
   debug_attributes: true,
   # Enable helpful, but potentially expensive runtime checks
   enable_expensive_runtime_checks: true
+
+# LiveDebugger must bind to 0.0.0.0 so it's reachable from outside the Docker container
+config :live_debugger,
+  ip: {0, 0, 0, 0},
+  port: 4007
