@@ -1,23 +1,97 @@
-defmodule SnowSeToolsWeb.Scheduling.AcademicProgramDisplayComponent do
-  use SnowSeToolsWeb, :live_component
+defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
+  use SnowSeToolsWeb, :html
 
-  def update(assigns, socket) do
-    socket =
-      socket
-      |> assign(:program, Map.get(assigns, :program))
-      |> assign(:courses, Map.get(assigns, :courses, []))
-      |> assign(:on_edit_program, Map.get(assigns, :on_edit_program))
+  alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramEditorView
 
-    {:ok, socket}
-  end
-
-  def handle_event("edit_program", _params, socket) do
-    socket.assigns.on_edit_program.()
-
-    {:noreply, socket}
-  end
+  attr :courses, :list, required: true
+  attr :programs, :list, required: true
+  attr :selected_program_id, :string, default: nil
+  attr :editing?, :boolean, default: false
+  attr :editor_state, :map, required: true
 
   def render(assigns) do
+    assigns = assign(assigns, :selected_program, selected_program(assigns))
+
+    ~H"""
+    <div
+      id="academic-programs-panel"
+      class="mx-auto grid h-full min-h-0 w-full max-w-[1600px] grid-cols-[22rem_1fr] gap-4 p-4"
+    >
+      <aside class="flex min-h-0 flex-col gap-3">
+        <div class="flex items-center justify-between gap-2">
+          <div>
+            <h2 class="text-sm font-semibold text-slate-100">Academic Programs</h2>
+            <p class="text-xs text-slate-500">Program semesters appear in schedule search.</p>
+          </div>
+        </div>
+
+        <button
+          id="new-program-from-list"
+          type="button"
+          phx-click="academic-programs:new"
+          class="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 transition hover:bg-indigo-500/25"
+        >
+          <.icon name="hero-plus" class="size-3.5" /> New Program
+        </button>
+
+        <div id="academic-program-list" class="min-h-0 flex-1 space-y-2 overflow-y-auto pe-2">
+          <div
+            :if={@programs == []}
+            class="rounded-lg border border-dashed border-slate-800 p-6 text-center text-sm text-slate-500"
+          >
+            No programs yet.
+          </div>
+
+          <.program_list_item
+            :for={program <- @programs}
+            program={program}
+            is_selected={@selected_program_id == program["id"]}
+          />
+        </div>
+      </aside>
+
+      <div :if={@editing?}>
+        <AcademicProgramEditorView.render
+          courses={@courses}
+          editor_state={@editor_state}
+        />
+      </div>
+
+      <.program_display :if={!@editing?} program={@selected_program} />
+    </div>
+    """
+  end
+
+  attr :program, :map, required: true
+  attr :is_selected, :boolean, default: false
+
+  defp program_list_item(assigns) do
+    ~H"""
+    <button
+      id={"academic-program-#{@program["id"]}"}
+      type="button"
+      phx-click="academic-programs:select"
+      phx-value-program_id={@program["id"]}
+      class={[
+        "w-full rounded-lg border px-3 py-2 text-left transition",
+        if(@is_selected,
+          do: "border-indigo-500/50 bg-indigo-950/50 text-indigo-100",
+          else:
+            "border-slate-800 bg-slate-900/45 text-slate-200 hover:border-slate-700 hover:bg-slate-900"
+        )
+      ]}
+    >
+      <span class="block truncate text-sm font-medium">{@program["name"]}</span>
+      <span class="mt-0.5 block text-xs text-slate-500">
+        {length(@program["semesters"] || [])} semesters
+      </span>
+    </button>
+    """
+  end
+
+  attr :program, :map, default: nil
+
+  defp program_display(assigns) do
     ~H"""
     <div>
       <div :if={@program}>
@@ -37,8 +111,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramDisplayComponent do
             <button
               id="edit-academic-program"
               type="button"
-              phx-click="edit_program"
-              phx-target={@myself}
+              phx-click="academic-programs:edit"
               class="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 transition hover:bg-indigo-500/25"
             >
               <.icon name="hero-pencil" class="size-3.5" /> Edit
@@ -95,6 +168,10 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramDisplayComponent do
       </div>
     </div>
     """
+  end
+
+  defp selected_program(assigns) do
+    Enum.find(assigns.programs, &(&1["id"] == assigns.selected_program_id))
   end
 
   defp course_label(course) do
