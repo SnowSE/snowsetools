@@ -5,13 +5,29 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
   @default_start_minutes 8 * 60
   @default_end_minutes 17 * 60
 
+  def build_schedule_owner_entries(courses, academic_programs) do
+    courses_with_preparsed =
+      Enum.map(courses, fn course ->
+        Map.put(
+          course,
+          "meet_info",
+          Enum.map(course["meet_info"] || [], &preparse_meeting/1)
+        )
+      end)
+
+    professor_entries(courses_with_preparsed) ++
+      program_semester_entries(courses_with_preparsed, academic_programs) ++
+      room_entries(courses_with_preparsed)
+  end
+
   def build_schedule_owners(courses: courses, query: query, academic_programs: academic_programs) do
     normalized_query = normalize(query)
+    query_words = String.split(normalized_query, ~r/\s+/, trim: true)
 
     courses
-    |> schedule_owner_entries(academic_programs)
+    |> build_schedule_owner_entries(academic_programs)
     |> Enum.filter(fn schedule_owner ->
-      normalized_query == "" or query_matches?(schedule_owner.search_text, normalized_query)
+      query_words == [] or query_matches_all?(schedule_owner.search_text, query_words)
     end)
     |> Enum.sort_by(fn schedule_owner ->
       {schedule_owner.type_order, String.downcase(schedule_owner.name)}
@@ -19,35 +35,30 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
     |> Enum.take(250)
   end
 
+  def lookup_selected(schedule_owners, selected_keys, _academic_programs) do
+    by_key = Map.new(schedule_owners, &{&1.key, &1})
+
+    Enum.map(selected_keys, &Map.get(by_key, &1))
+    |> Enum.reject(&is_nil/1)
+  end
+
   def selected_schedule_owners(
         courses: courses,
         selected_schedule_owner_keys: selected_schedule_owner_keys,
         academic_programs: academic_programs
       ) do
-    schedule_owners_by_key =
-      courses
-      |> schedule_owner_entries(academic_programs)
-      |> Map.new(&{&1.key, &1})
-
-    selected_schedule_owner_keys
-    |> Enum.map(&Map.get(schedule_owners_by_key, &1))
-    |> Enum.reject(&is_nil/1)
-  end
-
-  defp schedule_owner_entries(courses, academic_programs) do
-    professor_entries(courses) ++
-      program_semester_entries(courses, academic_programs) ++
-      room_entries(courses)
+    schedule_owners = build_schedule_owner_entries(courses, academic_programs)
+    lookup_selected(schedule_owners, selected_schedule_owner_keys, academic_programs)
   end
 
   defp professor_entries(courses) do
     courses
     |> Enum.flat_map(fn course ->
-      course
-      |> Map.get("instructors", [])
-      |> Enum.map(fn instructor -> {instructor["name"], course} end)
+      for instructor <- Map.get(course, "instructors", []),
+          name = instructor["name"],
+          !blank?(name),
+          do: {name, course}
     end)
-    |> Enum.reject(fn {name, _course} -> blank?(name) end)
     |> Enum.group_by(fn {name, _course} -> name end, fn {_name, course} -> course end)
     |> Enum.map(fn {name, schedule_owner_courses} ->
       build_schedule_owner(:professor, name, schedule_owner_courses)
@@ -57,12 +68,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
   defp room_entries(courses) do
     courses
     |> Enum.flat_map(fn course ->
-      course
-      |> Map.get("meet_info", [])
-      |> Enum.map(&room_name/1)
-      |> Enum.reject(&blank?/1)
-      |> Enum.uniq()
-      |> Enum.map(fn room -> {room, course} end)
+      for meeting <- Map.get(course, "meet_info", []),
+          {room, true} <- [{meeting["__room_name"], !is_nil(meeting["__room_name"])}],
+          uniq: true,
+          do: {room, course}
     end)
     |> Enum.group_by(fn {room, _course} -> room end, fn {_room, course} -> course end)
     |> Enum.map(fn {room, schedule_owner_courses} ->
@@ -149,21 +158,22 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
   end
 
   defp meetings_by_day(type, name, courses) do
+    tagged_meetings =
+      Enum.flat_map(courses, fn course ->
+        for meeting <- Map.get(course, "meet_info", []),
+            # preparse guard
+            !is_nil(meeting["__room_name"]),
+            day <- meeting["days"] || [],
+            meeting_matches_schedule_owner?(type, name, course, meeting) do
+          {day, meeting_from_course(course, meeting)}
+        end
+      end)
+
     Enum.reduce(@days, %{}, fn day, acc ->
       meetings =
-        courses
-        |> Enum.flat_map(fn course ->
-          course
-          |> Map.get("meet_info", [])
-          |> Enum.filter(fn meeting ->
-            day in (meeting["days"] || []) and
-              meeting_matches_schedule_owner?(type, name, course, meeting)
-          end)
-          |> Enum.map(fn meeting -> meeting_from_course(course, meeting) end)
-        end)
-        |> Enum.sort_by(& &1.start_minutes)
+        for {^day, meeting} <- tagged_meetings, do: meeting
 
-      Map.put(acc, day, meetings)
+      Map.put(acc, day, Enum.sort_by(meetings, & &1.start_minutes))
     end)
   end
 
@@ -172,14 +182,13 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
   end
 
   defp meeting_matches_schedule_owner?(:room, name, _course, meeting),
-    do: room_name(meeting) == name
+    do: meeting["__room_name"] == name
 
   defp meeting_matches_schedule_owner?(:academic_program_semester, _name, _course, _meeting),
     do: true
 
   defp meeting_from_course(course, meeting) do
-    start_minutes = parse_minutes(meeting["start_time"])
-    end_minutes = parse_minutes(meeting["end_time"])
+    %{start_minutes: start_minutes, end_minutes: end_minutes} = meeting
 
     %{
       course_name: course["name"],
@@ -190,7 +199,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
       end_time: meeting["end_time"],
       start_minutes: start_minutes,
       end_minutes: end_minutes,
-      room: room_name(meeting),
+      room: meeting["__room_name"],
       instructors: Enum.map(course["instructors"] || [], & &1["name"])
     }
   end
@@ -278,14 +287,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
 
   defp normalize_course_code(_value), do: ""
 
-  defp query_matches?(value, normalized_query) do
-    search_text = normalize(value)
-
-    normalized_query
-    |> String.split(~r/\s+/, trim: true)
-    |> Enum.all?(&String.contains?(search_text, &1))
-  end
-
   defp blank?(value) when is_binary(value), do: String.trim(value) == ""
   defp blank?(_value), do: true
 
@@ -301,5 +302,17 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerData do
       7 -> "Senior second semester"
       _ -> "Year #{div(index, 2) + 1} semester #{rem(index, 2) + 1}"
     end
+  end
+
+  defp preparse_meeting(meeting) do
+    meeting
+    |> Map.put("__room_name", room_name(meeting))
+    |> Map.put(:start_minutes, parse_minutes(meeting["start_time"]))
+    |> Map.put(:end_minutes, parse_minutes(meeting["end_time"]))
+  end
+
+  defp query_matches_all?(value, words) do
+    search_text = normalize(value)
+    Enum.all?(words, &String.contains?(search_text, &1))
   end
 end

@@ -42,9 +42,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramStateUtils do
       )
       |> MapSet.new(& &1.key)
 
-    selected_keys
-    |> MapSet.intersection(available_keys)
-    |> MapSet.to_list()
+    MapSet.intersection(selected_keys, available_keys)
   end
 
   defp apply_program_diff(programs: programs, diff: {:program_created, program}) do

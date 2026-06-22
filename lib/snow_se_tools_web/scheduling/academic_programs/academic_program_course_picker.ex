@@ -191,7 +191,6 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
     """
   end
 
-  def hooked_event("academic-programs-editor:update", _params, socket), do: {:cont, socket}
 
   def hooked_event(
         "academic-programs-picker:update",

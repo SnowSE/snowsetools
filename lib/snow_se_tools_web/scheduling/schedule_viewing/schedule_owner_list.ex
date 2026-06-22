@@ -1,8 +1,6 @@
 defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerList do
   use SnowSeToolsWeb, :live_component
 
-  alias SnowSeToolsWeb.Scheduling.ScheduleOwnerData
-
   def mount(socket) do
     {:ok, socket}
   end
@@ -10,9 +8,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerList do
   def update(assigns, socket) do
     {:ok,
      socket
-     |> assign(:courses, assigns[:courses] || [])
-     |> assign(:academic_programs, assigns[:academic_programs] || [])
-     |> assign(:query, assigns[:query] || "")
+     |> assign(:schedule_owners, assigns[:schedule_owners] || [])
      |> assign(:selected_schedule_owner_keys, assigns[:selected_schedule_owner_keys] || [])
      |> assign(:on_selection_updated, assigns[:on_selection_updated])}
   end
@@ -21,10 +17,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerList do
     selected = socket.assigns.selected_schedule_owner_keys
 
     updated =
-      if key in selected do
-        Enum.reject(selected, &(&1 == key))
+      if MapSet.member?(selected, key) do
+        MapSet.delete(selected, key)
       else
-        selected ++ [key]
+        MapSet.put(selected, key)
       end
 
     socket.assigns.on_selection_updated.(updated)
@@ -32,20 +28,11 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerList do
   end
 
   def handle_event("clear_selected", _params, socket) do
-    socket.assigns.on_selection_updated.([])
+    socket.assigns.on_selection_updated.(MapSet.new())
     {:noreply, socket}
   end
 
   def render(assigns) do
-    assigns =
-      assign_new(assigns, :schedule_owners, fn ->
-        ScheduleOwnerData.build_schedule_owners(
-          courses: assigns.courses,
-          query: assigns.query,
-          academic_programs: assigns.academic_programs
-        )
-      end)
-
     ~H"""
     <div id="schedule-owner-list" class="min-h-0 flex-1 space-y-2 overflow-y-auto pe-2">
       <.empty_state :if={@schedule_owners == []} />
@@ -53,7 +40,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerList do
       <%= for schedule_owner <- @schedule_owners do %>
         <.schedule_owner_button
           schedule_owner={schedule_owner}
-          is_selected={schedule_owner.key in @selected_schedule_owner_keys}
+          is_selected={MapSet.member?(@selected_schedule_owner_keys, schedule_owner.key)}
           myself={@myself}
         />
       <% end %>

@@ -21,7 +21,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerComponent do
      |> assign(:courses, courses)
      |> assign(:academic_programs, [])
      |> assign(:query, "")
-     |> assign(:selected_schedule_owner_keys, [])}
+     |> assign(:selected_schedule_owner_keys, MapSet.new())}
   end
 
   def update(%{search_updated: %{term_code: term_code, query: query}}, socket) do
@@ -35,11 +35,11 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerComponent do
   end
 
   def update(%{selection_updated: %{keys: keys}}, socket) do
-    {:ok, assign(socket, :selected_schedule_owner_keys, keys)}
+    {:ok, assign(socket, :selected_schedule_owner_keys, MapSet.new(keys))}
   end
 
   def update(%{close_schedule: %{key: key}}, socket) do
-    updated = Enum.reject(socket.assigns.selected_schedule_owner_keys, &(&1 == key))
+    updated = MapSet.delete(socket.assigns.selected_schedule_owner_keys, key)
     {:ok, assign(socket, :selected_schedule_owner_keys, updated)}
   end
 
@@ -65,21 +65,27 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerComponent do
   end
 
   def handle_event("clear_selected", _params, socket) do
-    {:noreply, assign(socket, :selected_schedule_owner_keys, [])}
+    {:noreply, assign(socket, :selected_schedule_owner_keys, MapSet.new())}
   end
 
   def render(assigns) do
     assigns =
       assigns
-      |> assign(
-        :selected_schedule_owners,
-        ScheduleOwnerData.selected_schedule_owners(
+      |> assign_new(:schedule_owners, fn ->
+        ScheduleOwnerData.build_schedule_owners(
           courses: assigns.courses,
-          selected_schedule_owner_keys: assigns.selected_schedule_owner_keys,
+          query: assigns.query,
           academic_programs: assigns.academic_programs
         )
-      )
-      |> assign(:selected_count, length(assigns.selected_schedule_owner_keys))
+      end)
+      |> assign_new(:selected_schedule_owners, fn a ->
+        ScheduleOwnerData.lookup_selected(
+          a.schedule_owners,
+          a.selected_schedule_owner_keys,
+          a.academic_programs
+        )
+      end)
+      |> assign(:selected_count, MapSet.size(assigns.selected_schedule_owner_keys))
 
     ~H"""
     <div
@@ -122,9 +128,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerComponent do
         <.live_component
           module={ScheduleOwnerList}
           id="schedule-owner-list"
-          courses={@courses}
-          academic_programs={@academic_programs}
-          query={@query}
+          schedule_owners={@schedule_owners}
           selected_schedule_owner_keys={@selected_schedule_owner_keys}
           on_selection_updated={
             fn keys ->
