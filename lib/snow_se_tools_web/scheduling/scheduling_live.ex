@@ -29,7 +29,8 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
      |> assign(:academic_programs, [])
      |> AcademicProgramEditor.assign_component(:academic_program_editor)
      |> AcademicProgramCoursePicker.assign_component(:academic_program_course_picker,
-       editor_key: :academic_program_editor
+       editor_key: :academic_program_editor,
+       courses: courses
      )
      |> AcademicProgramsPanel.assign_component(:academic_programs_panel,
        editor_key: :academic_program_editor,

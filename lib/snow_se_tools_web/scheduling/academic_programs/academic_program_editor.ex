@@ -92,7 +92,6 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramEditor do
                     <AcademicProgramCoursePicker.render
                       state={@picker_state}
                       editor={@state}
-                      courses={@courses}
                       semester_index={semester_index}
                       course_index={course_index}
                     />

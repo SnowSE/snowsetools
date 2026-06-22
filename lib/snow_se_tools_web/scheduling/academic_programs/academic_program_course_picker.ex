@@ -10,6 +10,8 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
     :key,
     :editor_key,
     :editor,
+    :course_catalog,
+    :course_label_by_value,
     :course_focus_request,
     :course_focus_token,
     :picker_open,
@@ -17,6 +19,8 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
   ]
 
   def assign_component(socket, key, opts \\ []) do
+    courses = opts[:courses] || []
+
     socket
     |> assign(
       key,
@@ -25,6 +29,8 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
           key: key,
           editor_key: opts[:editor_key] || :academic_program_editor,
           editor: nil,
+          course_catalog: build_course_catalog(courses),
+          course_label_by_value: build_course_label_map(courses),
           course_focus_request: nil,
           course_focus_token: 0,
           picker_open: %{},
@@ -45,12 +51,12 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
     }
   end
 
-  def render_assigns(state, editor_state, courses, semester_index, course_index) do
+  def render_assigns(state, editor_state, semester_index, course_index) do
     %{
       course_value: picker_course_value(editor_state, semester_index, course_index),
-      suggestions: picker_suggestions(editor_state, courses, semester_index, course_index),
+      suggestions: picker_suggestions(state, editor_state, semester_index, course_index),
       matched_course_label:
-        picker_matched_course_label(editor_state, courses, semester_index, course_index),
+        picker_matched_course_label(state, editor_state, semester_index, course_index),
       focus_token: course_focus_token(state.course_focus_request, semester_index, course_index),
       open?: picker_open?(state, semester_index, course_index),
       active_suggestion_index: picker_active_index(state, semester_index, course_index)
@@ -65,7 +71,6 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
         render_assigns(
           assigns.state,
           assigns.editor,
-          assigns.courses,
           assigns.semester_index,
           assigns.course_index
         )
@@ -270,7 +275,6 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
     course_index = parse_index(course_index)
     state = picker_state(socket)
     editor = editor_state(socket)
-    courses = socket.assigns.courses
 
     case key do
       "ArrowDown" ->
@@ -283,7 +287,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
            |> put_picker_active_index(
              semester_index,
              course_index,
-             next_active_index(state, editor, courses, semester_index, course_index, 1)
+             next_active_index(state, editor, semester_index, course_index, 1)
            )
          )}
 
@@ -297,13 +301,13 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
            |> put_picker_active_index(
              semester_index,
              course_index,
-             next_active_index(state, editor, courses, semester_index, course_index, -1)
+             next_active_index(state, editor, semester_index, course_index, -1)
            )
          )}
 
       "Enter" ->
         case Enum.at(
-               picker_suggestions(editor, courses, semester_index, course_index),
+               picker_suggestions(state, editor, semester_index, course_index),
                max(picker_active_index(state, semester_index, course_index), 0)
              ) do
           nil ->
@@ -359,8 +363,11 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
   end
 
   def hooked_event("academic-programs-picker:" <> rest, params, socket) do
-    Logger.info("Received unhandled academic-programs-picker event academic-programs-picker:#{rest} with params: #{inspect(params)}")
-     {:halt, socket}
+    Logger.info(
+      "Received unhandled academic-programs-picker event academic-programs-picker:#{rest} with params: #{inspect(params)}"
+    )
+
+    {:halt, socket}
   end
 
   def hooked_event(_event, _params, socket), do: {:cont, socket}
@@ -413,8 +420,8 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
   defp picker_blur(state, semester_index, course_index),
     do: put_picker_open(state, semester_index, course_index, false)
 
-  defp next_active_index(state, editor, courses, semester_index, course_index, delta) do
-    suggestions = picker_suggestions(editor, courses, semester_index, course_index)
+  defp next_active_index(state, editor, semester_index, course_index, delta) do
+    suggestions = picker_suggestions(state, editor, semester_index, course_index)
     active_index = picker_active_index(state, semester_index, course_index)
 
     case delta do
@@ -493,24 +500,17 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
     |> AcademicProgramCourseSearch.course_input_value()
   end
 
-  defp picker_suggestions(editor_state, courses, semester_index, course_index) do
-    AcademicProgramCourseSearch.course_suggestions(
-      courses,
+  defp picker_suggestions(state, editor_state, semester_index, course_index) do
+    catalog_suggestions(
+      state.course_catalog || [],
       picker_course_value(editor_state, semester_index, course_index)
     )
   end
 
-  defp picker_matched_course_label(editor_state, courses, semester_index, course_index) do
+  defp picker_matched_course_label(state, editor_state, semester_index, course_index) do
     course_value = picker_course_value(editor_state, semester_index, course_index)
 
-    if course_value != "" do
-      Enum.find_value(courses, fn course ->
-        case AcademicProgramCourseSearch.course_input_value(course) do
-          ^course_value -> Map.get(course, "name", "")
-          _ -> nil
-        end
-      end)
-    end
+    if course_value != "", do: Map.get(state.course_label_by_value || %{}, course_value)
   end
 
   defp picker_active_index(state, semester_index, course_index) do
@@ -565,6 +565,91 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
         {0, 0}
     end
   end
+
+  defp build_course_catalog(courses) do
+    courses
+    |> Enum.uniq_by(fn course ->
+      {
+        String.downcase(Map.get(course, "subject_code", "")),
+        String.downcase(Map.get(course, "course_number", ""))
+      }
+    end)
+    |> Enum.map(&course_option/1)
+  end
+
+  defp catalog_suggestions(catalog, query, limit \\ 8) do
+    normalized_query = normalize(query)
+
+    if normalized_query == "" do
+      []
+    else
+      catalog
+      |> Enum.filter(fn option ->
+        search_fields = [
+          option.value_norm,
+          option.label_norm,
+          option.subject_code_norm,
+          option.course_number_norm
+        ]
+
+        Enum.any?(search_fields, &String.contains?(&1, normalized_query))
+      end)
+      |> Enum.sort_by(fn option ->
+        subject_match? = String.contains?(option.subject_code_norm, normalized_query)
+        number_match? = String.contains?(option.course_number_norm, normalized_query)
+        value_match? = String.contains?(option.value_norm, normalized_query)
+
+        priority =
+          cond do
+            subject_match? -> 0
+            number_match? -> 1
+            value_match? -> 2
+            true -> 3
+          end
+
+        {priority, String.downcase(option.value), String.downcase(option.label)}
+      end)
+      |> Enum.take(limit)
+    end
+  end
+
+  defp build_course_label_map(courses) do
+    Enum.reduce(courses, %{}, fn course, acc ->
+      value = AcademicProgramCourseSearch.course_input_value(course)
+
+      if value == "" do
+        acc
+      else
+        Map.put_new(acc, value, Map.get(course, "name", ""))
+      end
+    end)
+  end
+
+  defp course_option(course) do
+    value = AcademicProgramCourseSearch.course_input_value(course)
+    label = Map.get(course, "name", "")
+    subject_code = Map.get(course, "subject_code", "")
+    course_number = Map.get(course, "course_number", "")
+
+    %{
+      value: value,
+      label: label,
+      subject_code: subject_code,
+      course_number: course_number,
+      value_norm: normalize(value),
+      label_norm: normalize(label),
+      subject_code_norm: normalize(subject_code),
+      course_number_norm: normalize(course_number)
+    }
+  end
+
+  defp normalize(value) when is_binary(value) do
+    value
+    |> String.downcase()
+    |> String.replace(~r/\s+/, "")
+  end
+
+  defp normalize(_value), do: ""
 
   defp picker_key(semester_index, course_index), do: {semester_index, course_index}
 end
