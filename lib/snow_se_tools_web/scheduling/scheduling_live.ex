@@ -66,12 +66,18 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   def handle_info({:academic_programs, message}, socket) do
     {:noreply, new_socket} = AcademicProgramStateUtils.handle_message(message, socket)
 
-    send_update(ScheduleViewerComponent,
-      id: "schedule-viewer",
-      academic_programs: Map.get(new_socket.assigns, :academic_programs, [])
-    )
+    if socket.assigns.mode == :viewer do
+      send_update(ScheduleViewerComponent,
+        id: "schedule-viewer",
+        academic_programs: Map.get(new_socket.assigns, :academic_programs, [])
+      )
+    end
 
     {:noreply, new_socket}
+  end
+
+  def handle_info({:academic_program_selected, program_id}, socket) do
+    {:noreply, assign(socket, :selected_program_id, program_id)}
   end
 
   def render(assigns) do

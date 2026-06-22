@@ -212,7 +212,7 @@ defmodule ChatWidget do
   end
 
   defp maybe_attach_hooks(socket) do
-    if single_instance?(socket) do
+    if first_instance?(socket) do
       socket
       |> LiveView.attach_hook("chat:event",  :handle_event,  &hooked_event/3)
       |> LiveView.attach_hook("chat:info",   :handle_info,   &hooked_info/2)

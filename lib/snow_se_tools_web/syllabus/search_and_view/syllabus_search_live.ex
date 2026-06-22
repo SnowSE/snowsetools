@@ -6,6 +6,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
   alias SnowSeToolsWeb.Syllabus.SyllabusSearchResultsList
   alias SnowSeToolsWeb.Syllabus.SyllabusDetail
   alias SnowSeToolsWeb.Syllabus.SearchQuickNavigation
+  alias SnowSeToolsWeb.Syllabus.SearchState
   alias SnowSeToolsWeb.Syllabus.SyllabusSearchForm
   alias SnowSeTools.Syllabi.SyllabusDomainManager
   alias SnowSeTools.Syllabi.AvailableTermsDb
@@ -46,22 +47,18 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
       |> assign(:search_error, nil)
       |> assign(:parent_pid, parent_pid)
       |> ReportHandlers.mount_assigns()
+      |> SearchQuickNavigation.assign_component(:quick_nav,
+        current_user: socket.assigns.current_user,
+        active_query: ""
+      )
+      |> SearchState.assign_component(:search_state,
+        query: "",
+        selected_term_id: default_term_id(available_terms),
+        selected_term_name: find_term_name(available_terms, default_term_id(available_terms))
+      )
 
     {:ok, socket}
   end
-
-  def handle_event("restore_state", %{"query" => query} = params, socket)
-      when is_binary(query) and byte_size(query) > 0 do
-    socket = maybe_restore_term(params, socket)
-
-    if pid = socket.assigns.parent_pid do
-      send(pid, {:search_navigate, query})
-    end
-
-    {:noreply, socket}
-  end
-
-  def handle_event("restore_state", _params, socket), do: {:noreply, socket}
 
   def handle_event("search", %{"query" => query}, socket) do
     if pid = socket.assigns.parent_pid do
@@ -83,7 +80,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
       )
       |> ReportHandlers.clear_detail()
 
-    {:noreply, push_event(socket, "save_state", state_payload(socket))}
+    {:noreply, SearchState.persist_state(socket)}
   end
 
   @detail_events ~w[
@@ -160,7 +157,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
           socket
       end
 
-    {:noreply, push_event(socket, "save_state", state_payload(socket))}
+    {:noreply, SearchState.persist_state(socket)}
   end
 
   def handle_info({:quick_nav, query}, socket) do
@@ -230,12 +227,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
       phx-hook=".SyllabusState"
       class="flex flex-col h-full min-h-0 max-w-[2000px] mx-auto w-full p-4"
     >
-      <.live_component
-        module={SearchQuickNavigation}
-        id="quick-navigation"
-        current_user={@current_user}
-        active_query={@query}
-      />
+      <SearchQuickNavigation.render state={@quick_nav} />
       <SyllabusSearchForm.search_form
         query={@query}
         loading_search={false}
@@ -282,34 +274,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
       </div>
     </div>
 
-    <script :type={Phoenix.LiveView.ColocatedHook} name=".SyllabusState">
-      export default {
-        mounted() {
-          const url = new URL(window.location.href);
-          if (!url.searchParams.has("q")) {
-            try {
-              const stored = localStorage.getItem("syllabi_state");
-              if (stored) {
-                const state = JSON.parse(stored);
-                if (state && state.query) {
-                  this.pushEvent("restore_state", state);
-                }
-              }
-            } catch (e) {
-              console.error("SyllabusState: failed to read localStorage", e);
-            }
-          }
-
-          this.handleEvent("save_state", (data) => {
-            try {
-              localStorage.setItem("syllabi_state", JSON.stringify(data));
-            } catch (e) {
-              console.error("SyllabusState: failed to write localStorage", e);
-            }
-          });
-        }
-      }
-    </script>
+    <SearchState.render state={@search_state} />
     """
   end
 
@@ -388,23 +353,6 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
     Enum.find_value(terms, term_id, fn {id, name} ->
       if id == term_id, do: name
     end)
-  end
-
-  defp maybe_restore_term(%{"term_id" => term_id}, socket) do
-    selected_term_id = normalize_term_id(term_id)
-
-    socket
-    |> assign(:selected_term_id, selected_term_id)
-    |> assign(
-      :selected_term_name,
-      find_term_name(socket.assigns.available_terms, selected_term_id)
-    )
-  end
-
-  defp maybe_restore_term(_params, socket), do: socket
-
-  defp state_payload(socket) do
-    %{query: socket.assigns.query, term_id: socket.assigns.selected_term_id}
   end
 
   defp snow_course_params?(%{"source" => "snow_courses"}), do: true
