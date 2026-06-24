@@ -4,11 +4,13 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramIntegrationTest do
   alias SnowSeTools.AcademicPrograms.ProgramDomainManager
   alias SnowSeTools.Data.User
   alias SnowSeTools.Scheduling.ScheduleOwnerDomainManager
+  alias SnowSeTools.Snow.SnowCourseCacheDomainManager
   alias SnowSeTools.Snow.SnowCourseCacheDb
 
   setup do
     start_supervised!(ProgramDomainManager)
     insert_test_courses()
+    start_supervised!(SnowCourseCacheDomainManager)
     start_supervised!(ScheduleOwnerDomainManager)
     :ok
   end

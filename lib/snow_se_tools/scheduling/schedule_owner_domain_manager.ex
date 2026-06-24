@@ -29,10 +29,6 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
     GenServer.cast(__MODULE__, {:request_schedule_owner_detail, pid, term_code, owner_key})
   end
 
-  def request_course_catalog(pid: pid) when is_pid(pid) do
-    GenServer.cast(__MODULE__, {:request_course_catalog, pid})
-  end
-
   @impl true
   def init(:ok) do
     academic_programs = load_academic_programs()
@@ -89,59 +85,39 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
     {:noreply, state}
   end
 
-  def handle_cast({:request_course_catalog, pid}, state) do
-    case default_selected_term_code(state.terms) do
-      nil ->
-        send(pid, {:academic_program_course_picker, {:course_catalog_loaded, {:ok, []}}})
-
-      term_code ->
-        case load_courses_for_term(term_code) do
-          {:ok, courses} ->
-            send(pid, {:academic_program_course_picker, {:course_catalog_loaded, {:ok, courses}}})
-
-          {:error, reason} ->
-            send(
-              pid,
-              {:academic_program_course_picker, {:course_catalog_loaded, {:error, reason}}}
-            )
-        end
-    end
-
-    {:noreply, state}
-  end
-
   @impl true
   def handle_info({:academic_programs, {:program_created, _program}}, state) do
     state = update_academic_programs(state)
-    rebuild_all_and_broadcast(state)
+    rebuild_cached_terms_and_broadcast(state)
   end
 
   def handle_info({:academic_programs, {:program_updated, _program}}, state) do
     state = update_academic_programs(state)
-    rebuild_all_and_broadcast(state)
+    rebuild_cached_terms_and_broadcast(state)
   end
 
   def handle_info({:academic_programs, {:program_deleted, _program_id}}, state) do
     state = update_academic_programs(state)
-    rebuild_all_and_broadcast(state)
+    rebuild_cached_terms_and_broadcast(state)
   end
 
-  def handle_info({:snow_course_cache, {:course_cache_updated, term_code}}, state) do
-    state
-    |> reload_terms_and_broadcast()
-    |> replace_cached_term_and_broadcast(term_code: term_code)
-  end
-
-  def handle_info({:snow_course_cache, {:roster_cache_updated, _term_code}}, state) do
-    {:noreply, reload_terms_and_broadcast(state)}
+  def handle_info(
+        {:snow_course_cache,
+         {:course_cache_updated, %{term_code: term_code, term_name: term_name}}},
+        state
+      ) do
+    state = upsert_term_summary(state, term_code: term_code, term_name: term_name)
+    ScheduleOwnerPubSub.broadcast_terms_changed(state.terms)
+    {:noreply, rebuild_cached_term_and_broadcast(state, term_code: term_code)}
   end
 
   def handle_info({:snow_course_cache, {:course_cache_deleted, term_code}}, state) do
     state =
       state
-      |> reload_terms_and_broadcast()
+      |> delete_term_summary(term_code)
       |> update_in([Access.key(:schedule_owners_by_term)], &Map.delete(&1, term_code))
 
+    ScheduleOwnerPubSub.broadcast_terms_changed(state.terms)
     ScheduleOwnerPubSub.broadcast_term_deleted(term_code)
     {:noreply, state}
   end
@@ -155,26 +131,21 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
     %{state | academic_programs: load_academic_programs()}
   end
 
-  defp reload_terms_and_broadcast(state) do
-    terms = load_terms()
-
-    if terms != state.terms do
-      ScheduleOwnerPubSub.broadcast_terms_changed(terms)
-    end
+  defp upsert_term_summary(state, term_code: term_code, term_name: term_name) do
+    terms =
+      state.terms
+      |> Enum.reject(&(&1["term_code"] == term_code))
+      |> Kernel.++([%{"term_code" => term_code, "term_name" => term_name}])
+      |> Enum.sort_by(& &1["term_code"], :desc)
 
     %{state | terms: terms}
   end
 
-  defp replace_cached_term_and_broadcast(state, term_code: term_code) do
-    schedule_owners = build_schedule_owners_for_term(term_code, state)
-
-    state = put_in(state.schedule_owners_by_term[term_code], schedule_owners)
-    ScheduleOwnerPubSub.broadcast_term_schedule_owners_replaced(term_code, schedule_owners)
-
-    {:noreply, state}
+  defp delete_term_summary(state, term_code) do
+    %{state | terms: Enum.reject(state.terms, &(&1["term_code"] == term_code))}
   end
 
-  defp rebuild_all_and_broadcast(state) do
+  defp rebuild_cached_terms_and_broadcast(state) do
     term_codes = Map.keys(state.schedule_owners_by_term)
 
     state =
@@ -193,15 +164,13 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
     {:noreply, state}
   end
 
-  defp load_terms do
-    case SnowCourseCacheDb.list_terms_with_courses() do
-      {:error, reason} ->
-        Logger.error("ScheduleOwnerDomainManager failed to load terms: #{inspect(reason)}")
-        []
+  defp rebuild_cached_term_and_broadcast(state, term_code: term_code) do
+    schedule_owners = build_schedule_owners_for_term(term_code, state)
 
-      terms ->
-        terms
-    end
+    state = put_in(state.schedule_owners_by_term[term_code], schedule_owners)
+    ScheduleOwnerPubSub.broadcast_term_schedule_owners_replaced(term_code, schedule_owners)
+
+    {:noreply, state}
   end
 
   defp load_academic_programs do
@@ -216,6 +185,21 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
 
         []
     end
+  end
+
+  defp load_terms do
+    case SnowCourseCacheDb.list_terms_with_courses() do
+      {:error, reason} ->
+        Logger.error("ScheduleOwnerDomainManager failed to load terms: #{inspect(reason)}")
+        []
+
+      terms ->
+        terms
+    end
+  end
+
+  defp load_courses_for_term(term_code) do
+    SnowCourseCacheDb.list_course_data_for_term(term_code: term_code)
   end
 
   defp build_schedule_owners_for_term(term_code, state) do
@@ -234,13 +218,6 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
 
     build_schedule_owner_entries(courses, state.academic_programs)
   end
-
-  defp load_courses_for_term(term_code) do
-    SnowCourseCacheDb.list_course_data_for_term(term_code: term_code)
-  end
-
-  defp default_selected_term_code([]), do: nil
-  defp default_selected_term_code([term | _]), do: term["term_code"]
 
   defp build_schedule_owner_entries(courses, academic_programs) do
     courses_with_preparsed =

@@ -5,19 +5,11 @@ defmodule SnowSeTools.Snow.SnowCourseCachePubSub do
     Phoenix.PubSub.subscribe(SnowSeTools.PubSub, @topic)
   end
 
-  def broadcast_course_cache_updated(term_code) when is_binary(term_code) do
+  def broadcast_course_cache_updated(term_code, term_name) when is_binary(term_code) do
     Phoenix.PubSub.broadcast(
       SnowSeTools.PubSub,
       @topic,
-      {:snow_course_cache, {:course_cache_updated, term_code}}
-    )
-  end
-
-  def broadcast_roster_cache_updated(term_code) when is_binary(term_code) do
-    Phoenix.PubSub.broadcast(
-      SnowSeTools.PubSub,
-      @topic,
-      {:snow_course_cache, {:roster_cache_updated, term_code}}
+      {:snow_course_cache, {:course_cache_updated, %{term_code: term_code, term_name: term_name}}}
     )
   end
 

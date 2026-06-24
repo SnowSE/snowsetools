@@ -4,7 +4,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
   import Phoenix.LiveView
   require Logger
 
-  alias SnowSeTools.Scheduling.ScheduleOwnerDomainManager
+  alias SnowSeTools.Snow.{SnowCourseCacheDomainManager, SnowCourseCachePubSub}
   alias SnowSeToolsWeb.Scheduling.AcademicProgramCourseSearch
 
   defstruct [
@@ -20,8 +20,6 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
   ]
 
   def assign_component(socket, key, opts \\ []) do
-    courses = opts[:courses] || []
-
     socket
     |> assign(
       key,
@@ -30,8 +28,8 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
           key: key,
           editor_key: opts[:editor_key] || :academic_program_editor,
           editor: nil,
-          course_catalog: build_course_catalog(courses),
-          course_label_by_value: build_course_label_map(courses),
+          course_catalog: [],
+          course_label_by_value: %{},
           course_focus_request: nil,
           course_focus_token: 0,
           picker_open: %{},
@@ -372,10 +370,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
 
   def hooked_event(_event, _params, socket), do: {:cont, socket}
 
-  def hooked_info(
-        {:academic_program_course_picker, {:course_catalog_loaded, {:ok, courses}}},
-        socket
-      ) do
+  def hooked_info({:snow_course_cache, {:course_catalog_loaded, {:ok, courses}}}, socket) do
     {:halt,
      update_state(socket, fn state ->
        %{
@@ -386,15 +381,20 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
      end)}
   end
 
-  def hooked_info(
-        {:academic_program_course_picker, {:course_catalog_loaded, {:error, reason}}},
-        socket
-      ) do
+  def hooked_info({:snow_course_cache, {:course_catalog_loaded, {:error, reason}}}, socket) do
     Logger.error(
       "AcademicProgramCoursePicker failed to load course catalog reason=#{inspect(reason)}"
     )
 
     {:halt, put_flash(socket, :error, "Could not load course suggestions.")}
+  end
+
+  def hooked_info({:snow_course_cache, {:course_cache_updated, _summary}}, socket) do
+    maybe_refresh_course_catalog(socket)
+  end
+
+  def hooked_info({:snow_course_cache, {:course_cache_deleted, _term_code}}, socket) do
+    maybe_refresh_course_catalog(socket)
   end
 
   def hooked_info(_message, socket), do: {:cont, socket}
@@ -418,11 +418,13 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
   defp maybe_request_course_catalog(socket) do
     if connected?(socket) and
          !Map.get(socket.private, :academic_programs_picker_course_catalog_requested?) do
-      if Process.whereis(ScheduleOwnerDomainManager) do
-        ScheduleOwnerDomainManager.request_course_catalog(pid: self())
+      SnowCourseCachePubSub.subscribe()
+
+      if Process.whereis(SnowCourseCacheDomainManager) do
+        SnowCourseCacheDomainManager.request_course_catalog(pid: self())
       else
         Logger.error(
-          "AcademicProgramCoursePicker could not request catalog because ScheduleOwnerDomainManager is not running"
+          "AcademicProgramCoursePicker could not request catalog because SnowCourseCacheDomainManager is not running"
         )
       end
 
@@ -434,6 +436,14 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
     else
       socket
     end
+  end
+
+  defp maybe_refresh_course_catalog(socket) do
+    if Process.whereis(SnowCourseCacheDomainManager) do
+      SnowCourseCacheDomainManager.request_course_catalog(pid: self())
+    end
+
+    {:cont, socket}
   end
 
   defp first_instance?(socket) do

@@ -21,6 +21,12 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
                    "roster_count" => Zoi.integer()
                  })
 
+  @course_catalog_schema Zoi.object(%{
+                           "subject_code" => Zoi.string(),
+                           "course_number" => Zoi.string(),
+                           "name" => Zoi.string()
+                         })
+
   def bootstrap_cache_tables do
     params = %{}
 
@@ -330,6 +336,23 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
       {:error, _} = err -> err
       rows -> {:ok, Enum.map(rows, & &1["data"])}
     end
+  end
+
+  def list_course_catalog do
+    sql = """
+    SELECT DISTINCT ON (subject_code, course_number)
+      subject_code,
+      course_number,
+      course_name AS name
+    FROM snow_courses
+    WHERE subject_code IS NOT NULL
+      AND subject_code != ''
+      AND course_number IS NOT NULL
+      AND course_number != ''
+    ORDER BY subject_code, course_number, course_name, cached_at DESC
+    """
+
+    DbHelpers.run_sql(sql, %{}, @course_catalog_schema)
   end
 
   def get_section_students(term_code: term_code, crn: crn) do

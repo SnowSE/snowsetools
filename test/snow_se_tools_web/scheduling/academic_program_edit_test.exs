@@ -9,11 +9,15 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditTest do
   }
 
   alias SnowSeTools.Data.{DbHelpers, User}
+  alias SnowSeTools.Scheduling.ScheduleOwnerDomainManager
   alias SnowSeTools.Snow.SnowCourseCacheDb
+  alias SnowSeTools.Snow.SnowCourseCacheDomainManager
 
   setup do
     start_supervised!(ProgramDomainManager)
     insert_test_courses()
+    start_supervised!(SnowCourseCacheDomainManager)
+    start_supervised!(ScheduleOwnerDomainManager)
 
     on_exit(fn ->
       DbHelpers.run_sql(

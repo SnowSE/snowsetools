@@ -13,6 +13,10 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
     GenServer.cast(__MODULE__, {:request_dashboard, pid})
   end
 
+  def request_course_catalog(pid: pid) when is_pid(pid) do
+    GenServer.cast(__MODULE__, {:request_course_catalog, pid})
+  end
+
   def sync_course_list(pid: pid, term_code: term_code, jwt_token: jwt_token) do
     GenServer.cast(__MODULE__, {:sync_course_list, pid, term_code, jwt_token})
   end
@@ -40,6 +44,21 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
   @impl true
   def handle_cast({:request_dashboard, pid}, state) do
     send_snapshot(pid)
+    {:noreply, state}
+  end
+
+  def handle_cast({:request_course_catalog, pid}, state) do
+    catalog =
+      case SnowCourseCacheDb.list_course_catalog() do
+        {:error, reason} ->
+          Logger.error("Snow course cache catalog load failed reason=#{inspect(reason)}")
+          {:error, reason}
+
+        courses ->
+          {:ok, courses}
+      end
+
+    send(pid, {:snow_course_cache, {:course_catalog_loaded, catalog}})
     {:noreply, state}
   end
 
@@ -86,7 +105,7 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
                courses: courses
              ) do
           :ok ->
-            SnowCourseCachePubSub.broadcast_course_cache_updated(term_code)
+            SnowCourseCachePubSub.broadcast_course_cache_updated(term_code, term_name)
 
             AdminSnowCoursesUIMessages.send_snow_cache_action_result(
               pid: pid,
@@ -179,7 +198,6 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
                students: students
              ) do
           :ok ->
-            SnowCourseCachePubSub.broadcast_roster_cache_updated(term_code)
             {:ok, length(students)}
 
           {:error, reason} ->
