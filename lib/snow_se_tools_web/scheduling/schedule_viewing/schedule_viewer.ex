@@ -4,9 +4,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
 
   alias Phoenix.LiveView
   alias SnowSeTools.Snow.SnowCourseCacheDb
-  alias SnowSeToolsWeb.Scheduling.AcademicProgramStateUtils
   alias SnowSeToolsWeb.Scheduling.ScheduleOwnerData
   alias SnowSeToolsWeb.Scheduling.WeekSchedule
+  import SnowSeToolsWeb.Scheduling.ScheduleViewerTermAndSearch
+  import SnowSeToolsWeb.Scheduling.ScheduleViewerScheduleOwnerList
 
   defstruct [
     :key,
@@ -54,11 +55,11 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
     state = socket.assigns[key]
 
     selected_schedule_owner_keys =
-      AcademicProgramStateUtils.filter_selected_keys(
-        state.selected_schedule_owner_keys,
-        state.courses,
-        state.query,
-        academic_programs
+      filter_selected_keys(
+        selected_schedule_owner_keys: state.selected_schedule_owner_keys,
+        courses: state.courses,
+        query: state.query,
+        academic_programs: academic_programs
       )
 
     assign(socket, key, %{
@@ -151,20 +152,18 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
   end
 
   def hooked_info({:academic_programs, {:loaded, _} = message}, socket) do
-    {:noreply, updated_socket} = AcademicProgramStateUtils.handle_message(message, socket)
+    {:noreply, updated_socket} = handle_academic_program_message(message, socket)
 
-    case message do
-      {:loaded, {:ok, programs}} ->
-        {:halt, apply_academic_programs(updated_socket, programs)}
-
-      {:loaded, {:error, _reason}} ->
-        {:halt, updated_socket}
-    end
+    {:halt,
+     apply_academic_programs(
+       updated_socket,
+       Map.get(updated_socket.assigns, :academic_programs, [])
+     )}
   end
 
   def hooked_info({:academic_programs, {kind, _} = message}, socket)
       when kind in [:program_created, :program_updated, :program_deleted] do
-    {:noreply, updated_socket} = AcademicProgramStateUtils.handle_message(message, socket)
+    {:noreply, updated_socket} = handle_academic_program_message(message, socket)
 
     {:halt,
      apply_academic_programs(
@@ -235,6 +234,69 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
 
   defp viewer_key(_socket), do: :schedule_viewer
 
+  defp handle_academic_program_message({:loaded, {:ok, programs}}, socket) do
+    {:noreply, assign(socket, :academic_programs, programs)}
+  end
+
+  defp handle_academic_program_message({:loaded, {:error, reason}}, socket) do
+    Logger.error("SchedulingLive failed to load academic programs reason=#{inspect(reason)}")
+    {:noreply, LiveView.put_flash(socket, :error, "Could not load academic programs.")}
+  end
+
+  defp handle_academic_program_message({:action_result, {:ok, _message, program}}, socket) do
+    {:noreply, assign(socket, :selected_program_id, program && program["id"])}
+  end
+
+  defp handle_academic_program_message({:action_result, {:error, reason}}, socket) do
+    {:noreply, LiveView.put_flash(socket, :error, "Academic program error: #{inspect(reason)}")}
+  end
+
+  defp handle_academic_program_message(diff, socket)
+       when elem(diff, 0) in [:program_created, :program_updated, :program_deleted] do
+    programs = apply_program_diff(programs: socket.assigns.academic_programs, diff: diff)
+    {:noreply, assign(socket, :academic_programs, programs)}
+  end
+
+  defp filter_selected_keys(
+         selected_schedule_owner_keys: selected_schedule_owner_keys,
+         courses: courses,
+         query: query,
+         academic_programs: academic_programs
+       ) do
+    selected_keys = MapSet.new(selected_schedule_owner_keys)
+
+    available_keys =
+      ScheduleOwnerData.build_schedule_owners(
+        courses: courses,
+        query: query,
+        academic_programs: academic_programs
+      )
+      |> MapSet.new(& &1.key)
+
+    MapSet.intersection(selected_keys, available_keys)
+  end
+
+  defp apply_program_diff(programs: programs, diff: {:program_created, program}) do
+    programs
+    |> Enum.reject(&(&1["id"] == program["id"]))
+    |> Kernel.++([program])
+    |> sort_programs()
+  end
+
+  defp apply_program_diff(programs: programs, diff: {:program_updated, program}) do
+    programs
+    |> Enum.map(fn existing ->
+      if existing["id"] == program["id"], do: program, else: existing
+    end)
+    |> sort_programs()
+  end
+
+  defp apply_program_diff(programs: programs, diff: {:program_deleted, program_id}) do
+    Enum.reject(programs, &(&1["id"] == program_id))
+  end
+
+  defp sort_programs(programs), do: Enum.sort_by(programs, &String.downcase(&1["name"] || ""))
+
   defp load_courses(nil), do: []
 
   defp load_courses(term_code) do
@@ -264,109 +326,4 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
 
   defp default_selected_term_code([]), do: nil
   defp default_selected_term_code([term | _]), do: term["term_code"]
-
-  ## Child function components
-
-  defp term_and_search(assigns) do
-    ~H"""
-    <div class="flex shrink-0 flex-col gap-3">
-      <.form
-        for={to_form(%{})}
-        id="scheduling-term-form"
-        phx-change="schedule-viewer:set_term"
-      >
-        <select
-          id="scheduling-term-select"
-          name="term_code"
-          class="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
-        >
-          <%= for term <- @state.terms do %>
-            <option
-              value={term["term_code"]}
-              selected={term["term_code"] == @state.selected_term_code}
-            >
-              {term["term_name"]}
-            </option>
-          <% end %>
-        </select>
-      </.form>
-
-      <.form
-        for={to_form(%{})}
-        id="scheduling-search-form"
-        phx-change="schedule-viewer:search"
-      >
-        <div class="relative">
-          <.icon
-            name="hero-magnifying-glass"
-            class="pointer-events-none absolute left-3 top-2.5 size-4 text-slate-500"
-          />
-          <input
-            id="scheduling-search-input"
-            type="search"
-            name="query"
-            value={@state.query}
-            autocomplete="off"
-            placeholder="Search professor, room, or program semester"
-            class="w-full rounded-lg border border-slate-700 bg-slate-900 py-2 pl-9 pr-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
-          />
-        </div>
-      </.form>
-    </div>
-    """
-  end
-
-  defp schedule_owner_list(assigns) do
-    ~H"""
-    <div id="schedule-owner-list" class="min-h-0 flex-1 space-y-2 overflow-y-auto pe-2">
-      <.empty_state :if={@schedule_owners == []} />
-
-      <%= for schedule_owner <- @schedule_owners do %>
-        <.schedule_owner_button
-          schedule_owner={schedule_owner}
-          is_selected={MapSet.member?(@selected_keys, schedule_owner.key)}
-        />
-      <% end %>
-    </div>
-    """
-  end
-
-  defp empty_state(assigns) do
-    ~H"""
-    <div id="schedule-owner-empty" class="px-2 py-8 text-center text-sm text-slate-500">
-      No matching schedules.
-    </div>
-    """
-  end
-
-  defp schedule_owner_button(assigns) do
-    ~H"""
-    <button
-      id={"schedule-owner-#{@schedule_owner.dom_id}"}
-      type="button"
-      phx-click="schedule-viewer:toggle"
-      phx-value-key={@schedule_owner.key}
-      class={[
-        "flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition",
-        if(@is_selected,
-          do: "border-indigo-500/50 bg-indigo-950/50 text-indigo-100",
-          else:
-            "border-slate-800 bg-slate-900/50 text-slate-200 hover:border-slate-700 hover:bg-slate-800/70"
-        )
-      ]}
-    >
-      <span class="min-w-0">
-        <span class="block truncate text-sm font-medium">{@schedule_owner.name}</span>
-        <span class="block text-xs text-slate-500">{@schedule_owner.type_label}</span>
-        <span
-          :if={Map.get(@schedule_owner, :type) == :academic_program_semester}
-          class="mt-1 block text-xs text-slate-600"
-        >
-          {Map.get(@schedule_owner, :requirement_count, 0)} requirements
-        </span>
-      </span>
-      <span class="shrink-0 text-xs text-slate-400">{@schedule_owner.credit_count} cr.</span>
-    </button>
-    """
-  end
 end
