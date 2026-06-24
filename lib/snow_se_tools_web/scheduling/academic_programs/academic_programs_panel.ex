@@ -1,5 +1,6 @@
 defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
   use SnowSeToolsWeb, :html
+  require Logger
 
   alias Phoenix.LiveView
   alias SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker
@@ -83,9 +84,24 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
     else
       socket
       |> LiveView.attach_hook("academic-programs-panel:event", :handle_event, &hooked_event/3)
+      |> LiveView.attach_hook("academic-programs-panel:info", :handle_info, &hooked_info/2)
       |> put_in([Access.key(:private), :academic_programs_panel_hooks_attached?], true)
     end
   end
+
+  def hooked_info({:academic_programs, {:action_result, result}}, socket) do
+    case result do
+      {:error, reason} ->
+        Logger.error("Scheduling: academic program action failed reason=#{inspect(reason)}")
+
+      _ ->
+        :ok
+    end
+
+    {:halt, apply_action_result(socket, result)}
+  end
+
+  def hooked_info(_message, socket), do: {:cont, socket}
 
   def hooked_event("academic-programs:new", _params, socket) do
     panel_state = panel_state(socket)

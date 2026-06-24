@@ -7,7 +7,6 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramEditor
   alias SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel
-  alias SnowSeToolsWeb.Scheduling.AcademicProgramStateUtils
   alias SnowSeToolsWeb.Scheduling.ScheduleViewer
 
   on_mount {SnowSeToolsWeb.UserAuth, :ensure_authenticated}
@@ -52,41 +51,6 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   def handle_event("switch_mode", %{"mode" => mode}, socket) do
     mode_atom = String.to_existing_atom(mode)
     {:noreply, push_patch(socket, to: scheduling_path(mode: mode_atom))}
-  end
-
-  def handle_info({:academic_programs, {:action_result, result}}, socket) do
-    updated_socket = AcademicProgramsPanel.apply_action_result(socket, result)
-
-    updated_socket =
-      case result do
-        {:error, reason} ->
-          Logger.error("Scheduling: action result error #{inspect(reason)}")
-          updated_socket
-
-        _ ->
-          updated_socket
-      end
-
-    {:noreply, new_socket} =
-      AcademicProgramStateUtils.handle_message({:action_result, result}, updated_socket)
-
-    {:noreply, new_socket}
-  end
-
-  def handle_info({:academic_programs, message}, socket) do
-    {:noreply, new_socket} = AcademicProgramStateUtils.handle_message(message, socket)
-
-    new_socket =
-      if new_socket.assigns.mode == :viewer do
-        ScheduleViewer.apply_academic_programs(
-          new_socket,
-          Map.get(new_socket.assigns, :academic_programs, [])
-        )
-      else
-        new_socket
-      end
-
-    {:noreply, new_socket}
   end
 
   def render(assigns) do

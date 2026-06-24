@@ -124,7 +124,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
     """
   end
 
-  ## Hooks
 
   defp maybe_attach_hooks(socket) do
     if Map.get(socket.private, :schedule_viewer_hooks_attached?) do
@@ -132,9 +131,37 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
     else
       socket
       |> LiveView.attach_hook("schedule-viewer:event", :handle_event, &hooked_event/3)
+      |> LiveView.attach_hook("schedule-viewer:info", :handle_info, &hooked_info/2)
       |> put_in([Access.key(:private), :schedule_viewer_hooks_attached?], true)
     end
   end
+
+  def hooked_info({:academic_programs, {:loaded, _} = message}, socket) do
+    {:noreply, updated_socket} = AcademicProgramStateUtils.handle_message(message, socket)
+
+    case message do
+      {:loaded, {:ok, programs}} ->
+        {:halt, apply_academic_programs(updated_socket, programs)}
+
+      {:loaded, {:error, _reason}} ->
+        {:halt, updated_socket}
+    end
+  end
+
+  def hooked_info({:academic_programs, {kind, _} = message}, socket)
+      when kind in [:program_created, :program_updated, :program_deleted] do
+    {:noreply, updated_socket} = AcademicProgramStateUtils.handle_message(message, socket)
+
+    {:halt,
+     apply_academic_programs(
+       updated_socket,
+       Map.get(updated_socket.assigns, :academic_programs, [])
+     )}
+  end
+
+  def hooked_info({:academic_programs, {:action_result, _result}}, socket), do: {:cont, socket}
+
+  def hooked_info(_message, socket), do: {:cont, socket}
 
   def hooked_event("schedule-viewer:set_term", %{"term_code" => term_code}, socket) do
     {:halt,
