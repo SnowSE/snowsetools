@@ -69,7 +69,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
         <.term_and_search state={@state} />
         <.schedule_owner_list
           state={@state}
-          selected_metadata={@state.selected_schedule_keys}
+          selected_schedule_keys={@state.selected_schedule_keys}
         />
       </aside>
 
@@ -83,8 +83,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
         </div>
 
         <div id="selected-schedules" class="grid grid-cols-1 gap-4 2xl:grid-cols-2">
-          <%= for owner_metadata <- MapSet.to_list(@state.selected_schedule_keys) do %>
-            <div>{@owner_metadata.name} selected</div>
+          <%= for owner_key <- MapSet.to_list(@state.selected_schedule_keys) do %>
+            <div>{owner_key} selected</div>
             <%!-- <WeekSchedule.render owner_key={owner_key} schedule_owners_details={@state.schedule_owner_week_details[owner_key]} /> --%>
           <% end %>
         </div>

@@ -5,7 +5,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerScheduleOwnerList do
   alias SnowSeTools.Scheduling.ScheduleOwnerMetadata
 
   attr :state, :any, required: true
-  attr :selected_metadata, :any, required: true
+  attr :selected_schedule_keys, :any, required: true
 
   def schedule_owner_list(assigns) do
     ~H"""
@@ -15,7 +15,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerScheduleOwnerList do
       <%= for schedule_owner <- filter_schedule_owners(@state.schedule_owners_metadata_by_term[@state.selected_term_code] || [], @state.query) do %>
         <.schedule_owner_button
           schedule_owner={schedule_owner}
-          is_selected={MapSet.member?(@selected_metadata, schedule_owner)}
+          is_selected={MapSet.member?(@selected_schedule_keys, schedule_owner.key)}
         />
       <% end %>
     </div>
