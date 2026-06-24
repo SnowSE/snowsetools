@@ -29,7 +29,7 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
     GenServer.cast(__MODULE__, {:request_schedule_owner_detail, pid, term_code, owner_key})
   end
 
-  @impl true
+
   def init(:ok) do
     academic_programs = load_academic_programs()
 
@@ -44,7 +44,7 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
      }}
   end
 
-  @impl true
+  
   def handle_cast({:request_terms, pid}, state) do
     send(pid, {:schedule_owner_terms, state.terms})
     {:noreply, state}
@@ -85,7 +85,7 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
     {:noreply, state}
   end
 
-  @impl true
+
   def handle_info({:academic_programs, {:program_created, _program}}, state) do
     state = update_academic_programs(state)
     rebuild_cached_terms_and_broadcast(state)
