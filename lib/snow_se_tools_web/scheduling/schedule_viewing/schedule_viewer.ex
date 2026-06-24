@@ -2,46 +2,45 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
   use SnowSeToolsWeb, :html
 
   alias Phoenix.LiveView
-  alias SnowSeTools.Scheduling.{ScheduleOwnerDomainManager, ScheduleOwnerPubSub}
+
+  alias SnowSeTools.Scheduling.{
+    ScheduleOwnerDomainManager,
+    ScheduleOwnerPubSub,
+    ScheduleOwnerMetadata,
+    ScheduleOwnerSchedule
+  }
+
   alias SnowSeToolsWeb.Scheduling.WeekSchedule
   import SnowSeToolsWeb.Scheduling.ScheduleViewerTermAndSearch
   import SnowSeToolsWeb.Scheduling.ScheduleViewerScheduleOwnerList
 
   defstruct [
-    :key,
     :terms,
     :selected_term_code,
-    :schedule_owners,
-    :visible_schedule_owners,
+    :schedule_owners_metadata_by_term,
     :query,
-    :selected_schedule_owner_keys,
-    :selected_schedule_owners,
-    :selected_count,
-    :loading?
+    :selected_schedule_keys
   ]
 
-  def assign_component(socket, key, opts \\ []) do
+  @type t :: %__MODULE__{
+          terms: [map()],
+          selected_term_code: String.t() | nil,
+          schedule_owners_metadata_by_term: %{optional(String.t()) => [ScheduleOwnerMetadata.t()]},
+          query: String.t(),
+          selected_schedule_keys: MapSet.t(ScheduleOwnerMetadata.t())
+        }
+  @key :schedule_viewer_state
+
+  def assign_component(socket) do
     socket
-    |> assign(key, socket.assigns[key] || initial_state(key: key, opts: opts))
+    |> assign(@key, %__MODULE__{
+      terms: [],
+      selected_term_code: nil,
+      schedule_owners_metadata_by_term: %{},
+      selected_schedule_keys: MapSet.new(),
+      query: ""
+    })
     |> initial_setup()
-  end
-
-  defp initial_state(key: key, opts: opts) do
-    opts = Map.new(opts)
-
-    %__MODULE__{
-      key: key,
-      terms: Map.get(opts, :terms, []),
-      selected_term_code: Map.get(opts, :selected_term_code),
-      schedule_owners: Map.get(opts, :schedule_owners, []),
-      visible_schedule_owners: Map.get(opts, :visible_schedule_owners, []),
-      query: Map.get(opts, :query, ""),
-      selected_schedule_owner_keys:
-        Map.get(opts, :selected_schedule_owner_keys, empty_selected_keys()),
-      selected_schedule_owners: Map.get(opts, :selected_schedule_owners, []),
-      selected_count: Map.get(opts, :selected_count, 0),
-      loading?: Map.get(opts, :loading?, true)
-    }
   end
 
   def render(assigns) do
@@ -54,10 +53,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
             id="clear-selected-schedules"
             type="button"
             phx-click="schedule-viewer:clear_selected"
-            disabled={@state.selected_count == 0}
+            disabled={MapSet.size(@state.selected_schedule_keys) == 0}
             class={[
               "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition",
-              if(@state.selected_count == 0,
+              if(MapSet.size(@state.selected_schedule_keys) == 0,
                 do: "invisible cursor-not-allowed",
                 else: "bg-red-950/50 text-red-300 hover:bg-red-900/70 hover:text-red-100"
               )
@@ -69,14 +68,14 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
 
         <.term_and_search state={@state} />
         <.schedule_owner_list
-          schedule_owners={@state.visible_schedule_owners}
-          selected_keys={@state.selected_schedule_owner_keys}
+          state={@state}
+          selected_metadata={@state.selected_schedule_keys}
         />
       </aside>
 
       <main class="min-w-0 flex-1 overflow-y-auto">
         <div
-          :if={@state.selected_schedule_owners == []}
+          :if={MapSet.size(@state.selected_schedule_keys) == 0}
           id="scheduling-empty-selection"
           class="flex h-full min-h-96 items-center justify-center rounded-xl border-2 border-dashed border-slate-800 text-sm text-slate-500"
         >
@@ -84,8 +83,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
         </div>
 
         <div id="selected-schedules" class="grid grid-cols-1 gap-4 2xl:grid-cols-2">
-          <%= for schedule_owner <- @state.selected_schedule_owners do %>
-            <WeekSchedule.render schedule_owner={schedule_owner} />
+          <%= for owner_metadata <- MapSet.to_list(@state.selected_schedule_keys) do %>
+            <div>{@owner_metadata.name} selected</div>
+            <%!-- <WeekSchedule.render owner_key={owner_key} schedule_owners_details={@state.schedule_owner_week_details[owner_key]} /> --%>
           <% end %>
         </div>
       </main>
@@ -122,20 +122,29 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
   end
 
   def hooked_info({:schedule_owner_terms, terms}, socket) do
-    state = state(socket)
-    selected_term_code = state.selected_term_code || default_selected_term_code(terms)
+    selected_term_code =
+      case {socket.assigns[@key].selected_term_code, terms} do
+        {nil, [first_term | _]} -> first_term["term_code"]
+        {selected, _} -> selected
+        _ -> nil
+      end
 
-    if is_binary(selected_term_code) do
-      ScheduleOwnerDomainManager.request_schedule_owners(
+    term_metadata_loaded =
+      Map.has_key?(socket.assigns[@key].schedule_owners_metadata_by_term, selected_term_code)
+
+    if !term_metadata_loaded do
+      ScheduleOwnerDomainManager.request_schedule_owners_metadata(
         pid: self(),
         term_code: selected_term_code
       )
     end
 
     {:halt,
-     update_state(socket, fn state ->
-       %{state | terms: terms, selected_term_code: selected_term_code, loading?: true}
-     end)}
+     assign(socket, @key, %{
+       socket.assigns[@key]
+       | terms: terms,
+         selected_term_code: selected_term_code
+     })}
   end
 
   def hooked_info(
@@ -143,197 +152,123 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
         socket
       ) do
     {:halt,
-     apply_term_schedule_owners(socket, term_code: term_code, schedule_owners: schedule_owners)}
-  end
-
-  def hooked_info({:schedule_owners, {:terms_changed, terms}}, socket) do
-    {:halt,
-     update_state(socket, fn state ->
-       selected_term_code = keep_selected_term(state.selected_term_code, terms)
-
-       if selected_term_code != state.selected_term_code and is_binary(selected_term_code) do
-         ScheduleOwnerDomainManager.request_schedule_owners(
-           pid: self(),
-           term_code: selected_term_code
-         )
-       end
-
-       state
-       |> Map.merge(%{
-         terms: terms,
-         selected_term_code: selected_term_code,
-         schedule_owners:
-           if(selected_term_code == state.selected_term_code, do: state.schedule_owners, else: []),
-         loading?:
-           selected_term_code != state.selected_term_code and is_binary(selected_term_code)
-       })
-       |> recompute_view_state()
-     end)}
+     socket
+     |> assign(@key, %{
+       socket.assigns[@key]
+       | schedule_owners_metadata_by_term:
+           Map.put(
+             socket.assigns[@key].schedule_owners_metadata_by_term,
+             term_code,
+             schedule_owners
+           )
+     })}
   end
 
   def hooked_info(
-        {:schedule_owners,
-         {:term_schedule_owners_replaced,
-          %{term_code: term_code, schedule_owners: schedule_owners}}},
+        {:schedule_owners, unexpected_message},
         socket
       ) do
-    {:halt,
-     apply_term_schedule_owners(socket, term_code: term_code, schedule_owners: schedule_owners)}
+    Logger.warn("Received unexpected schedule_owners message: #{inspect(unexpected_message)}")
+    {:halt, socket}
   end
 
-  def hooked_info({:schedule_owners, {:term_deleted, %{term_code: term_code}}}, socket) do
-    {:halt, apply_term_deleted(socket, term_code: term_code)}
-  end
+  # def hooked_info(
+  #       {:schedule_owners,
+  #        {:term_schedule_owners_replaced,
+  #         %{term_code: term_code, schedule_owners: [%ScheduleOwner{} | _] = schedule_owners}}},
+  #       socket
+  #     ) do
+  #   state = state(socket)
+
+  #   if state.selected_term_code == term_code do
+  #     Enum.each(state.selected_schedule_keys, fn owner_key ->
+  #       ScheduleOwnerDomainManager.request_schedule_owner_detail(
+  #         pid: self(),
+  #         term_code: term_code,
+  #         owner_key: owner_key
+  #       )
+  #     end)
+  #   end
+
+  #   {:halt,
+  #    apply_term_schedule_owners(socket, term_code: term_code, schedule_owners: schedule_owners)}
+  # end
+
+  # def hooked_info(
+  #       {:schedule_owners,
+  #        {:term_schedule_owners_replaced, %{term_code: term_code, schedule_owners: []}}},
+  #       socket
+  #     ) do
+  #   {:halt, apply_term_schedule_owners(socket, term_code: term_code, schedule_owners: [])}
+  # end
+
+  # def hooked_info({:schedule_owners, {:term_deleted, %{term_code: term_code}}}, socket) do
+  #   {:halt, apply_term_deleted(socket, term_code: term_code)}
+  # end
 
   def hooked_info(_message, socket), do: {:cont, socket}
 
   def hooked_event("schedule-viewer:set_term", %{"term_code" => term_code}, socket) do
-    ScheduleOwnerDomainManager.request_schedule_owners(pid: self(), term_code: term_code)
+    has_owners_for_term =
+      Map.has_key?(socket.assigns[@key].schedule_owners_metadata_by_term, term_code)
+
+    if !has_owners_for_term do
+      ScheduleOwnerDomainManager.request_schedule_owners_metadata(
+        pid: self(),
+        term_code: term_code
+      )
+    end
 
     {:halt,
-     update_state(socket, fn state ->
-       state
-       |> Map.merge(%{selected_term_code: term_code, schedule_owners: [], loading?: true})
-       |> recompute_view_state()
-     end)}
+     socket
+     |> assign(@key, %{
+       socket.assigns[@key]
+       | selected_term_code: term_code
+     })}
   end
 
   def hooked_event("schedule-viewer:search", %{"query" => query}, socket) do
     {:halt,
-     update_state(socket, fn state ->
-       recompute_view_state(%{state | query: query})
-     end)}
+     socket
+     |> assign(@key, %{
+       socket.assigns[@key]
+       | query: query
+     })}
   end
 
-  def hooked_event("schedule-viewer:toggle", %{"key" => owner_key}, socket) do
+  def hooked_event("schedule-viewer:toggle", %{"key" => key}, socket) do
+    selected_owners =
+      if MapSet.member?(socket.assigns[@key].selected_schedule_keys, key) do
+        MapSet.delete(socket.assigns[@key].selected_schedule_keys, key)
+      else
+        MapSet.put(socket.assigns[@key].selected_schedule_keys, key)
+      end
+
     {:halt,
-     update_state(socket, fn state ->
-       keys = state.selected_schedule_owner_keys
-
-       keys =
-         if MapSet.member?(keys, owner_key),
-           do: MapSet.delete(keys, owner_key),
-           else: MapSet.put(keys, owner_key)
-
-       recompute_view_state(%{state | selected_schedule_owner_keys: keys})
-     end)}
+     socket
+     |> assign(@key, %{
+       socket.assigns[@key]
+       | selected_schedule_keys: selected_owners
+     })}
   end
 
   def hooked_event("schedule-viewer:clear_selected", _params, socket) do
     {:halt,
-     update_state(socket, fn state ->
-       recompute_view_state(%{state | selected_schedule_owner_keys: clear_selected_keys(state)})
-     end)}
+     socket
+     |> assign(@key, %{
+       socket.assigns[@key]
+       | selected_schedule_keys: MapSet.new()
+     })}
   end
 
-  def hooked_event("schedule-viewer:close_schedule", %{"key" => owner_key}, socket) do
+  def hooked_event("schedule-viewer:close_schedule", %{"key" => key}, socket) do
     {:halt,
-     update_state(socket, fn state ->
-       keys = MapSet.delete(state.selected_schedule_owner_keys, owner_key)
-       recompute_view_state(%{state | selected_schedule_owner_keys: keys})
-     end)}
+     socket
+     |> assign(@key, %{
+       socket.assigns[@key]
+       | selected_schedule_keys: MapSet.delete(socket.assigns[@key].selected_schedule_keys, key)
+     })}
   end
 
   def hooked_event(_event, _params, socket), do: {:cont, socket}
-
-  defp apply_term_schedule_owners(socket, term_code: term_code, schedule_owners: schedule_owners) do
-    update_state(socket, fn state ->
-      if state.selected_term_code == term_code do
-        state
-        |> Map.merge(%{schedule_owners: schedule_owners, loading?: false})
-        |> recompute_view_state()
-      else
-        state
-      end
-    end)
-  end
-
-  defp apply_term_deleted(socket, term_code: term_code) do
-    update_state(socket, fn state ->
-      terms = Enum.reject(state.terms, &(&1["term_code"] == term_code))
-
-      if state.selected_term_code == term_code do
-        selected_term_code = default_selected_term_code(terms)
-
-        if is_binary(selected_term_code) do
-          ScheduleOwnerDomainManager.request_schedule_owners(
-            pid: self(),
-            term_code: selected_term_code
-          )
-        end
-
-        state
-        |> Map.merge(%{
-          terms: terms,
-          selected_term_code: selected_term_code,
-          schedule_owners: [],
-          selected_schedule_owner_keys: clear_selected_keys(state),
-          loading?: is_binary(selected_term_code)
-        })
-        |> recompute_view_state()
-      else
-        %{state | terms: terms}
-      end
-    end)
-  end
-
-  defp recompute_view_state(state) do
-    visible_schedule_owners = filter_schedule_owners(state.schedule_owners, state.query)
-
-    selected_schedule_owners =
-      visible_schedule_owners
-      |> Enum.filter(&MapSet.member?(state.selected_schedule_owner_keys, &1.key))
-
-    %{
-      state
-      | visible_schedule_owners: visible_schedule_owners,
-        selected_schedule_owners: selected_schedule_owners,
-        selected_count: MapSet.size(state.selected_schedule_owner_keys)
-    }
-  end
-
-  defp filter_schedule_owners(schedule_owners, query) do
-    query_words =
-      query
-      |> normalize()
-      |> String.split(~r/\s+/, trim: true)
-
-    Enum.filter(schedule_owners, fn schedule_owner ->
-      query_words == [] or query_matches_all?(schedule_owner.search_text, query_words)
-    end)
-  end
-
-  defp query_matches_all?(search_text, query_words) do
-    normalized = normalize(search_text)
-    Enum.all?(query_words, &String.contains?(normalized, &1))
-  end
-
-  defp keep_selected_term(selected_term_code, terms) do
-    term_codes = MapSet.new(terms, & &1["term_code"])
-
-    if MapSet.member?(term_codes, selected_term_code) do
-      selected_term_code
-    else
-      default_selected_term_code(terms)
-    end
-  end
-
-  defp update_state(socket, update_fn) do
-    key = viewer_key(socket)
-    assign(socket, key, update_fn.(socket.assigns[key]))
-  end
-
-  defp state(socket), do: socket.assigns[viewer_key(socket)]
-  defp viewer_key(_socket), do: :schedule_viewer
-
-  defp default_selected_term_code([]), do: nil
-  defp default_selected_term_code([term | _]), do: term["term_code"]
-
-  defp empty_selected_keys, do: MapSet.new([])
-
-  defp clear_selected_keys(state),
-    do: MapSet.difference(state.selected_schedule_owner_keys, state.selected_schedule_owner_keys)
-
-  defp normalize(value) when is_binary(value), do: value |> String.downcase() |> String.trim()
-  defp normalize(_value), do: ""
 end

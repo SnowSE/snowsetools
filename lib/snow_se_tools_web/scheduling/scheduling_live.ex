@@ -5,6 +5,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   alias SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel
   alias SnowSeToolsWeb.Scheduling.ScheduleViewer
+  alias SnowSeToolsWeb.Scheduling.ScheduleViewing.WeekSchedule
 
   on_mount {SnowSeToolsWeb.UserAuth, :ensure_authenticated}
 
@@ -12,7 +13,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
     {:ok,
      socket
      |> assign(:page_title, "Scheduling")
-     |> ScheduleViewer.assign_component(:schedule_viewer)
+     |> ScheduleViewer.assign_component()
      |> AcademicProgramEditor.assign_component(:academic_program_editor)
      |> AcademicProgramCoursePicker.assign_component(:academic_program_course_picker,
        editor_key: :academic_program_editor
@@ -21,6 +22,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
        editor_key: :academic_program_editor,
        picker_key: :academic_program_course_picker
      )
+    #  |> WeekSchedule.assign_component()
      |> assign(:mode, :viewer)
      |> assign(:modes, viewer: "Schedule Viewer", programs: "Academic Programs")}
   end
@@ -67,7 +69,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
         <div class="min-h-0 flex-1">
           <%= case @mode do %>
             <% :viewer -> %>
-              <ScheduleViewer.render state={@schedule_viewer} />
+              <ScheduleViewer.render state={@schedule_viewer_state} />
             <% :programs -> %>
               <AcademicProgramsPanel.render
                 programs={@academic_programs}

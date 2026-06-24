@@ -1,73 +1,111 @@
 defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
   use SnowSeToolsWeb, :html
 
-  @days ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+  alias Phoenix.LiveView
+  alias SnowSeTools.Scheduling.{ScheduleOwner, ScheduleOwnerDomainManager, ScheduleOwnerSchedule}
 
-  attr :schedule_owner, :map, required: true
+  defstruct [
+    :selected_term_code,
+    :schedule_owner,
+    :loading?
+  ]
+
+
+  def assign_component(socket) do
+    socket
+    |> assign(:schedule_owner_week_details, %{})
+    |> maybe_attach_hooks()
+  end
+
+  defp maybe_attach_hooks(socket) do
+    if Map.get(socket.private, :week_schedule_hooks_attached) do
+      socket
+    else
+      socket
+      |> LiveView.attach_hook("schedule-owner-week-schedule:info", :handle_info, &hooked_info/2)
+      |> put_in([Access.key(:private), :week_schedule_hooks_attached], true)
+    end
+  end
+
+  # defp request_detail(socket, id) do
+  #   state = socket.assigns[:"week_schedule_#{id}"]
+
+  #   if state.loading? and is_binary(state.selected_term_code) do
+  #     ScheduleOwnerDomainManager.request_schedule_owner_detail(
+  #       pid: self(),
+  #       term_code: state.selected_term_code,
+  #       owner_key: owner_key
+  #     )
+  #   end
+
+  #   socket
+  # end
 
   def render(assigns) do
-    assigns =
-      assigns
-      |> assign(:days, @days)
-      |> assign(
-        :time_labels,
-        time_labels(
-          start_minutes: assigns.schedule_owner.start_minutes,
-          end_minutes: assigns.schedule_owner.end_minutes
-        )
-      )
+    # owner_key, selected_term_code
+
+    # has_data = assigns[@id].[assigns_owner] != nil and assigns.schedule_owner != nil
 
     ~H"""
     <section
-      id={"selected-schedule-#{@schedule_owner.dom_id}"}
+      id={"selected-schedule-#{@state.owner_key}"}
       class="w-[700px] rounded-lg border border-slate-800/80 bg-slate-950/55 px-3 pb-3 pt-2.5 shadow-sm shadow-slate-950/20"
     >
-      <div class="mb-2 grid grid-cols-[1fr_auto] items-start gap-3">
-        <div class="min-w-0 text-center">
-          <h2 class="truncate text-base font-semibold leading-tight text-slate-100">
-            {@schedule_owner.name}
-            <span class="ml-1 text-xs font-medium text-slate-500">{@schedule_owner.credit_count}</span>
-          </h2>
-          <p class="sr-only">
-            {@schedule_owner.type_label} schedule
-          </p>
+      <%= if @state.loading? or is_nil(@state.schedule_owner) do %>
+        <div class="flex h-40 items-center justify-center text-sm text-slate-500">
+          <.icon name="hero-arrow-path" class="size-4 animate-spin" />
+          <span class="ml-2">Loading schedule...</span>
         </div>
-        <button
-          type="button"
-          phx-click="schedule-viewer:close_schedule"
-          phx-value-key={@schedule_owner.key}
-          class="rounded p-1 text-slate-500 transition hover:bg-slate-900 hover:text-slate-200"
-          aria-label="Remove schedule"
-        >
-          <.icon name="hero-x-mark" class="size-4" />
-        </button>
-      </div>
-
-      <.schedule_grid schedule_owner={@schedule_owner} />
+      <% else %>
+        <.schedule_header schedule_owner={@state.schedule_owner} owner_key={@state.owner_key} />
+        <.schedule_grid schedule_owner={@state.schedule_owner} />
+      <% end %>
     </section>
     """
   end
 
-  attr :schedule_owner, :map, required: true
+  attr :schedule_owner, ScheduleOwnerSchedule, required: true
+  attr :owner_key, :string, required: true
+
+  defp schedule_header(assigns) do
+    ~H"""
+    <div class="mb-2 grid grid-cols-[1fr_auto] items-start gap-3">
+      <div>
+        <%= if @schedule_owner.type == :academic_program_semester do %>
+          <h2 class="truncate text-base font-semibold leading-tight text-slate-100">
+            {@schedule_owner.program_name}
+            <span class="ml-1 text-xs font-medium text-slate-500">{@schedule_owner.credit_count} cr.</span>
+          </h2>
+          <p class="text-xs text-slate-500">{@schedule_owner.semester_name}</p>
+        <% else %>
+          <h2 class="truncate text-base font-semibold leading-tight text-slate-100">
+            {@schedule_owner.name}
+            <span class="ml-1 text-xs font-medium text-slate-500">{@schedule_owner.credit_count} cr.</span>
+          </h2>
+          <p class="text-xs text-slate-500">{@schedule_owner.type_label}</p>
+        <% end %>
+      </div>
+      <button
+        type="button"
+        phx-click="schedule-viewer:close_schedule"
+        phx-value-key={@owner_key}
+        class="rounded p-1 text-slate-500 transition hover:bg-slate-900 hover:text-slate-200"
+        aria-label="Remove schedule"
+      >
+        <.icon name="hero-x-mark" class="size-4" />
+      </button>
+    </div>
+    """
+  end
+
+  attr :schedule_owner, ScheduleOwnerSchedule, required: true
 
   def schedule_grid(assigns) do
+    days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+
     assigns =
       assigns
-      |> assign(:days, @days)
-      |> assign(
-        :time_labels,
-        time_labels(
-          start_minutes: assigns.schedule_owner.start_minutes,
-          end_minutes: assigns.schedule_owner.end_minutes
-        )
-      )
-      |> assign(
-        :grid_lines,
-        grid_lines(
-          start_minutes: assigns.schedule_owner.start_minutes,
-          end_minutes: assigns.schedule_owner.end_minutes
-        )
-      )
+      |> assign(:days, days)
 
     ~H"""
     <div class="flex gap-2">
@@ -76,9 +114,12 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
           class="relative"
           style={"height: #{grid_height(start_minutes: @schedule_owner.start_minutes, end_minutes: @schedule_owner.end_minutes)}px"}
         >
-          <%= for label <- @time_labels do %>
+          <%= for label <- time_labels(
+          start_minutes: @schedule_owner.start_minutes,
+          end_minutes: @schedule_owner.end_minutes
+        ) do %>
             <div
-              class="absolute right-1 -translate-y-1/2 text-[11px] text-slate-500  text-end"
+              class="absolute right-1 -translate-y-1/2 text-[11px] text-slate-500 text-end"
               style={"top: #{label.offset}px"}
             >
               {label.time}
@@ -86,17 +127,17 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
           <% end %>
         </div>
       </div>
-      <div class="grid min-w-0 flex-1 grid-cols-5 gap-px ">
+      <div class="grid min-w-0 flex-1 grid-cols-5 gap-px">
         <%= for day <- @days do %>
           <div class="min-w-0">
-            <div class=" py-2 text-center text-xs tracking-wide text-slate-500">
+            <div class="py-2 text-center text-xs tracking-wide text-slate-500">
               {day}
             </div>
             <div
               class="relative bg-slate-950/20"
               style={"height: #{grid_height(start_minutes: @schedule_owner.start_minutes, end_minutes: @schedule_owner.end_minutes)}px"}
             >
-              <%= for line <- @grid_lines do %>
+              <%= for line <- grid_lines(start_minutes: @schedule_owner.start_minutes, end_minutes: @schedule_owner.end_minutes) do %>
                 <div
                   class="absolute left-0 right-0 border-t border-slate-800/55"
                   style={"top: #{line}px"}
@@ -144,6 +185,23 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
     </div>
     """
   end
+
+  def hooked_info({:schedule_owner_detail, %{owner_key: key, detail: detail}}, socket) do
+    state = socket.assigns[:"week_schedule_#{key}"]
+
+    if state != nil and state.owner_key == key do
+      {:halt,
+       assign(socket, :"week_schedule_#{key}", %{
+         state
+         | schedule_owner: detail,
+           loading?: is_nil(detail)
+       })}
+    else
+      {:cont, socket}
+    end
+  end
+
+  def hooked_info(_message, socket), do: {:cont, socket}
 
   defp time_labels(start_minutes: start_minutes, end_minutes: end_minutes) do
     start_minutes
