@@ -4,6 +4,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
   import Phoenix.LiveView
   require Logger
 
+  alias SnowSeTools.Scheduling.ScheduleOwnerDomainManager
   alias SnowSeToolsWeb.Scheduling.AcademicProgramCourseSearch
 
   defstruct [
@@ -37,7 +38,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
           picker_active_indexes: %{}
         }
     )
-    |> maybe_attach_hooks()
+    |> initial_setup()
   end
 
   def reset(state) do
@@ -371,10 +372,65 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
 
   def hooked_event(_event, _params, socket), do: {:cont, socket}
 
+  def hooked_info(
+        {:academic_program_course_picker, {:course_catalog_loaded, {:ok, courses}}},
+        socket
+      ) do
+    {:halt,
+     update_state(socket, fn state ->
+       %{
+         state
+         | course_catalog: build_course_catalog(courses),
+           course_label_by_value: build_course_label_map(courses)
+       }
+     end)}
+  end
+
+  def hooked_info(
+        {:academic_program_course_picker, {:course_catalog_loaded, {:error, reason}}},
+        socket
+      ) do
+    Logger.error(
+      "AcademicProgramCoursePicker failed to load course catalog reason=#{inspect(reason)}"
+    )
+
+    {:halt, put_flash(socket, :error, "Could not load course suggestions.")}
+  end
+
+  def hooked_info(_message, socket), do: {:cont, socket}
+
   defp maybe_attach_hooks(socket) do
     if first_instance?(socket) do
       socket
       |> attach_hook("academic-programs-picker:event", :handle_event, &hooked_event/3)
+      |> attach_hook("academic-programs-picker:info", :handle_info, &hooked_info/2)
+    else
+      socket
+    end
+  end
+
+  defp initial_setup(socket) do
+    socket
+    |> maybe_attach_hooks()
+    |> maybe_request_course_catalog()
+  end
+
+  defp maybe_request_course_catalog(socket) do
+    if connected?(socket) and
+         !Map.get(socket.private, :academic_programs_picker_course_catalog_requested?) do
+      if Process.whereis(ScheduleOwnerDomainManager) do
+        ScheduleOwnerDomainManager.request_course_catalog(pid: self())
+      else
+        Logger.error(
+          "AcademicProgramCoursePicker could not request catalog because ScheduleOwnerDomainManager is not running"
+        )
+      end
+
+      put_in(
+        socket,
+        [Access.key(:private), :academic_programs_picker_course_catalog_requested?],
+        true
+      )
     else
       socket
     end
@@ -382,6 +438,10 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
 
   defp first_instance?(socket) do
     Enum.count(socket.assigns, fn {_, v} -> match?(%__MODULE__{}, v) end) == 1
+  end
+
+  defp update_state(socket, update_fn) do
+    assign(socket, state_key(socket), update_fn.(picker_state(socket)))
   end
 
   defp update_socket(socket, updater) do

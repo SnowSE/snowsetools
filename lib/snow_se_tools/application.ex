@@ -83,6 +83,7 @@ defmodule SnowSeTools.Application do
         SnowSeTools.UserGroups.UserGroupDomainManager,
         SnowSeTools.Snow.SnowCourseCacheDomainManager,
         SnowSeTools.AcademicPrograms.ProgramDomainManager,
+        SnowSeTools.Scheduling.ScheduleOwnerDomainManager,
         SnowSeTools.Reports.ReportGeneratorDomainManger,
         SnowSeTools.Syllabi.Syncing.SyllabusScraperAgent
       ]

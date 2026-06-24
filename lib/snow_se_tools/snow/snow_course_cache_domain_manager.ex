@@ -2,7 +2,7 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
   use GenServer
   require Logger
 
-  alias SnowSeTools.Snow.{SnowCourseCacheDb, MySnowApi}
+  alias SnowSeTools.Snow.{SnowCourseCacheDb, MySnowApi, SnowCourseCachePubSub}
   alias SnowSeToolsWeb.Admin.AdminSnowCoursesUIMessages
 
   def start_link(_opts) do
@@ -62,6 +62,8 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
         )
 
       _ ->
+        SnowCourseCachePubSub.broadcast_course_cache_deleted(term_code)
+
         AdminSnowCoursesUIMessages.send_snow_cache_action_result(
           pid: pid,
           result: {:ok, "Deleted #{build_term_display_name(term_code)}."}
@@ -84,6 +86,8 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
                courses: courses
              ) do
           :ok ->
+            SnowCourseCachePubSub.broadcast_course_cache_updated(term_code)
+
             AdminSnowCoursesUIMessages.send_snow_cache_action_result(
               pid: pid,
               result: {:ok, "Cached #{length(courses)} courses for #{term_name}."}
@@ -174,8 +178,12 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
                crn: crn,
                students: students
              ) do
-          :ok -> {:ok, length(students)}
-          {:error, reason} -> {:error, reason}
+          :ok ->
+            SnowCourseCachePubSub.broadcast_roster_cache_updated(term_code)
+            {:ok, length(students)}
+
+          {:error, reason} ->
+            {:error, reason}
         end
 
       {:error, reason} ->

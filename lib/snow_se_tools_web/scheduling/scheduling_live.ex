@@ -1,8 +1,6 @@
 defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   use SnowSeToolsWeb, :live_view
-  require Logger
 
-  alias SnowSeTools.AcademicPrograms.{AcademicProgramPubSub, ProgramDomainManager}
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramEditor
   alias SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel
@@ -11,22 +9,14 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   on_mount {SnowSeToolsWeb.UserAuth, :ensure_authenticated}
 
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      AcademicProgramPubSub.subscribe()
-      ProgramDomainManager.request_programs(pid: self())
-    end
-
-    schedule_viewer_boot = ScheduleViewer.bootstrap_state()
-
     {:ok,
      socket
      |> assign(:page_title, "Scheduling")
-     |> assign(:academic_programs, [])
-     |> ScheduleViewer.assign_component(:schedule_viewer, schedule_viewer_boot)
+     |> ScheduleViewer.assign_component(:schedule_viewer)
      |> AcademicProgramEditor.assign_component(:academic_program_editor)
      |> AcademicProgramCoursePicker.assign_component(:academic_program_course_picker,
        editor_key: :academic_program_editor,
-       courses: schedule_viewer_boot.courses
+       courses: []
      )
      |> AcademicProgramsPanel.assign_component(:academic_programs_panel,
        editor_key: :academic_program_editor,

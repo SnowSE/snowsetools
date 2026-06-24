@@ -3,6 +3,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
   require Logger
 
   alias Phoenix.LiveView
+  alias SnowSeTools.AcademicPrograms.{AcademicProgramPubSub, ProgramDomainManager}
   alias SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramEditor
 
@@ -10,6 +11,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
 
   def assign_component(socket, key, opts \\ []) do
     socket
+    |> assign_new(:academic_programs, fn -> [] end)
     |> assign(
       key,
       socket.assigns[key] ||
@@ -21,7 +23,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
           picker_key: opts[:picker_key] || :academic_program_course_picker
         }
     )
-    |> maybe_attach_hooks()
+    |> initial_setup()
   end
 
   def render(assigns) do
@@ -86,6 +88,69 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
       |> LiveView.attach_hook("academic-programs-panel:info", :handle_info, &hooked_info/2)
       |> put_in([Access.key(:private), :academic_programs_panel_hooks_attached?], true)
     end
+  end
+
+  defp initial_setup(socket) do
+    socket
+    |> maybe_attach_hooks()
+    |> maybe_request_initial_data()
+  end
+
+  defp maybe_request_initial_data(socket) do
+    if LiveView.connected?(socket) and
+         !Map.get(socket.private, :academic_programs_panel_initial_data_requested?) do
+      AcademicProgramPubSub.subscribe()
+      ProgramDomainManager.request_programs(pid: self())
+
+      put_in(
+        socket,
+        [Access.key(:private), :academic_programs_panel_initial_data_requested?],
+        true
+      )
+    else
+      socket
+    end
+  end
+
+  def hooked_info({:academic_programs, {:loaded, {:ok, programs}}}, socket) do
+    {:halt, assign(socket, :academic_programs, sort_programs(programs))}
+  end
+
+  def hooked_info({:academic_programs, {:loaded, {:error, reason}}}, socket) do
+    Logger.error("AcademicProgramsPanel failed to load programs reason=#{inspect(reason)}")
+    {:halt, LiveView.put_flash(socket, :error, "Could not load academic programs.")}
+  end
+
+  def hooked_info({:academic_programs, {:program_created, program}}, socket) do
+    programs =
+      socket.assigns.academic_programs
+      |> Enum.reject(&(&1["id"] == program["id"]))
+      |> Kernel.++([program])
+      |> sort_programs()
+
+    {:halt, assign(socket, :academic_programs, programs)}
+  end
+
+  def hooked_info({:academic_programs, {:program_updated, program}}, socket) do
+    programs =
+      socket.assigns.academic_programs
+      |> Enum.map(fn existing ->
+        if existing["id"] == program["id"], do: program, else: existing
+      end)
+      |> sort_programs()
+
+    {:halt, assign(socket, :academic_programs, programs)}
+  end
+
+  def hooked_info({:academic_programs, {:program_deleted, program_id}}, socket) do
+    programs = Enum.reject(socket.assigns.academic_programs, &(&1["id"] == program_id))
+
+    socket =
+      socket
+      |> assign(:academic_programs, programs)
+      |> clear_deleted_selection(program_id: program_id)
+
+    {:halt, socket}
   end
 
   def hooked_info({:academic_programs, {:action_result, result}}, socket) do
@@ -313,6 +378,18 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
   end
 
   defp maybe_select_program_from_result(socket, _result), do: socket
+
+  defp clear_deleted_selection(socket, program_id: program_id) do
+    panel_state = panel_state(socket)
+
+    if panel_state.selected_program_id == program_id do
+      assign(socket, panel_key(socket), %{panel_state | selected_program_id: nil, editing?: false})
+    else
+      socket
+    end
+  end
+
+  defp sort_programs(programs), do: Enum.sort_by(programs, &String.downcase(&1["name"] || ""))
 
   defp course_label(course) do
     subject = Map.get(course, "subject_code", "")
