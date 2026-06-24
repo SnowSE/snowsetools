@@ -3,7 +3,6 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   require Logger
 
   alias SnowSeTools.AcademicPrograms.{AcademicProgramPubSub, ProgramDomainManager}
-  alias SnowSeTools.Snow.SnowCourseCacheDb
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramEditor
   alias SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel
@@ -17,24 +16,17 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
       ProgramDomainManager.request_programs(pid: self())
     end
 
-    terms = list_terms()
-    selected_term_code = default_selected_term_code(terms)
-    courses = load_courses(selected_term_code)
+    schedule_viewer_boot = ScheduleViewer.bootstrap_state()
 
     {:ok,
      socket
      |> assign(:page_title, "Scheduling")
-     |> assign(:terms, terms)
-     |> assign(:courses, courses)
      |> assign(:academic_programs, [])
-     |> ScheduleViewer.assign_component(:schedule_viewer,
-       selected_term_code: selected_term_code,
-       courses: courses
-     )
+     |> ScheduleViewer.assign_component(:schedule_viewer, schedule_viewer_boot)
      |> AcademicProgramEditor.assign_component(:academic_program_editor)
      |> AcademicProgramCoursePicker.assign_component(:academic_program_course_picker,
        editor_key: :academic_program_editor,
-       courses: courses
+       courses: schedule_viewer_boot.courses
      )
      |> AcademicProgramsPanel.assign_component(:academic_programs_panel,
        editor_key: :academic_program_editor,
@@ -86,13 +78,9 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
         <div class="min-h-0 flex-1">
           <%= case @mode do %>
             <% :viewer -> %>
-              <ScheduleViewer.render
-                state={@schedule_viewer}
-                terms={@terms}
-              />
+              <ScheduleViewer.render state={@schedule_viewer} />
             <% :programs -> %>
               <AcademicProgramsPanel.render
-                courses={@courses}
                 programs={@academic_programs}
                 state={@academic_programs_panel}
                 editor_state={@academic_program_editor}
@@ -109,34 +97,4 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   defp mode_from_params(_params), do: :viewer
 
   defp scheduling_path(mode: mode_atom), do: "/scheduling?mode=#{mode_atom}"
-
-  defp list_terms do
-    case SnowCourseCacheDb.list_terms_with_courses() do
-      {:error, reason} ->
-        Logger.error("SchedulingLive: failed to list terms: #{inspect(reason)}")
-        []
-
-      terms ->
-        terms
-    end
-  end
-
-  defp default_selected_term_code([]), do: nil
-  defp default_selected_term_code([term | _]), do: term["term_code"]
-
-  defp load_courses(nil), do: []
-
-  defp load_courses(term_code) do
-    case SnowCourseCacheDb.list_course_data_for_term(term_code: term_code) do
-      {:ok, courses} ->
-        courses
-
-      {:error, reason} ->
-        Logger.error(
-          "SchedulingLive: failed to load courses for term=#{term_code}: #{inspect(reason)}"
-        )
-
-        []
-    end
-  end
 end

@@ -106,7 +106,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramIntegrationTest do
     _html = render(view)
 
     # Verify the selected course value is in the first field (not just the typed prefix)
-    assert has_element?(view, "#program-course-input-0-0[value='CE 2010']")
+    assert has_element?(view, "#program-course-matched-label-0-0", "Statics")
 
     # Verify a new empty course field (index 1) was created
     assert has_element?(view, "#program-course-input-0-1")

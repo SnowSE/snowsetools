@@ -85,6 +85,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
           </span>
           <span
             :if={@render_state.matched_course_label != nil}
+            id={"program-course-matched-label-#{@semester_index}-#{@course_index}"}
             class="text-sm text-indigo-200/70"
           >
             {@render_state.matched_course_label}
@@ -490,7 +491,9 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
   end
 
   defp picker_course_value(editor_state, semester_index, course_index) do
-    editor_state.editor
+    editor = Map.get(editor_state, :editor) || %{}
+
+    editor
     |> Map.get("semesters", [])
     |> Enum.at(semester_index, %{})
     |> Map.get("courses", [])
@@ -508,7 +511,9 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
   defp picker_matched_course_label(state, editor_state, semester_index, course_index) do
     course_value = picker_course_value(editor_state, semester_index, course_index)
 
-    if course_value != "", do: Map.get(state.course_label_by_value || %{}, course_value)
+    if course_value != "" do
+      Map.get(state.course_label_by_value || %{}, course_value)
+    end
   end
 
   defp picker_active_index(state, semester_index, course_index) do
@@ -575,6 +580,18 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
     |> Enum.map(&course_option/1)
   end
 
+  defp build_course_label_map(courses) do
+    Enum.reduce(courses, %{}, fn course, acc ->
+      value = AcademicProgramCourseSearch.course_input_value(course)
+
+      if value == "" do
+        acc
+      else
+        Map.put_new(acc, value, Map.get(course, "name", ""))
+      end
+    end)
+  end
+
   defp catalog_suggestions(catalog, query, limit \\ 8) do
     normalized_query = normalize(query)
 
@@ -609,18 +626,6 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
       end)
       |> Enum.take(limit)
     end
-  end
-
-  defp build_course_label_map(courses) do
-    Enum.reduce(courses, %{}, fn course, acc ->
-      value = AcademicProgramCourseSearch.course_input_value(course)
-
-      if value == "" do
-        acc
-      else
-        Map.put_new(acc, value, Map.get(course, "name", ""))
-      end
-    end)
   end
 
   defp course_option(course) do

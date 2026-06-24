@@ -69,7 +69,6 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
         <AcademicProgramEditor.render
           state={@editor_state}
           picker_state={@picker_state}
-          courses={@courses}
         />
       </div>
 

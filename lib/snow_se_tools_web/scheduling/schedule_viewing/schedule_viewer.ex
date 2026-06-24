@@ -10,6 +10,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
 
   defstruct [
     :key,
+    :terms,
     :selected_term_code,
     :courses,
     :query,
@@ -18,20 +19,34 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
   ]
 
   def assign_component(socket, key, opts \\ []) do
+    boot_state = Map.merge(bootstrap_state(), Map.new(opts))
+
     socket
     |> assign(
       key,
       socket.assigns[key] ||
         %__MODULE__{
           key: key,
-          selected_term_code: opts[:selected_term_code],
-          courses: opts[:courses] || [],
+          terms: boot_state.terms,
+          selected_term_code: boot_state.selected_term_code,
+          courses: boot_state.courses,
           query: "",
-          academic_programs: opts[:academic_programs] || [],
+          academic_programs: Map.get(boot_state, :academic_programs, []),
           selected_schedule_owner_keys: MapSet.new()
         }
     )
     |> maybe_attach_hooks()
+  end
+
+  def bootstrap_state do
+    terms = list_terms()
+    selected_term_code = default_selected_term_code(terms)
+
+    %{
+      terms: terms,
+      selected_term_code: selected_term_code,
+      courses: load_courses(selected_term_code)
+    }
   end
 
   def apply_academic_programs(socket, academic_programs) do
@@ -98,7 +113,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
           </button>
         </div>
 
-        <.term_and_search state={@state} terms={@terms} />
+        <.term_and_search state={@state} />
         <.schedule_owner_list
           schedule_owners={@schedule_owners}
           selected_keys={@state.selected_schedule_owner_keys}
@@ -123,7 +138,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
     </div>
     """
   end
-
 
   defp maybe_attach_hooks(socket) do
     if Map.get(socket.private, :schedule_viewer_hooks_attached?) do
@@ -237,6 +251,20 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
     end
   end
 
+  defp list_terms do
+    case SnowCourseCacheDb.list_terms_with_courses() do
+      {:error, reason} ->
+        Logger.error("ScheduleViewer: failed to list terms: #{inspect(reason)}")
+        []
+
+      terms ->
+        terms
+    end
+  end
+
+  defp default_selected_term_code([]), do: nil
+  defp default_selected_term_code([term | _]), do: term["term_code"]
+
   ## Child function components
 
   defp term_and_search(assigns) do
@@ -252,7 +280,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
           name="term_code"
           class="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
         >
-          <%= for term <- @terms do %>
+          <%= for term <- @state.terms do %>
             <option
               value={term["term_code"]}
               selected={term["term_code"] == @state.selected_term_code}
