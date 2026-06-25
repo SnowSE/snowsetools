@@ -76,8 +76,15 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
     ~H"""
     <section
       id={"selected-schedule-#{@state.owner_key}"}
-      class="w-[700px] rounded-lg border border-slate-800/80 bg-slate-950/55 px-3 pb-3 pt-2.5 shadow-sm shadow-slate-950/20"
+      data-schedule-card
+      data-schedule-key={@state.owner_key}
+      draggable="true"
+      class="relative w-[700px] rounded-lg border border-slate-800/80 bg-slate-950/55 p-3 shadow-sm shadow-slate-950/20 select-none cursor-grab transition active:cursor-grabbing"
     >
+      <div
+        data-drop-indicator
+        class="pointer-events-none absolute -left-1 top-4 bottom-4 w-1 rounded-full bg-indigo-400/0 transition duration-150"
+      />
       <%= if @state.loading? or is_nil(@state.week_schedule) do %>
         <div class="flex h-40 items-center justify-center text-sm text-slate-500">
           <.icon name="hero-arrow-path" class="size-4 animate-spin" />
@@ -114,7 +121,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
       </div>
       <button
         type="button"
-        phx-click="schedule-viewer:close_schedule"
+        phx-click="schedule-details-order:close_schedule"
         phx-value-key={@owner_key}
         class="rounded p-1 text-slate-500 transition hover:bg-slate-900 hover:text-slate-200"
         aria-label="Remove schedule"

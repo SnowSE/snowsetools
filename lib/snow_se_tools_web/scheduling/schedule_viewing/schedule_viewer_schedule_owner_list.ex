@@ -2,9 +2,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerScheduleOwnerList do
   use SnowSeToolsWeb, :html
 
   alias SnowSeTools.Scheduling.ScheduleOwnerMetadata
+  alias SnowSeToolsWeb.Scheduling.ScheduleOrder
 
   attr :state, :any, required: true
-  attr :selected_schedule_keys, :any, required: true
+  attr :selected_schedule_order, :any, required: true
 
   def schedule_owner_list(assigns) do
     ~H"""
@@ -14,7 +15,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerScheduleOwnerList do
       <%= for schedule_owner <- filter_schedule_owners(@state.schedule_owners_metadata_by_term[@state.selected_term_code] || [], @state.query) do %>
         <.schedule_owner_button
           schedule_owner={schedule_owner}
-          is_selected={MapSet.member?(@selected_schedule_keys, schedule_owner.key)}
+          is_selected={
+            ScheduleOrder.member?(order: @selected_schedule_order, key: schedule_owner.key)
+          }
         />
       <% end %>
     </div>
@@ -37,7 +40,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerScheduleOwnerList do
     <button
       id={"schedule-owner-#{@schedule_owner.type}-#{@schedule_owner.name}"}
       type="button"
-      phx-click="schedule-viewer:toggle"
+      phx-click="schedule-details-order:toggle"
       phx-value-key={@schedule_owner.key}
       class={[
         "flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition",

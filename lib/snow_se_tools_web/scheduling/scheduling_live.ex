@@ -4,6 +4,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramEditor
   alias SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel
+  alias SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder
   alias SnowSeToolsWeb.Scheduling.ScheduleViewer
   alias SnowSeToolsWeb.Scheduling.WeekSchedule
 
@@ -14,6 +15,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
      socket
      |> assign(:page_title, "Scheduling")
      |> ScheduleViewer.assign_component()
+     |> ScheduleDetailsOrder.assign_component()
      |> AcademicProgramEditor.assign_component(:academic_program_editor)
      |> AcademicProgramCoursePicker.assign_component(:academic_program_course_picker,
        editor_key: :academic_program_editor
@@ -28,12 +30,28 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   end
 
   def handle_params(params, _uri, socket) do
-    {:noreply, assign(socket, :mode, mode_from_params(params))}
+    mode = mode_from_params(params)
+    term_code = Map.get(params, "term")
+
+    socket =
+      socket
+      |> assign(:mode, mode)
+      |> sync_schedule_viewer_term(term_code: term_code)
+
+    {:noreply, socket}
   end
 
   def handle_event("switch_mode", %{"mode" => mode}, socket) do
     mode_atom = String.to_existing_atom(mode)
-    {:noreply, push_patch(socket, to: scheduling_path(mode: mode_atom))}
+
+    {:noreply,
+     push_patch(socket,
+       to:
+         scheduling_path(
+           mode: mode_atom,
+           term: socket.assigns.schedule_viewer_state.selected_term_code
+         )
+     )}
   end
 
   def render(assigns) do
@@ -69,7 +87,11 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
         <div class="min-h-0 flex-1">
           <%= case @mode do %>
             <% :viewer -> %>
-              <ScheduleViewer.render state={@schedule_viewer_state} week_schedules={@week_schedules} />
+              <ScheduleViewer.render
+                state={@schedule_viewer_state}
+                schedule_details_order={@schedule_details_order}
+                week_schedules={@week_schedules}
+              />
             <% :programs -> %>
               <AcademicProgramsPanel.render
                 programs={@academic_programs}
@@ -87,5 +109,31 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   defp mode_from_params(%{"mode" => "programs"}), do: :programs
   defp mode_from_params(_params), do: :viewer
 
-  defp scheduling_path(mode: mode_atom), do: "/scheduling?mode=#{mode_atom}"
+  defp sync_schedule_viewer_term(socket, term_code: term_code) do
+    state = socket.assigns.schedule_viewer_state
+
+    selected_term_code =
+      ScheduleViewer.resolve_selected_term_code(
+        terms: state.terms,
+        selected_term_code: term_code
+      )
+
+    socket =
+      if is_binary(selected_term_code) do
+        socket
+        |> ScheduleViewer.sync_selected_term(term_code: selected_term_code)
+        |> ScheduleDetailsOrder.sync_selected_term(term_code: selected_term_code)
+      else
+        socket
+        |> ScheduleDetailsOrder.sync_selected_term(term_code: nil)
+      end
+
+    socket
+  end
+
+  defp scheduling_path(mode: mode_atom, term: nil), do: "/scheduling?mode=#{mode_atom}"
+
+  defp scheduling_path(mode: mode_atom, term: term_code) when is_binary(term_code) do
+    "/scheduling?mode=#{mode_atom}&term=#{term_code}"
+  end
 end
