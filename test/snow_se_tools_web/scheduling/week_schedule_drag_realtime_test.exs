@@ -111,6 +111,91 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
            )
   end
 
+  test "change list can open related room schedule from the active change group",
+       %{conn: conn} do
+    conn = log_in_test_user(conn)
+
+    {:ok, view, _html} = live(conn, ~p"/scheduling?mode=viewer&term=#{@term_code}")
+
+    wait_for_schedule_metadata(view)
+    create_change_group(view)
+    select_schedule_owner(view, "room:#{@source_room}")
+    wait_for_week_schedules(view)
+
+    render_hook(view, "week-schedule-grid:move_course", move_payload())
+    wait_for_change_group_refresh(view)
+
+    assert has_element?(view, "#schedule-change-groups", @course_name)
+
+    change_id = active_change_id(view)
+
+    render_hook(view, "schedule-change-groups:open_change_menu", %{
+      "change_id" => change_id,
+      "x" => "320",
+      "y" => "240"
+    })
+
+    assert has_element?(view, "#schedule-change-menu-modal")
+
+    view
+    |> element(
+      "button[phx-click='schedule-change-groups:view_schedule'][phx-value-key='room:#{@target_room}']"
+    )
+    |> render_click()
+
+    wait_for_week_schedules(view)
+
+    assert has_element?(
+             view,
+             "[data-schedule-key='room:#{@target_room}'] [data-week-schedule-course]",
+             @course_name
+           )
+
+    refute has_element?(view, "#schedule-change-menu-modal")
+  end
+
+  test "change menu closes from modal close event and can delete a change",
+       %{conn: conn} do
+    conn = log_in_test_user(conn)
+
+    {:ok, view, _html} = live(conn, ~p"/scheduling?mode=viewer&term=#{@term_code}")
+
+    wait_for_schedule_metadata(view)
+    create_change_group(view)
+    select_schedule_owner(view, "room:#{@source_room}")
+    wait_for_week_schedules(view)
+
+    render_hook(view, "week-schedule-grid:move_course", move_payload())
+    wait_for_change_group_refresh(view)
+
+    change_id = active_change_id(view)
+
+    render_hook(view, "schedule-change-groups:open_change_menu", %{
+      "change_id" => change_id,
+      "x" => "320",
+      "y" => "240"
+    })
+
+    assert has_element?(view, "#schedule-change-menu-modal")
+
+    render_hook(view, "schedule-change-groups:close_change_menu", %{})
+    refute has_element?(view, "#schedule-change-menu-modal")
+
+    render_hook(view, "schedule-change-groups:open_change_menu", %{
+      "change_id" => change_id,
+      "x" => "320",
+      "y" => "240"
+    })
+
+    view
+    |> element("button[phx-click='schedule-change-groups:delete_change']")
+    |> render_click()
+
+    wait_for_change_group_refresh(view)
+
+    refute has_element?(view, "#schedule-change-groups", @course_name)
+  end
+
   defp create_change_group(view) do
     view
     |> element("button[phx-click='schedule-change-groups:new_group']")
@@ -145,6 +230,15 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
     render(view)
     _ = :sys.get_state(ScheduleChangeDomainManager)
     render(view)
+  end
+
+  defp active_change_id(view) do
+    state = :sys.get_state(view.pid)
+
+    state.socket.assigns.schedule_change_groups_state.active_change_group
+    |> Map.fetch!("changes")
+    |> List.first()
+    |> Map.fetch!("id")
   end
 
   defp move_payload do

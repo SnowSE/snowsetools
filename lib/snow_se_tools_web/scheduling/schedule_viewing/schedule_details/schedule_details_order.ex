@@ -521,6 +521,26 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
     end
   end
 
+  def hooked_event("schedule-details-order:view_schedule", %{"key" => key}, socket) do
+    selected_term_code = socket.assigns.schedule_viewer_state.selected_term_code
+
+    socket =
+      if is_binary(selected_term_code) and
+           !ScheduleOrder.member?(order: socket.assigns[@key].selected_schedule_order, key: key) do
+        socket
+        |> WeekSchedule.assign_owner(owner_key: key, selected_term_code: selected_term_code)
+        |> assign(@key, %{
+          socket.assigns[@key]
+          | selected_schedule_order:
+              ScheduleOrder.put(order: socket.assigns[@key].selected_schedule_order, key: key)
+        })
+      else
+        socket
+      end
+
+    {:halt, socket}
+  end
+
   def hooked_event("schedule-details-order:clear_selected", _params, socket) do
     {:halt,
      socket
