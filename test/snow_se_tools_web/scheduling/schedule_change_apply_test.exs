@@ -2,6 +2,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApplyTest do
   use ExUnit.Case, async: true
 
   alias SnowSeTools.Scheduling.ScheduleUtils
+  alias SnowSeToolsWeb.Scheduling.ScheduleChangeApply
 
   describe "apply_changes" do
     test "returns original schedule when no changes" do
@@ -33,8 +34,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApplyTest do
           build_meeting(["Tuesday", "Thursday"], "11:00", "12:30", "Room 202")
         ])
 
-      group = build_change_group([change])
-      result = apply_changes_to_schedule(schedule, group["changes"])
+      result = ScheduleChangeApply.apply_changes(schedule, [change])
 
       assert length(result.courses) == 1
       updated = hd(result.courses)
@@ -52,8 +52,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApplyTest do
       schedule = build_schedule_owner([course])
 
       change = build_update_change("10001", "Intro to CS", nil, "Dr. Jones")
-      group = build_change_group([change])
-      result = apply_changes_to_schedule(schedule, group["changes"])
+      result = ScheduleChangeApply.apply_changes(schedule, [change])
 
       assert length(result.courses) == 1
       updated = hd(result.courses)
@@ -75,8 +74,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApplyTest do
           build_meeting(["Tuesday", "Thursday"], "14:00", "15:30", "Room 303")
         ])
 
-      group = build_change_group([change])
-      result = apply_changes_to_schedule(schedule, group["changes"])
+      result = ScheduleChangeApply.apply_changes(schedule, [change])
 
       assert length(result.courses) == 2
       new_course = Enum.find(result.courses, &(&1["crn"] == "20001"))
@@ -129,8 +127,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApplyTest do
       schedule = build_schedule_owner([course])
 
       change = build_update_change("10001", "Intro to CS", nil, "Dr. New Professor")
-      group = build_change_group([change])
-      result = apply_changes_to_schedule(schedule, group["changes"])
+      result = ScheduleChangeApply.apply_changes(schedule, [change])
 
       updated = hd(result.courses)
       assert hd(updated["instructors"])["name"] == "Dr. New Professor"
@@ -305,6 +302,27 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApplyTest do
 
       assert length(result.courses) == 1
       assert hd(result.courses)["crn"] == "10001"
+    end
+
+    test "deleted course sentinel removes course from effective schedule" do
+      course =
+        build_course("10001", "Intro to CS", [
+          build_meeting(["Monday"], "09:00", "10:30", "Room 101")
+        ])
+
+      schedule = build_schedule_owner([course])
+
+      change = %{
+        "crn" => "10001",
+        "operation" => "update",
+        "course_name" => "__DELETED__",
+        "target_professor" => "",
+        "meet_info" => []
+      }
+
+      result = ScheduleChangeApply.apply_changes(schedule, [change])
+      assert result.courses == []
+      assert Map.get(result.meetings_by_day, "Monday") == []
     end
 
     test "schedule_owner preserves program_name and semester_name after rebuild" do

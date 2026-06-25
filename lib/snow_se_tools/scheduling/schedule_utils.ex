@@ -191,17 +191,42 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
     %{start_minutes: start_minutes, end_minutes: end_minutes} = meeting
 
     %{
+      "__source" => Map.get(course, "__source", :base),
       course_name: course["name"],
       subject_code: course["subject_code"],
       course_number: course["course_number"],
       crn: course["crn"],
+      term: term_code(course),
+      credit_hours: course["credit_hours"] || 0,
       start_time: meeting["start_time"],
       end_time: meeting["end_time"],
       start_minutes: start_minutes,
       end_minutes: end_minutes,
       room: meeting["__room_name"],
-      instructors: Enum.map(course["instructors"] || [], & &1["name"])
+      instructors: Enum.map(course["instructors"] || [], & &1["name"]),
+      meeting: meeting_payload(meeting),
+      meet_info: Enum.map(course["meet_info"] || [], &meeting_payload/1)
     }
+  end
+
+  defp term_code(%{"term" => %{"code" => code}}) when is_binary(code), do: code
+  defp term_code(%{"term_code" => code}) when is_binary(code), do: code
+  defp term_code(_course), do: ""
+
+  defp meeting_payload(meeting) do
+    meeting
+    |> Map.take([
+      "days",
+      "start_time",
+      "end_time",
+      "building",
+      "building_code",
+      "room"
+    ])
+    |> Map.put_new("days", [])
+    |> Map.put_new("building", nil)
+    |> Map.put_new("building_code", nil)
+    |> Map.put_new("room", nil)
   end
 
   defp schedule_bounds([]), do: {@default_start_minutes, @default_end_minutes}

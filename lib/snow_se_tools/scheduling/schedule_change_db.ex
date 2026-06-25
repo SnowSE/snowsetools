@@ -164,7 +164,7 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
     DbHelpers.transaction(fn ->
       case get_change_by_crn(group_binary, crn) do
         nil ->
-          insert_change(group_id, change_attrs)
+          insert_change(group_binary, change_attrs)
 
         existing ->
           change_id = existing["id"]

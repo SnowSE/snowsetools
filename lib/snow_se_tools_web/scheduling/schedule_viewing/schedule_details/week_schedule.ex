@@ -2,8 +2,15 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
   use SnowSeToolsWeb, :html
 
   alias Phoenix.LiveView
-  alias SnowSeTools.Scheduling.{ScheduleOwnerDomainManager, ScheduleOwnerSchedule, ScheduleUtils}
-  alias SnowSeToolsWeb.Scheduling.ScheduleChangeApply
+
+  alias SnowSeTools.Scheduling.{
+    ScheduleChangeDomainManager,
+    ScheduleOwnerDomainManager,
+    ScheduleOwnerSchedule,
+    ScheduleUtils
+  }
+
+  alias SnowSeToolsWeb.Scheduling.{CourseChangeIntent, ScheduleChangeApply}
   import SnowSeToolsWeb.Scheduling.WeekScheduleGrid
 
   defstruct [
@@ -27,6 +34,11 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
       socket
     else
       socket
+      |> LiveView.attach_hook(
+        "schedule-owner-week-schedule:event",
+        :handle_event,
+        &hooked_event/3
+      )
       |> LiveView.attach_hook("schedule-owner-week-schedule:info", :handle_info, &hooked_info/2)
       |> put_in([Access.key(:private), :week_schedule_hooks_attached], true)
     end
@@ -105,6 +117,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
           <.schedule_grid
             schedule_owner={effective_schedule(@state.week_schedule, @active_change_group)}
             owner_key={@state.owner_key}
+            selected_term_code={@state.selected_term_code}
             active_change_group={@active_change_group}
           />
         <% end %>
@@ -213,6 +226,52 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
   end
 
   def hooked_info(_message, socket), do: {:cont, socket}
+
+  def hooked_event("week-schedule-grid:move_course", params, socket) do
+    persist_course_change(params, &CourseChangeIntent.move_course_attrs/1, socket)
+  end
+
+  def hooked_event("week-schedule-grid:edit_course", params, socket) do
+    persist_course_change(params, &CourseChangeIntent.edit_course_attrs/1, socket)
+  end
+
+  def hooked_event("week-schedule-grid:delete_course", params, socket) do
+    persist_course_change(params, &CourseChangeIntent.delete_course_attrs/1, socket)
+  end
+
+  def hooked_event(_event, _params, socket), do: {:cont, socket}
+
+  defp persist_course_change(params, attrs_fun, socket) do
+    group_id = socket.assigns.schedule_change_groups_state.active_change_group_id
+
+    cond do
+      is_nil(group_id) ->
+        {:halt,
+         Phoenix.LiveView.put_flash(
+           socket,
+           :error,
+           "Select a change group before changing courses."
+         )}
+
+      true ->
+        case attrs_fun.(params) do
+          {:ok, attrs} ->
+            ScheduleChangeDomainManager.add_or_update_change(group_id, attrs)
+            {:halt, socket}
+
+          {:error, reason} ->
+            require Logger
+            Logger.error("Invalid week schedule course change payload: #{inspect(reason)}")
+
+            {:halt,
+             Phoenix.LiveView.put_flash(
+               socket,
+               :error,
+               "Could not apply that course change. Refresh and try again."
+             )}
+        end
+    end
+  end
 
   defp loaded_state(state, nil) do
     %{state | course_list: nil, week_schedule: nil, loading?: false}

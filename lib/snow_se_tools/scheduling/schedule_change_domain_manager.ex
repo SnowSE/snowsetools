@@ -146,7 +146,7 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDomainManager do
   end
 
   def handle_cast({:list_groups, pid}, state) do
-    send(pid, {:schedule_change_groups, state.groups})
+    send(pid, {:schedule_change_groups, groups_with_changes(state)})
     {:noreply, state}
   end
 
@@ -195,6 +195,12 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDomainManager do
   defp find_change_group_id(state, change_id) do
     Enum.find_value(state.changes_by_group, fn {group_id, changes} ->
       if Enum.any?(changes, &(&1["id"] == change_id)), do: group_id
+    end)
+  end
+
+  defp groups_with_changes(state) do
+    Enum.map(state.groups, fn group ->
+      Map.put(group, "changes", Map.get(state.changes_by_group, group["id"], []))
     end)
   end
 end

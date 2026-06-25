@@ -5,11 +5,21 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
 
   attr :schedule_owner, :map, required: true
   attr :owner_key, :string, required: true
+  attr :selected_term_code, :string, required: true
   attr :active_change_group, :map, default: nil
 
   def schedule_grid(assigns) do
     ~H"""
-    <div class="flex gap-2">
+    <div
+      id={schedule_grid_id(@owner_key)}
+      class="flex gap-2"
+      phx-hook=".WeekScheduleGridDrag"
+      data-owner-key={@owner_key}
+      data-owner-type={@schedule_owner.type}
+      data-owner-name={@schedule_owner.name}
+      data-start-minutes={@schedule_owner.start_minutes}
+      data-end-minutes={@schedule_owner.end_minutes}
+    >
       <div class="w-14 pt-[2.05rem]">
         <div
           class="relative"
@@ -36,6 +46,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
             </div>
             <div
               class="relative bg-slate-950/20"
+              data-week-schedule-day={day}
               style={"height: #{grid_height(start_minutes: @schedule_owner.start_minutes, end_minutes: @schedule_owner.end_minutes)}px"}
             >
               <%= for line <- grid_lines(
@@ -52,11 +63,19 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
                 <% source = Map.get(meeting, "__source", :base) %>
                 <div
                   class={[
-                    "absolute left-0 right-0 z-10 rounded px-1.5 py-1 leading-tight shadow-sm shadow-black",
+                    "absolute left-0 right-0 z-10 rounded px-1.5 py-1 leading-tight shadow-sm shadow-black cursor-move transition-colors hover:bg-slate-800",
                     source == :added && "bg-emerald-950/60 ring-1 ring-emerald-500/50",
                     source == :updated && "bg-amber-950/40 ring-1 ring-amber-500/50",
                     source == :base && "bg-slate-900"
                   ]}
+                  draggable="true"
+                  data-week-schedule-course
+                  data-course-payload={
+                    course_payload_json(
+                      meeting: meeting,
+                      selected_term_code: @selected_term_code
+                    )
+                  }
                   style={
                     meeting_style(
                       meeting: meeting,
@@ -65,7 +84,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
                   }
                 >
                   <.hover_tooltip id={
-                      "hover-tooltip-#{:erlang.phash2({@owner_key, meeting.crn, meeting.start_minutes, meeting.end_minutes})}"
+                      "hover-tooltip-#{:erlang.phash2({@owner_key, day, meeting.crn, meeting.start_minutes, meeting.end_minutes})}"
                     }>
                     <:label>
                       <div class="overflow-hidden cursor-default">
@@ -129,6 +148,234 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
         </div>
       </:body>
     </.expandable>
+
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".WeekScheduleGridDrag">
+      export default {
+        mounted() {
+          this.dragPayload = null;
+          this.hoverIndicator = null;
+          this.menu = null;
+
+          this.onDragStart = (event) => {
+            const card = event.target.closest("[data-week-schedule-course]");
+            if (!card || !this.el.contains(card)) return;
+
+            event.stopPropagation();
+            this.dragPayload = this.coursePayload(card);
+
+            if (event.dataTransfer) {
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData("application/json", JSON.stringify(this.dragPayload));
+              event.dataTransfer.setData("text/plain", "week-schedule-course");
+            }
+          };
+
+          this.onDragOver = (event) => {
+            const payload = this.currentDragPayload(event);
+            if (!payload) return;
+
+            const dayColumn = event.target.closest("[data-week-schedule-day]");
+            if (!dayColumn || !this.el.contains(dayColumn)) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (event.dataTransfer) {
+              event.dataTransfer.dropEffect = "move";
+            }
+
+            const drop = this.dropDetails(event, dayColumn);
+            this.showHoverIndicator(dayColumn, drop.top, drop.time);
+          };
+
+          this.onDragLeave = (event) => {
+            if (!this.el.contains(event.relatedTarget)) {
+              this.clearHoverIndicator();
+            }
+          };
+
+          this.onDrop = (event) => {
+            const dayColumn = event.target.closest("[data-week-schedule-day]");
+            const payload = this.currentDragPayload(event);
+            if (!payload || !dayColumn || !this.el.contains(dayColumn)) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            const drop = this.dropDetails(event, dayColumn);
+
+            this.pushEvent("week-schedule-grid:move_course", {
+              ...payload,
+              target_day: dayColumn.dataset.weekScheduleDay,
+              target_time: drop.time,
+              owner_key: this.el.dataset.ownerKey,
+              owner_type: this.el.dataset.ownerType,
+              owner_name: this.el.dataset.ownerName,
+            });
+
+            this.dragPayload = null;
+            this.clearHoverIndicator();
+          };
+
+          this.onDragEnd = () => {
+            this.dragPayload = null;
+            this.clearHoverIndicator();
+          };
+
+          this.onContextMenu = (event) => {
+            const card = event.target.closest("[data-week-schedule-course]");
+            if (!card || !this.el.contains(card)) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            this.openMenu(event, this.coursePayload(card));
+          };
+
+          this.onDocumentClick = (event) => {
+            if (this.menu && !this.menu.contains(event.target)) {
+              this.closeMenu();
+            }
+          };
+
+          this.el.addEventListener("dragstart", this.onDragStart);
+          this.el.addEventListener("dragover", this.onDragOver);
+          this.el.addEventListener("dragleave", this.onDragLeave);
+          this.el.addEventListener("drop", this.onDrop);
+          this.el.addEventListener("dragend", this.onDragEnd);
+          this.el.addEventListener("contextmenu", this.onContextMenu);
+          document.addEventListener("click", this.onDocumentClick);
+        },
+
+        destroyed() {
+          this.el.removeEventListener("dragstart", this.onDragStart);
+          this.el.removeEventListener("dragover", this.onDragOver);
+          this.el.removeEventListener("dragleave", this.onDragLeave);
+          this.el.removeEventListener("drop", this.onDrop);
+          this.el.removeEventListener("dragend", this.onDragEnd);
+          this.el.removeEventListener("contextmenu", this.onContextMenu);
+          document.removeEventListener("click", this.onDocumentClick);
+          this.clearHoverIndicator();
+          this.closeMenu();
+        },
+
+        coursePayload(card) {
+          return JSON.parse(card.dataset.coursePayload);
+        },
+
+        currentDragPayload(event) {
+          if (this.dragPayload) return this.dragPayload;
+
+          if (!event.dataTransfer) return null;
+
+          const json = event.dataTransfer.getData("application/json");
+          if (!json) return null;
+
+          try {
+            return JSON.parse(json);
+          } catch (_error) {
+            return null;
+          }
+        },
+
+        dropDetails(event, dayColumn) {
+          const rect = dayColumn.getBoundingClientRect();
+          const startMinutes = Number(this.el.dataset.startMinutes);
+          const endMinutes = Number(this.el.dataset.endMinutes);
+          const totalMinutes = Math.max(endMinutes - startMinutes, 60);
+          const rawMinutes = startMinutes + ((event.clientY - rect.top) / rect.height) * totalMinutes;
+          const roundedMinutes = Math.max(startMinutes, Math.min(endMinutes, Math.round(rawMinutes / 30) * 30));
+          const top = ((roundedMinutes - startMinutes) / totalMinutes) * rect.height;
+          return { top, time: this.formatTime(roundedMinutes) };
+        },
+
+        formatTime(minutes) {
+          const hours = Math.floor(minutes / 60).toString().padStart(2, "0");
+          const mins = (minutes % 60).toString().padStart(2, "0");
+          return `${hours}:${mins}`;
+        },
+
+        showHoverIndicator(dayColumn, top, time) {
+          if (!this.hoverIndicator) {
+            this.hoverIndicator = document.createElement("div");
+            this.hoverIndicator.className = "absolute left-0 right-0 z-50 pointer-events-none";
+            this.hoverIndicator.innerHTML =
+              '<div class="relative"><div class="absolute left-0 right-0 h-0.5 bg-indigo-300/70"></div><div data-time-label class="absolute left-1 -top-3 rounded bg-indigo-500 px-1.5 py-0.5 text-[10px] font-medium text-white shadow-lg"></div></div>';
+          }
+
+          this.hoverIndicator.style.top = `${top}px`;
+          this.hoverIndicator.querySelector("[data-time-label]").textContent = time;
+
+          if (this.hoverIndicator.parentElement !== dayColumn) {
+            dayColumn.appendChild(this.hoverIndicator);
+          }
+        },
+
+        clearHoverIndicator() {
+          if (this.hoverIndicator) {
+            this.hoverIndicator.remove();
+          }
+        },
+
+        openMenu(event, payload) {
+          this.closeMenu();
+          this.menu = document.createElement("div");
+          this.menu.className = "fixed z-[1000] w-40 overflow-hidden rounded-md border border-slate-700 bg-slate-950 text-xs text-slate-200 shadow-2xl";
+          this.menu.style.left = `${event.clientX}px`;
+          this.menu.style.top = `${event.clientY}px`;
+          this.menu.innerHTML =
+            '<button type="button" data-action="edit" class="block w-full px-3 py-2 text-left hover:bg-slate-800">Edit meeting</button><button type="button" data-action="delete" class="block w-full px-3 py-2 text-left text-red-300 hover:bg-red-950/60">Remove course</button>';
+
+          this.menu.addEventListener("click", (menuEvent) => {
+            const action = menuEvent.target.closest("button")?.dataset.action;
+            if (action === "edit") this.editCourse(payload);
+            if (action === "delete") this.deleteCourse(payload);
+            this.closeMenu();
+          });
+
+          document.body.appendChild(this.menu);
+        },
+
+        closeMenu() {
+          if (this.menu) {
+            this.menu.remove();
+            this.menu = null;
+          }
+        },
+
+        editCourse(payload) {
+          const currentMeeting = payload.meeting || {};
+          const days = window.prompt("Days, comma separated", (currentMeeting.days || []).join(", "));
+          if (days === null) return;
+
+          const startTime = window.prompt("Start time", currentMeeting.start_time || payload.start_time || "");
+          if (startTime === null) return;
+
+          const endTime = window.prompt("End time", currentMeeting.end_time || payload.end_time || "");
+          if (endTime === null) return;
+
+          this.pushEvent("week-schedule-grid:edit_course", {
+            ...payload,
+            days: days.split(",").map((day) => day.trim()).filter(Boolean),
+            start_time: startTime,
+            end_time: endTime,
+            owner_key: this.el.dataset.ownerKey,
+            owner_type: this.el.dataset.ownerType,
+            owner_name: this.el.dataset.ownerName,
+          });
+        },
+
+        deleteCourse(payload) {
+          if (!window.confirm(`Remove ${payload.course_name} from this change group view?`)) return;
+
+          this.pushEvent("week-schedule-grid:delete_course", {
+            ...payload,
+            owner_key: this.el.dataset.ownerKey,
+            owner_type: this.el.dataset.ownerType,
+            owner_name: this.el.dataset.ownerName,
+          });
+        },
+      };
+    </script>
     """
   end
 
@@ -157,6 +404,28 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
 
     "top: #{top}px; height: #{height}px"
   end
+
+  defp course_payload_json(meeting: meeting, selected_term_code: selected_term_code) do
+    %{
+      crn: meeting.crn,
+      term: meeting_term(meeting.term, selected_term_code),
+      course_name: meeting.course_name,
+      subject_code: meeting.subject_code,
+      course_number: meeting.course_number,
+      credit_hours: meeting.credit_hours,
+      start_time: meeting.start_time,
+      end_time: meeting.end_time,
+      instructors: meeting.instructors,
+      meeting: meeting.meeting,
+      meet_info: meeting.meet_info
+    }
+    |> Jason.encode!()
+  end
+
+  defp schedule_grid_id(owner_key), do: "week-schedule-grid-#{:erlang.phash2(owner_key)}"
+
+  defp meeting_term(term, _selected_term_code) when is_binary(term) and term != "", do: term
+  defp meeting_term(_term, selected_term_code), do: selected_term_code
 
   defp format_minutes(minutes) do
     minutes

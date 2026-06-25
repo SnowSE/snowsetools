@@ -1,0 +1,180 @@
+defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
+  use SnowSeToolsWeb.ConnCase, async: false
+
+  alias SnowSeTools.Data.User
+  alias SnowSeTools.Scheduling.{ScheduleChangeDomainManager, ScheduleOwnerDomainManager}
+  alias SnowSeTools.Snow.{SnowCourseCacheDb, SnowCourseCacheDomainManager}
+
+  @term_code "202777"
+  @course_name "Networking Concepts"
+  @source_room "Source Building 101"
+  @target_room "Target Building 202"
+
+  setup do
+    insert_test_courses()
+    start_supervised!(SnowCourseCacheDomainManager)
+    start_supervised!(ScheduleOwnerDomainManager)
+    start_supervised!(ScheduleChangeDomainManager)
+    :ok
+  end
+
+  test "dragging a course to another selected schedule updates both views in the active change group",
+       %{conn: conn} do
+    conn = log_in_test_user(conn)
+
+    {:ok, view, _html} = live(conn, ~p"/scheduling?mode=viewer&term=#{@term_code}")
+
+    wait_for_schedule_metadata(view)
+    create_change_group(view)
+    select_schedule_owner(view, "room:#{@source_room}")
+    select_schedule_owner(view, "room:#{@target_room}")
+    wait_for_week_schedules(view)
+
+    assert has_element?(
+             view,
+             "[data-schedule-key='room:#{@source_room}'] [data-week-schedule-course]",
+             @course_name
+           )
+
+    refute has_element?(
+             view,
+             "[data-schedule-key='room:#{@target_room}'] [data-week-schedule-course]",
+             @course_name
+           )
+
+    render_hook(view, "week-schedule-grid:move_course", move_payload())
+    wait_for_change_group_refresh(view)
+
+    refute has_element?(
+             view,
+             "[data-schedule-key='room:#{@source_room}'] [data-week-schedule-course]",
+             @course_name
+           )
+
+    assert has_element?(
+             view,
+             "[data-schedule-key='room:#{@target_room}'] [data-week-schedule-course]",
+             @course_name
+           )
+  end
+
+  defp create_change_group(view) do
+    view
+    |> element("button[phx-click='schedule-change-groups:new_group']")
+    |> render_click()
+
+    view
+    |> form("form[phx-submit='schedule-change-groups:save_new']", %{"name" => "Realtime Test"})
+    |> render_submit()
+
+    _ = :sys.get_state(ScheduleChangeDomainManager)
+    render(view)
+  end
+
+  defp select_schedule_owner(view, owner_key) do
+    view
+    |> element("button[phx-value-key='#{owner_key}']")
+    |> render_click()
+  end
+
+  defp wait_for_schedule_metadata(view) do
+    _ = :sys.get_state(ScheduleOwnerDomainManager)
+    render(view)
+  end
+
+  defp wait_for_week_schedules(view) do
+    _ = :sys.get_state(ScheduleOwnerDomainManager)
+    render(view)
+  end
+
+  defp wait_for_change_group_refresh(view) do
+    _ = :sys.get_state(ScheduleChangeDomainManager)
+    render(view)
+    _ = :sys.get_state(ScheduleChangeDomainManager)
+    render(view)
+  end
+
+  defp move_payload do
+    meeting = %{
+      "building" => "Source Building",
+      "building_code" => "SRC",
+      "days" => ["Monday", "Wednesday"],
+      "end_time" => "09:50:00",
+      "room" => "101",
+      "start_time" => "09:00:00"
+    }
+
+    %{
+      "course_name" => @course_name,
+      "course_number" => "1130",
+      "credit_hours" => 2,
+      "crn" => "70001",
+      "end_time" => "09:50:00",
+      "instructors" => ["Professor Example"],
+      "meet_info" => [meeting],
+      "meeting" => meeting,
+      "owner_key" => "room:#{@target_room}",
+      "owner_name" => @target_room,
+      "owner_type" => "room",
+      "start_time" => "09:00:00",
+      "subject_code" => "TEST",
+      "target_day" => "Wednesday",
+      "target_time" => "10:30",
+      "term" => @term_code
+    }
+  end
+
+  defp log_in_test_user(conn) do
+    {:ok, user} = User.find_or_create("week-schedule-drag-realtime@example.com")
+    user_id = Map.get(user, :id) || Map.fetch!(user, "id")
+
+    Plug.Test.init_test_session(conn, %{"current_user_id" => user_id})
+  end
+
+  defp insert_test_courses do
+    SnowCourseCacheDb.save_courses(
+      term_code: @term_code,
+      term_name: "Realtime Test Term",
+      courses: [
+        %{
+          "crn" => "70001",
+          "subject_code" => "TEST",
+          "course_number" => "1130",
+          "section_number" => "01",
+          "name" => @course_name,
+          "credit_hours" => 2,
+          "instructors" => [%{"name" => "Professor Example", "primary_instructor" => true}],
+          "meet_info" => [
+            %{
+              "building" => "Source Building",
+              "building_code" => "SRC",
+              "days" => ["Monday", "Wednesday"],
+              "end_time" => "09:50:00",
+              "room" => "101",
+              "start_time" => "09:00:00"
+            }
+          ]
+        },
+        %{
+          "crn" => "70002",
+          "subject_code" => "TEST",
+          "course_number" => "2200",
+          "section_number" => "01",
+          "name" => "Target Room Anchor",
+          "credit_hours" => 1,
+          "instructors" => [%{"name" => "Professor Example", "primary_instructor" => true}],
+          "meet_info" => [
+            %{
+              "building" => "Target Building",
+              "building_code" => "TGT",
+              "days" => ["Friday"],
+              "end_time" => "12:50:00",
+              "room" => "202",
+              "start_time" => "12:00:00"
+            }
+          ]
+        }
+      ]
+    )
+  end
+end

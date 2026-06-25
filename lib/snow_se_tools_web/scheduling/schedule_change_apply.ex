@@ -36,6 +36,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApply do
           nil ->
             [course]
 
+          [%{"course_name" => "__DELETED__"}] ->
+            []
+
           [%{"operation" => "update"} = change] ->
             [apply_change_to_course(course, change)]
 
@@ -65,6 +68,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApply do
       end
     )
     |> Map.put("meet_info", change["meet_info"] || course["meet_info"])
+    |> Map.put("__source", :updated)
   end
 
   # add pattern matching with structs on args to enforce structure
