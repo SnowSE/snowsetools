@@ -91,10 +91,14 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
 
     case Map.get(course_lists_by_owner, owner_key) do
       nil ->
+        Logger.info(
+          "ScheduleOwnerDomainManager could not find course list for term=#{term_code} owner_key=#{owner_key}"
+        )
+
         send(
           pid,
           {:schedule_owner_course_list,
-           %{term_code: term_code, owner_key: owner_key, course_list: nil}}
+           %{term_code: term_code, owner_key: owner_key, course_list: []}}
         )
 
       course_list ->

@@ -82,7 +82,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
           Select a professor, room, or program semester schedule.
         </div>
 
-        <div id="selected-schedules" class="grid grid-cols-1 gap-4 2xl:grid-cols-2">
+        <div id="selected-schedules" class="flex gap-3 flex-wrap justify-center">
           <%= for owner_key <- MapSet.to_list(@state.selected_schedule_keys) do %>
             <%= if week_schedule = @week_schedules[owner_key] do %>
               <WeekSchedule.render state={week_schedule} />
