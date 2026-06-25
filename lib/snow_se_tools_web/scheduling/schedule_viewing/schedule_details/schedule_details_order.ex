@@ -76,7 +76,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
           this.draggedKey = null;
           this.draggedCard = null;
           this.dropTargetCard = null;
-          this.dropTargetIndicator = null;
+          this.dropSpacer = null;
 
           this.onDragStart = (event) => {
             const card = event.target.closest("[data-schedule-card]");
@@ -99,16 +99,23 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
               return;
             }
 
-            const card = event.target.closest("[data-schedule-card]");
-            if (!card || !this.el.contains(card) || card.dataset.scheduleKey === this.draggedKey) {
-              this.setDropTarget(null);
-              event.preventDefault();
-              return;
-            }
-
             event.preventDefault();
             if (event.dataTransfer) {
               event.dataTransfer.dropEffect = "move";
+            }
+
+            const card = event.target.closest("[data-schedule-card]");
+            if (
+              card &&
+              card.hasAttribute("data-drop-spacer") &&
+              this.dropTargetCard
+            ) {
+              return;
+            }
+
+            if (!card || !this.el.contains(card) || card.dataset.scheduleKey === this.draggedKey) {
+              this.setDropTarget(null);
+              return;
             }
 
             this.setDropTarget(card);
@@ -121,7 +128,12 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
 
             event.preventDefault();
             const card = event.target.closest("[data-schedule-card]");
-            const targetKey = card && this.el.contains(card) ? card.dataset.scheduleKey : null;
+            const targetKey =
+              card && this.el.contains(card)
+                ? card.hasAttribute("data-drop-spacer")
+                  ? this.dropTargetCard && this.dropTargetCard.dataset.scheduleKey
+                  : card.dataset.scheduleKey
+                : null;
 
             this.pushEvent("schedule-details-order:reorder_schedule", {
               dragged_key: this.draggedKey,
@@ -153,11 +165,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
             return;
           }
 
-          if (this.dropTargetIndicator) {
-            this.dropTargetIndicator.classList.remove("bg-indigo-400/100");
-            this.dropTargetIndicator.classList.remove("shadow-[0_0_16px_rgba(129,140,248,0.45)]");
-            this.dropTargetIndicator.classList.add("bg-indigo-400/0");
-          }
+          const beforeRects = this.captureCardRects();
+
+          this.removeDropSpacer();
 
           if (this.dropTargetCard) {
             this.dropTargetCard.classList.remove(
@@ -171,9 +181,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
           }
 
           this.dropTargetCard = card;
-          this.dropTargetIndicator = null;
 
           if (!card) {
+            this.animateReflow(beforeRects);
             return;
           }
 
@@ -186,13 +196,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
             "bg-indigo-950/20"
           );
 
-          const indicator = card.querySelector("[data-drop-indicator]");
-          if (indicator) {
-            indicator.classList.remove("bg-indigo-400/0");
-            indicator.classList.add("bg-indigo-400/100");
-            indicator.classList.add("shadow-[0_0_16px_rgba(129,140,248,0.45)]");
-            this.dropTargetIndicator = indicator;
-          }
+          this.insertDropSpacer(card);
+          this.animateReflow(beforeRects);
         },
 
         clearDraggingState() {
@@ -204,6 +209,80 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
 
           this.draggedKey = null;
           this.draggedCard = null;
+        },
+
+        captureCardRects() {
+          const rects = new Map();
+
+          this.getDroppableCards().forEach((card) => {
+            rects.set(card.dataset.scheduleKey, card.getBoundingClientRect());
+          });
+
+          return rects;
+        },
+
+        getDroppableCards() {
+          return Array.from(this.el.querySelectorAll("[data-schedule-card]")).filter((card) => {
+            return (
+              card.dataset.scheduleKey !== this.draggedKey &&
+              !card.hasAttribute("data-drop-spacer")
+            );
+          });
+        },
+
+        insertDropSpacer(card) {
+          const spacer = document.createElement("div");
+          const rect = card.getBoundingClientRect();
+
+          spacer.setAttribute("data-schedule-card", "true");
+          spacer.setAttribute("data-drop-spacer", "true");
+          spacer.className =
+            "w-[700px] rounded-lg border border-dashed border-indigo-400/35 bg-indigo-950/20 shadow-sm shadow-indigo-950/10 transition-[height,opacity,transform] duration-200 ease-out";
+          spacer.style.height = `${Math.max(rect.height, 160)}px`;
+
+          card.before(spacer);
+          this.dropSpacer = spacer;
+        },
+
+        removeDropSpacer() {
+          if (!this.dropSpacer) {
+            return;
+          }
+
+          this.dropSpacer.remove();
+          this.dropSpacer = null;
+        },
+
+        animateReflow(beforeRects) {
+          requestAnimationFrame(() => {
+            this.getDroppableCards().forEach((card) => {
+              const beforeRect = beforeRects.get(card.dataset.scheduleKey);
+              if (!beforeRect) {
+                return;
+              }
+
+              const afterRect = card.getBoundingClientRect();
+              const deltaX = beforeRect.left - afterRect.left;
+              const deltaY = beforeRect.top - afterRect.top;
+
+              if (deltaX === 0 && deltaY === 0) {
+                return;
+              }
+
+              card.style.transition = "transform 0ms";
+              card.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+              card.style.willChange = "transform";
+              card.getBoundingClientRect();
+              card.style.transition = "transform 220ms cubic-bezier(0.2, 0, 0, 1)";
+              card.style.transform = "translate(0px, 0px)";
+
+              window.setTimeout(() => {
+                card.style.transition = "";
+                card.style.transform = "";
+                card.style.willChange = "";
+              }, 220);
+            });
+          });
         },
       }
     </script>
