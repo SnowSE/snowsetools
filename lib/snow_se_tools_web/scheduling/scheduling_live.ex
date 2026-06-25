@@ -69,7 +69,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
         <div class="min-h-0 flex-1">
           <%= case @mode do %>
             <% :viewer -> %>
-              <ScheduleViewer.render state={@schedule_viewer_state} />
+              <ScheduleViewer.render state={@schedule_viewer_state} week_schedules={@week_schedules} />
             <% :programs -> %>
               <AcademicProgramsPanel.render
                 programs={@academic_programs}

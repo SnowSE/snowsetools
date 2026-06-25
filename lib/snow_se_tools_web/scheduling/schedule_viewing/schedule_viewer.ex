@@ -12,6 +12,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
 
   import SnowSeToolsWeb.Scheduling.ScheduleViewerTermAndSearch
   import SnowSeToolsWeb.Scheduling.ScheduleViewerScheduleOwnerList
+  alias SnowSeToolsWeb.Scheduling.WeekSchedule
 
   defstruct [
     :terms,
@@ -83,8 +84,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
 
         <div id="selected-schedules" class="grid grid-cols-1 gap-4 2xl:grid-cols-2">
           <%= for owner_key <- MapSet.to_list(@state.selected_schedule_keys) do %>
-            <div>{owner_key} selected</div>
-            <%!-- <WeekSchedule.render owner_key={owner_key} schedule_owners_details={@state.schedule_owner_week_details[owner_key]} /> --%>
+            <%= if week_schedule = @week_schedules[owner_key] do %>
+              <WeekSchedule.render state={week_schedule} />
+            <% end %>
           <% end %>
         </div>
       </main>
@@ -338,6 +340,12 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
       )
     end
 
+    socket =
+      socket.assigns[@key].selected_schedule_keys
+      |> Enum.reduce(socket, fn owner_key, acc ->
+        WeekSchedule.assign_owner(acc, owner_key: owner_key, selected_term_code: term_code)
+      end)
+
     {:halt,
      socket
      |> assign(@key, %{
@@ -363,6 +371,17 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
         MapSet.put(socket.assigns[@key].selected_schedule_keys, key)
       end
 
+    socket =
+      if MapSet.member?(socket.assigns[@key].selected_schedule_keys, key) do
+        WeekSchedule.remove_owner(socket, owner_key: key)
+      else
+        WeekSchedule.assign_owner(
+          socket,
+          owner_key: key,
+          selected_term_code: socket.assigns[@key].selected_term_code
+        )
+      end
+
     {:halt,
      socket
      |> assign(@key, %{
@@ -374,6 +393,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
   def hooked_event("schedule-viewer:clear_selected", _params, socket) do
     {:halt,
      socket
+     |> WeekSchedule.clear_owners()
      |> assign(@key, %{
        socket.assigns[@key]
        | selected_schedule_keys: MapSet.new()
@@ -383,6 +403,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
   def hooked_event("schedule-viewer:close_schedule", %{"key" => key}, socket) do
     {:halt,
      socket
+     |> WeekSchedule.remove_owner(owner_key: key)
      |> assign(@key, %{
        socket.assigns[@key]
        | selected_schedule_keys: MapSet.delete(socket.assigns[@key].selected_schedule_keys, key)

@@ -8,6 +8,7 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
   alias SnowSeTools.Scheduling.ScheduleOwnerMetadata
   alias SnowSeTools.Scheduling.ScheduleOwnerPubSub
   alias SnowSeTools.Scheduling.ScheduleOwnerSchedule
+  alias SnowSeTools.Scheduling.ScheduleUtils
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
@@ -37,7 +38,7 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
      %{
        terms: load_terms(),
        schedule_owner_metadata_by_term: %{},
-       schedules_by_owner_by_term: %{},
+       course_lists_by_owner_by_term: %{},
        academic_programs: academic_programs
      }}
   end
@@ -72,46 +73,35 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
   end
 
   def handle_cast({:request_schedule_owner_course_list, pid, term_code, owner_key}, state) do
-    {schedules_by_owner, state} =
-      case Map.fetch(state.schedules_by_owner_by_term, term_code) do
-        {:ok, schedules_by_owner} ->
-          {schedules_by_owner, state}
+    {course_lists_by_owner, state} =
+      case Map.fetch(state.course_lists_by_owner_by_term, term_code) do
+        {:ok, course_lists_by_owner} ->
+          {course_lists_by_owner, state}
 
         :error ->
-          schedules_by_owner =
-            case SnowCourseCacheDb.list_course_data_for_term(term_code: term_code) do
-              {:ok, courses} ->
-                courses
-                |> ScheduleOwnerSchedule.build_entries(state.academic_programs)
-                |> Map.new(&{&1.owner_key, &1})
+          course_lists_by_owner = build_course_lists_by_owner(term_code: term_code, state: state)
 
-              {:error, reason} ->
-                Logger.error(
-                  "ScheduleOwnerDomainManager failed to load schedule details for term=#{term_code}: #{inspect(reason)}"
-                )
-
-                %{}
-            end
-
-          {schedules_by_owner,
+          {course_lists_by_owner,
            Map.put(
              state,
-             :schedules_by_owner_by_term,
-             Map.put(state.schedules_by_owner_by_term, term_code, schedules_by_owner)
+             :course_lists_by_owner_by_term,
+             Map.put(state.course_lists_by_owner_by_term, term_code, course_lists_by_owner)
            )}
       end
 
-    case Map.get(schedules_by_owner, owner_key) do
+    case Map.get(course_lists_by_owner, owner_key) do
       nil ->
         send(
           pid,
-          {:schedule_owner_detail, %{term_code: term_code, owner_key: owner_key, detail: nil}}
+          {:schedule_owner_course_list,
+           %{term_code: term_code, owner_key: owner_key, course_list: nil}}
         )
 
-      detail ->
+      course_list ->
         send(
           pid,
-          {:schedule_owner_detail, %{term_code: term_code, owner_key: owner_key, detail: detail}}
+          {:schedule_owner_course_list,
+           %{term_code: term_code, owner_key: owner_key, course_list: course_list}}
         )
     end
 
@@ -140,23 +130,24 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
           end
         )
         |> then(fn updated_acc ->
-          if Map.has_key?(updated_acc.schedules_by_owner_by_term, term_code) do
-            program_schedules = program_schedules(term_code: term_code, program: program)
+          if Map.has_key?(updated_acc.course_lists_by_owner_by_term, term_code) do
+            program_course_lists = program_course_lists(term_code: term_code, program: program)
 
-            Enum.each(program_schedules, fn schedule ->
+            Enum.each(program_course_lists, fn course_list ->
               ScheduleOwnerPubSub.broadcast_schedule_owner_detail_changed(
                 term_code,
-                schedule.owner_key,
-                schedule
+                course_list.owner_key,
+                course_list
               )
             end)
 
             update_in(
               updated_acc,
-              [Access.key(:schedules_by_owner_by_term), Access.key(term_code, %{})],
-              fn schedules_by_owner ->
-                Enum.reduce(program_schedules, schedules_by_owner, fn schedule, owner_acc ->
-                  Map.put(owner_acc, schedule.owner_key, schedule)
+              [Access.key(:course_lists_by_owner_by_term), Access.key(term_code, %{})],
+              fn course_lists_by_owner ->
+                Enum.reduce(program_course_lists, course_lists_by_owner, fn course_list,
+                                                                            owner_acc ->
+                  Map.put(owner_acc, course_list.owner_key, course_list)
                 end)
               end
             )
@@ -208,30 +199,31 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
           end
         )
         |> update_in(
-          [Access.key(:schedules_by_owner_by_term), Access.key(term_code, %{})],
-          fn schedules_by_owner ->
+          [Access.key(:course_lists_by_owner_by_term), Access.key(term_code, %{})],
+          fn course_lists_by_owner ->
             previous_owner_keys
-            |> Enum.reduce(schedules_by_owner, &Map.delete(&2, &1))
+            |> Enum.reduce(course_lists_by_owner, &Map.delete(&2, &1))
           end
         )
         |> then(fn updated_acc ->
-          if Map.has_key?(updated_acc.schedules_by_owner_by_term, term_code) do
-            program_schedules = program_schedules(term_code: term_code, program: program)
+          if Map.has_key?(updated_acc.course_lists_by_owner_by_term, term_code) do
+            program_course_lists = program_course_lists(term_code: term_code, program: program)
 
-            Enum.each(program_schedules, fn schedule ->
+            Enum.each(program_course_lists, fn course_list ->
               ScheduleOwnerPubSub.broadcast_schedule_owner_detail_changed(
                 term_code,
-                schedule.owner_key,
-                schedule
+                course_list.owner_key,
+                course_list
               )
             end)
 
             update_in(
               updated_acc,
-              [Access.key(:schedules_by_owner_by_term), Access.key(term_code, %{})],
-              fn schedules_by_owner ->
-                Enum.reduce(program_schedules, schedules_by_owner, fn schedule, owner_acc ->
-                  Map.put(owner_acc, schedule.owner_key, schedule)
+              [Access.key(:course_lists_by_owner_by_term), Access.key(term_code, %{})],
+              fn course_lists_by_owner ->
+                Enum.reduce(program_course_lists, course_lists_by_owner, fn course_list,
+                                                                            owner_acc ->
+                  Map.put(owner_acc, course_list.owner_key, course_list)
                 end)
               end
             )
@@ -257,13 +249,16 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
           |> Enum.map(& &1.key)
 
         schedule_owner_keys =
-          acc.schedules_by_owner_by_term
+          acc.course_lists_by_owner_by_term
           |> Map.get(term_code, %{})
-          |> Enum.filter(fn {_owner_key, schedule} ->
-            schedule.type == :academic_program_semester and
-              String.starts_with?(schedule.owner_key, "academic_program_semester:#{program_id}:")
+          |> Enum.filter(fn {_owner_key, course_list} ->
+            course_list.type == :academic_program_semester and
+              String.starts_with?(
+                course_list.owner_key,
+                "academic_program_semester:#{program_id}:"
+              )
           end)
-          |> Enum.map(fn {owner_key, _schedule} -> owner_key end)
+          |> Enum.map(fn {owner_key, _course_list} -> owner_key end)
 
         owner_keys = Enum.uniq(metadata_owner_keys ++ schedule_owner_keys)
 
@@ -278,9 +273,9 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
           &Enum.reject(&1, fn metadata -> metadata.academic_program_id == program_id end)
         )
         |> update_in(
-          [Access.key(:schedules_by_owner_by_term), Access.key(term_code, %{})],
-          fn schedules_by_owner ->
-            Enum.reduce(owner_keys, schedules_by_owner, &Map.delete(&2, &1))
+          [Access.key(:course_lists_by_owner_by_term), Access.key(term_code, %{})],
+          fn course_lists_by_owner ->
+            Enum.reduce(owner_keys, course_lists_by_owner, &Map.delete(&2, &1))
           end
         )
       end)
@@ -337,30 +332,17 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
       end
 
     state =
-      if Map.has_key?(state.schedules_by_owner_by_term, term_code) do
+      if Map.has_key?(state.course_lists_by_owner_by_term, term_code) do
         previous_owner_keys =
-          state.schedules_by_owner_by_term
+          state.course_lists_by_owner_by_term
           |> Map.get(term_code, %{})
           |> Map.keys()
           |> MapSet.new()
 
-        schedules_by_owner =
-          case SnowCourseCacheDb.list_course_data_for_term(term_code: term_code) do
-            {:ok, courses} ->
-              courses
-              |> ScheduleOwnerSchedule.build_entries(state.academic_programs)
-              |> Map.new(&{&1.owner_key, &1})
-
-            {:error, reason} ->
-              Logger.error(
-                "ScheduleOwnerDomainManager failed to refresh schedule details for term=#{term_code}: #{inspect(reason)}"
-              )
-
-              %{}
-          end
+        course_lists_by_owner = build_course_lists_by_owner(term_code: term_code, state: state)
 
         current_owner_keys =
-          schedules_by_owner
+          course_lists_by_owner
           |> Map.keys()
           |> MapSet.new()
 
@@ -370,18 +352,18 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
           ScheduleOwnerPubSub.broadcast_schedule_owner_detail_changed(term_code, owner_key, nil)
         end)
 
-        Enum.each(schedules_by_owner, fn {owner_key, detail} ->
+        Enum.each(course_lists_by_owner, fn {owner_key, course_list} ->
           ScheduleOwnerPubSub.broadcast_schedule_owner_detail_changed(
             term_code,
             owner_key,
-            detail
+            course_list
           )
         end)
 
         Map.put(
           state,
-          :schedules_by_owner_by_term,
-          Map.put(state.schedules_by_owner_by_term, term_code, schedules_by_owner)
+          :course_lists_by_owner_by_term,
+          Map.put(state.course_lists_by_owner_by_term, term_code, course_lists_by_owner)
         )
       else
         state
@@ -395,7 +377,7 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
       state
       |> Map.put(:terms, Enum.reject(state.terms, &(&1["term_code"] == term_code)))
       |> update_in([Access.key(:schedule_owner_metadata_by_term)], &Map.delete(&1, term_code))
-      |> update_in([Access.key(:schedules_by_owner_by_term)], &Map.delete(&1, term_code))
+      |> update_in([Access.key(:course_lists_by_owner_by_term)], &Map.delete(&1, term_code))
 
     ScheduleOwnerPubSub.broadcast_terms_changed(state.terms)
     ScheduleOwnerPubSub.broadcast_term_deleted(term_code)
@@ -441,7 +423,37 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
     state.schedule_owner_metadata_by_term
     |> Map.keys()
     |> MapSet.new()
-    |> MapSet.union(MapSet.new(Map.keys(state.schedules_by_owner_by_term)))
+    |> MapSet.union(MapSet.new(Map.keys(state.course_lists_by_owner_by_term)))
+  end
+
+  defp build_course_lists_by_owner(term_code: term_code, state: state) do
+    case SnowCourseCacheDb.list_course_data_for_term(term_code: term_code) do
+      {:ok, courses} ->
+        ScheduleUtils.owner_course_lists(
+          courses: courses,
+          academic_programs: state.academic_programs
+        )
+        |> Enum.map(fn course_list ->
+          ScheduleOwnerSchedule.new(
+            owner_key: course_list.owner_key,
+            type: course_list.type,
+            name: course_list.name,
+            courses: course_list.courses,
+            opts: [
+              program_name: Map.get(course_list, :program_name),
+              semester_name: Map.get(course_list, :semester_name)
+            ]
+          )
+        end)
+        |> Map.new(&{&1.owner_key, &1})
+
+      {:error, reason} ->
+        Logger.error(
+          "ScheduleOwnerDomainManager failed to load owner course lists for term=#{term_code}: #{inspect(reason)}"
+        )
+
+        %{}
+    end
   end
 
   defp program_metadata(program: program) do
@@ -451,7 +463,7 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
     |> Enum.map(fn {semester, semester_index} ->
       %ScheduleOwnerMetadata{
         type: :academic_program_semester,
-        name: "#{program["name"]} #{ScheduleOwnerSchedule.semester_label(semester_index)}",
+        name: "#{program["name"]} #{ScheduleUtils.semester_label(semester_index)}",
         academic_program_id: program["id"],
         academic_program_semester: semester["id"],
         key: program_semester_owner_key(program_id: program["id"], semester_id: semester["id"])
@@ -459,18 +471,26 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
     end)
   end
 
-  defp program_schedules(term_code: term_code, program: program) do
+  defp program_course_lists(term_code: term_code, program: program) do
     case SnowCourseCacheDb.list_course_data_for_term(term_code: term_code) do
       {:ok, courses} ->
         program
         |> Map.get("semesters", [])
         |> Enum.with_index()
         |> Enum.map(fn {semester, semester_index} ->
-          ScheduleOwnerSchedule.new_academic_program_semester(
-            program,
-            semester,
-            semester_index,
-            courses
+          semester_name = ScheduleUtils.semester_label(semester_index)
+
+          ScheduleOwnerSchedule.new(
+            owner_key:
+              program_semester_owner_key(program_id: program["id"], semester_id: semester["id"]),
+            type: :academic_program_semester,
+            name: "#{program["name"]} #{semester_name}",
+            courses:
+              ScheduleUtils.courses_matching_requirements(
+                courses: courses,
+                required_courses: semester["courses"] || []
+              ),
+            opts: [program_name: program["name"], semester_name: semester_name]
           )
         end)
 
@@ -508,7 +528,7 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
         |> Enum.map(fn {semester, semester_index} ->
           %ScheduleOwnerMetadata{
             type: :academic_program_semester,
-            name: "#{program["name"]} #{ScheduleOwnerSchedule.semester_label(semester_index)}",
+            name: "#{program["name"]} #{ScheduleUtils.semester_label(semester_index)}",
             academic_program_id: program["id"],
             academic_program_semester: semester["id"],
             key:
@@ -530,7 +550,7 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
           }
         end) ++
           Enum.flat_map(course["meet_info"] || [], fn meeting ->
-            room_name = ScheduleOwnerSchedule.room_name(meeting: meeting)
+            room_name = ScheduleUtils.room_name(meeting: meeting)
 
             if is_nil(room_name) do
               []
