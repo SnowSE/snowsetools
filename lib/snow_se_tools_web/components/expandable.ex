@@ -38,7 +38,7 @@ defmodule SnowSeToolsWeb.Components.Expandable do
       <div
         data-expandable-body
         class="overflow-hidden px-3 transition-[height] duration-300 ease-out"
-        style="height: 0px; transition: height 300ms ease-out;"
+        style="height: 0px; transition: height 200ms ease-out;"
       >
         <div>
           {render_slot(@body)}

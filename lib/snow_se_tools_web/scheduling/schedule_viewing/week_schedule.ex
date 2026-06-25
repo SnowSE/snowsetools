@@ -193,15 +193,15 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
   end
 
   defp empty_week_schedule(owner_key: owner_key) when is_binary(owner_key) do
-    {type, name} =
-      case String.split(owner_key, ":", parts: 2) do
-        ["professor", name] -> {:professor, name}
-        ["room", name] -> {:room, name}
-        ["academic_program_semester", name] -> {:academic_program_semester, name}
-        [_unknown, name] -> {:room, name}
-        [name] -> {:room, name}
-      end
-
+    {type, name} = empty_week_schedule_type(owner_key)
     ScheduleUtils.build_week_schedule(type: type, name: name, courses: [])
   end
+
+  defp empty_week_schedule_type("professor:" <> name), do: {:professor, name}
+  defp empty_week_schedule_type("room:" <> name), do: {:room, name}
+
+  defp empty_week_schedule_type("academic_program_semester:" <> name),
+    do: {:academic_program_semester, name}
+
+  defp empty_week_schedule_type(owner_key), do: {:room, owner_key}
 end
