@@ -79,23 +79,37 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
       data-schedule-card
       data-schedule-key={@state.owner_key}
       draggable="true"
-      class="relative w-[700px] rounded-lg border border-slate-800/80 bg-slate-950/55 p-3 shadow-sm shadow-slate-950/20 select-none cursor-grab motion-safe:transition-[transform,opacity,box-shadow,border-color,background-color] motion-safe:duration-200 motion-safe:ease-out active:cursor-grabbing"
+      tabindex="0"
+      class={[
+        "relative w-[700px] p-3",
+        "select-none cursor-grab motion-safe:transition-[transform,opacity,box-shadow,border-color,background-color] motion-safe:duration-200 motion-safe:ease-out active:cursor-grabbing",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+      ]}
     >
-      <%= if @state.loading? or is_nil(@state.week_schedule) do %>
-        <div class="flex h-40 items-center justify-center text-sm text-slate-500">
-          <.icon name="hero-arrow-path" class="size-4 animate-spin" />
-          <span class="ml-2">Loading schedule...</span>
-        </div>
-      <% else %>
-        <.schedule_header schedule_owner={@state.week_schedule} owner_key={@state.owner_key} />
-        <.schedule_grid schedule_owner={@state.week_schedule} owner_key={@state.owner_key} />
-      <% end %>
+      <div class="rounded-lg border border-slate-800/80 bg-slate-950/55 p-3 shadow-sm shadow-slate-950/20">
+        <%= if @state.loading? or is_nil(@state.week_schedule) do %>
+          <div class="flex h-40 items-center justify-center text-sm text-slate-500">
+            <.icon name="hero-arrow-path" class="size-4 animate-spin" />
+            <span class="ml-2">Loading schedule...</span>
+          </div>
+        <% else %>
+          <.schedule_header
+            schedule_owner={@state.week_schedule}
+            owner_key={@state.owner_key}
+            position={@position}
+            total_count={@total_count}
+          />
+          <.schedule_grid schedule_owner={@state.week_schedule} owner_key={@state.owner_key} />
+        <% end %>
+      </div>
     </section>
     """
   end
 
   attr :schedule_owner, :map, required: true
   attr :owner_key, :string, required: true
+  attr :position, :integer, required: true
+  attr :total_count, :integer, required: true
 
   defp schedule_header(assigns) do
     ~H"""
@@ -115,15 +129,39 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
           <p class="text-xs text-slate-500">{@schedule_owner.type_label}</p>
         <% end %>
       </div>
-      <button
-        type="button"
-        phx-click="schedule-details-order:close_schedule"
-        phx-value-key={@owner_key}
-        class="rounded p-1 text-slate-500 transition-colors"
-        aria-label="Remove schedule"
-      >
-        <.icon name="hero-x-mark" class="size-4" />
-      </button>
+      <div class="flex items-center gap-1">
+        <button
+          type="button"
+          phx-click="schedule-details-order:move_schedule"
+          phx-value-key={@owner_key}
+          phx-value-direction="up"
+          disabled={@position == 0}
+          class="rounded p-1 text-slate-500 transition-colors disabled:cursor-not-allowed disabled:opacity-30"
+          aria-label="Move schedule up"
+        >
+          <.icon name="hero-chevron-up" class="size-4" />
+        </button>
+        <button
+          type="button"
+          phx-click="schedule-details-order:move_schedule"
+          phx-value-key={@owner_key}
+          phx-value-direction="down"
+          disabled={@position == @total_count - 1}
+          class="rounded p-1 text-slate-500 transition-colors disabled:cursor-not-allowed disabled:opacity-30"
+          aria-label="Move schedule down"
+        >
+          <.icon name="hero-chevron-down" class="size-4" />
+        </button>
+        <button
+          type="button"
+          phx-click="schedule-details-order:close_schedule"
+          phx-value-key={@owner_key}
+          class="rounded p-1 text-slate-500 transition-colors disabled:cursor-not-allowed disabled:opacity-30"
+          aria-label="Remove schedule"
+        >
+          <.icon name="hero-x-mark" class="size-4" />
+        </button>
+      </div>
     </div>
     """
   end

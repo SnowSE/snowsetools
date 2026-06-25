@@ -22,7 +22,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
 
   def render(assigns) do
     ~H"""
-    <section class="min-w-0 flex-1 overflow-y-auto">
+    <section class="min-w-0 flex-1 overflow-y-auto" data-schedule-scroll-container>
       <div class="flex items-center justify-between gap-2 px-1 pb-3">
         <div class="text-sm font-medium text-slate-200">Selected schedules</div>
         <button
@@ -53,11 +53,15 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
       <div
         id="selected-schedules"
         phx-hook=".ScheduleDetailsOrder"
-        class="flex flex-wrap justify-center gap-3"
+        class="flex flex-wrap justify-center"
       >
-        <%= for owner_key <- ScheduleOrder.to_list(@state.selected_schedule_order) do %>
+        <%= for {owner_key, position} <- Enum.with_index(ScheduleOrder.to_list(@state.selected_schedule_order)) do %>
           <%= if week_schedule = @week_schedules[owner_key] do %>
-            <WeekSchedule.render state={week_schedule} />
+            <WeekSchedule.render
+              state={week_schedule}
+              position={position}
+              total_count={ScheduleOrder.size(@state.selected_schedule_order)}
+            />
           <% else %>
             <div
               id={"selected-schedule-placeholder-#{owner_key}"}
@@ -77,6 +81,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
           this.draggedCard = null;
           this.dropTargetCard = null;
           this.dropSpacer = null;
+          this.autoScrollRaf = null;
+          this.autoScrollDirection = 0;
+          this.autoScrollIntensity = 0;
+          this.scrollContainer = this.el.closest("[data-schedule-scroll-container]");
 
           this.onDragStart = (event) => {
             const card = event.target.closest("[data-schedule-card]");
@@ -110,15 +118,18 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
               card.hasAttribute("data-drop-spacer") &&
               this.dropTargetCard
             ) {
+              this.updateAutoScroll(event.clientY);
               return;
             }
 
             if (!card || !this.el.contains(card) || card.dataset.scheduleKey === this.draggedKey) {
               this.setDropTarget(null);
+              this.updateAutoScroll(event.clientY);
               return;
             }
 
             this.setDropTarget(card);
+            this.updateAutoScroll(event.clientY);
           };
 
           this.onDrop = (event) => {
@@ -147,10 +158,33 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
             this.clearDraggingState();
           };
 
+          this.onKeyDown = (event) => {
+            const card = event.target.closest("[data-schedule-card]");
+            if (
+              !card ||
+              !this.el.contains(card) ||
+              card.hasAttribute("data-drop-spacer") ||
+              !event.altKey
+            ) {
+              return;
+            }
+
+            if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
+              return;
+            }
+
+            event.preventDefault();
+            this.pushEvent("schedule-details-order:move_schedule", {
+              key: card.dataset.scheduleKey,
+              direction: event.key === "ArrowUp" ? "up" : "down",
+            });
+          };
+
           this.el.addEventListener("dragstart", this.onDragStart);
           this.el.addEventListener("dragover", this.onDragOver);
           this.el.addEventListener("drop", this.onDrop);
           this.el.addEventListener("dragend", this.onDragEnd);
+          this.el.addEventListener("keydown", this.onKeyDown);
         },
 
         destroyed() {
@@ -158,6 +192,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
           this.el.removeEventListener("dragover", this.onDragOver);
           this.el.removeEventListener("drop", this.onDrop);
           this.el.removeEventListener("dragend", this.onDragEnd);
+          this.el.removeEventListener("keydown", this.onKeyDown);
+          this.stopAutoScroll();
         },
 
         setDropTarget(card) {
@@ -170,13 +206,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
           this.removeDropSpacer();
 
           if (this.dropTargetCard) {
-            this.dropTargetCard.classList.remove(
-              "outline",
-              "outline-2",
-              "outline-indigo-400/60",
-              "outline-offset-4",
-              "bg-indigo-950/20"
-            );
             this.dropTargetCard.removeAttribute("data-drop-target");
           }
 
@@ -188,13 +217,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
           }
 
           card.setAttribute("data-drop-target", "true");
-          card.classList.add(
-            "outline",
-            "outline-2",
-            "outline-indigo-400/60",
-            "outline-offset-4",
-            "bg-indigo-950/20"
-          );
 
           this.insertDropSpacer(card);
           this.animateReflow(beforeRects);
@@ -206,6 +228,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
           }
 
           this.setDropTarget(null);
+          this.stopAutoScroll();
 
           this.draggedKey = null;
           this.draggedCard = null;
@@ -283,6 +306,82 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
               }, 220);
             });
           });
+        },
+
+        updateAutoScroll(clientY) {
+          if (!this.scrollContainer) {
+            return;
+          }
+
+          const rect = this.scrollContainer.getBoundingClientRect();
+          const edgeThreshold = 120;
+          const topDistance = clientY - rect.top;
+          const bottomDistance = rect.bottom - clientY;
+          const maxScrollTop =
+            this.scrollContainer.scrollHeight - this.scrollContainer.clientHeight;
+
+          if (topDistance < edgeThreshold && this.scrollContainer.scrollTop > 0) {
+            this.startAutoScroll(-1, 1 - topDistance / edgeThreshold);
+            return;
+          }
+
+          if (bottomDistance < edgeThreshold && this.scrollContainer.scrollTop < maxScrollTop) {
+            this.startAutoScroll(1, 1 - bottomDistance / edgeThreshold);
+            return;
+          }
+
+          this.stopAutoScroll();
+        },
+
+        startAutoScroll(direction, intensity) {
+          this.autoScrollDirection = direction;
+          this.autoScrollIntensity = Math.max(0.15, Math.min(intensity, 1));
+
+          if (this.autoScrollRaf) {
+            return;
+          }
+
+          const tick = () => {
+            if (!this.autoScrollDirection || !this.scrollContainer) {
+              this.autoScrollRaf = null;
+              return;
+            }
+
+            const maxScrollTop =
+              this.scrollContainer.scrollHeight - this.scrollContainer.clientHeight;
+            const speed = 8 + this.autoScrollIntensity * 20;
+            const nextScrollTop = Math.max(
+              0,
+              Math.min(
+                this.scrollContainer.scrollTop + this.autoScrollDirection * speed,
+                maxScrollTop
+              )
+            );
+
+            this.scrollContainer.scrollTop = nextScrollTop;
+
+            if (
+              (nextScrollTop === 0 && this.autoScrollDirection < 0) ||
+              (nextScrollTop === maxScrollTop && this.autoScrollDirection > 0)
+            ) {
+              this.stopAutoScroll();
+              return;
+            }
+
+            this.autoScrollRaf = window.requestAnimationFrame(tick);
+          };
+
+          this.autoScrollRaf = window.requestAnimationFrame(tick);
+        },
+
+        stopAutoScroll() {
+          this.autoScrollDirection = 0;
+          this.autoScrollIntensity = 0;
+
+          if (this.autoScrollRaf) {
+            window.cancelAnimationFrame(this.autoScrollRaf);
+            this.autoScrollRaf = null;
+          }
         },
       }
     </script>
@@ -443,6 +542,48 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
              key: key
            )
      })}
+  end
+
+  def hooked_event(
+        "schedule-details-order:move_schedule",
+        %{"key" => key, "direction" => direction},
+        socket
+      ) do
+    order = socket.assigns[@key].selected_schedule_order
+    keys = ScheduleOrder.to_list(order)
+
+    case Enum.find_index(keys, &(&1 == key)) do
+      nil ->
+        Logger.warning("Ignored move for missing schedule #{inspect(key)}")
+        {:halt, socket}
+
+      index ->
+        reordered_order =
+          case direction do
+            "up" when index > 0 ->
+              ScheduleOrder.move_before(
+                order: order,
+                dragged_key: key,
+                target_key: Enum.at(keys, index - 1)
+              )
+
+            "down" when index < length(keys) - 1 ->
+              ScheduleOrder.move_before(
+                order: order,
+                dragged_key: key,
+                target_key: Enum.at(keys, index + 2)
+              )
+
+            _ ->
+              order
+          end
+
+        {:halt,
+         assign(socket, @key, %{
+           socket.assigns[@key]
+           | selected_schedule_order: reordered_order
+         })}
+    end
   end
 
   def hooked_event(
