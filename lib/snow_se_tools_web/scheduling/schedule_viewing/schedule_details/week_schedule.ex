@@ -3,6 +3,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
 
   alias Phoenix.LiveView
   alias SnowSeTools.Scheduling.{ScheduleOwnerDomainManager, ScheduleOwnerSchedule, ScheduleUtils}
+  alias SnowSeToolsWeb.Scheduling.ScheduleChangeApply
   import SnowSeToolsWeb.Scheduling.WeekScheduleGrid
 
   defstruct [
@@ -12,6 +13,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
     :week_schedule,
     :loading?
   ]
+
+  attr :active_change_group, :map, default: nil
 
   def assign_component(socket) do
     socket
@@ -99,7 +102,11 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
             position={@position}
             total_count={@total_count}
           />
-          <.schedule_grid schedule_owner={@state.week_schedule} owner_key={@state.owner_key} />
+          <.schedule_grid
+            schedule_owner={effective_schedule(@state.week_schedule, @active_change_group)}
+            owner_key={@state.owner_key}
+            active_change_group={@active_change_group}
+          />
         <% end %>
       </div>
     </section>
@@ -245,4 +252,10 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
     do: {:academic_program_semester, name}
 
   defp empty_week_schedule_type(owner_key), do: {:room, owner_key}
+
+  defp effective_schedule(schedule_owner, nil), do: schedule_owner
+
+  defp effective_schedule(schedule_owner, active_change_group) do
+    ScheduleChangeApply.effective_schedule(schedule_owner, active_change_group)
+  end
 end

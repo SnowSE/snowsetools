@@ -12,6 +12,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
 
   @key :schedule_details_order
 
+  attr :active_change_group, :map, default: nil
+
   def assign_component(socket) do
     socket
     |> assign(@key, %__MODULE__{
@@ -23,19 +25,17 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
   def render(assigns) do
     ~H"""
     <section class="min-w-0 flex-1 overflow-y-auto" data-schedule-scroll-container>
-      <div class="flex items-center justify-between gap-2 px-1 pb-3">
-        <div class="text-sm font-medium text-slate-200">Selected schedules</div>
+      <div
+        :if={ScheduleOrder.size(@state.selected_schedule_order) > 0}
+        class="flex items-center justify-end"
+      >
         <button
           id="clear-selected-schedules"
           type="button"
           phx-click="schedule-details-order:clear_selected"
-          disabled={ScheduleOrder.size(@state.selected_schedule_order) == 0}
           class={[
             "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition",
-            if(ScheduleOrder.size(@state.selected_schedule_order) == 0,
-              do: "invisible cursor-not-allowed",
-              else: "bg-red-950/50 text-red-300 hover:bg-red-900/70 hover:text-red-100"
-            )
+            "bg-red-950/50 text-red-300 hover:bg-red-900/70 hover:text-red-100"
           ]}
         >
           <.icon name="hero-x-mark" class="size-3" /> Clear Selection
@@ -61,6 +61,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
               state={week_schedule}
               position={position}
               total_count={ScheduleOrder.size(@state.selected_schedule_order)}
+              active_change_group={@active_change_group}
             />
           <% else %>
             <div

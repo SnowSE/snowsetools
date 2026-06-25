@@ -3,7 +3,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramIntegrationTest do
 
   alias SnowSeTools.AcademicPrograms.ProgramDomainManager
   alias SnowSeTools.Data.User
-  alias SnowSeTools.Scheduling.ScheduleOwnerDomainManager
+  alias SnowSeTools.Scheduling.{ScheduleChangeDomainManager, ScheduleOwnerDomainManager}
   alias SnowSeTools.Snow.SnowCourseCacheDomainManager
   alias SnowSeTools.Snow.SnowCourseCacheDb
 
@@ -12,6 +12,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramIntegrationTest do
     insert_test_courses()
     start_supervised!(SnowCourseCacheDomainManager)
     start_supervised!(ScheduleOwnerDomainManager)
+    start_supervised!(ScheduleChangeDomainManager)
     :ok
   end
 
@@ -114,6 +115,38 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramIntegrationTest do
 
     # Verify a new empty course field (index 1) was created
     assert has_element?(view, "#program-course-input-0-1")
+  end
+
+  test "creating a new change group displays it in the list", %{conn: conn} do
+    conn = log_in_test_user(conn)
+
+    {:ok, view, _html} = live(conn, ~p"/scheduling")
+
+    assert has_element?(view, "#schedule-change-groups")
+
+    # Click "+ New" to show the name input form
+    view
+    |> element("button[phx-click='schedule-change-groups:new_group']")
+    |> render_click()
+
+    assert has_element?(view, "form[phx-submit='schedule-change-groups:save_new']")
+
+    # Type a group name and save
+    view
+    |> form("form[phx-submit='schedule-change-groups:save_new']", %{"name" => "My Test Group"})
+    |> render_submit()
+
+    _ = :sys.get_state(SnowSeTools.Scheduling.ScheduleChangeDomainManager)
+    _html = render(view)
+
+    # The new group should appear in the list
+    assert has_element?(view, "#schedule-change-groups", "My Test Group")
+
+    # The new group should be selected (active)
+    state = :sys.get_state(view.pid)
+    change_groups_state = state.socket.assigns.schedule_change_groups_state
+    assert change_groups_state.active_change_group_id
+    assert change_groups_state.active_change_group["name"] == "My Test Group"
   end
 
   defp log_in_test_user(conn) do

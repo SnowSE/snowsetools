@@ -10,7 +10,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
     ScheduleOwnerMetadata
   }
 
-  alias SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder
+  alias SnowSeToolsWeb.Scheduling.{ScheduleChangeGroups, ScheduleDetailsOrder}
   import SnowSeToolsWeb.Scheduling.ScheduleViewerTermAndSearch
   import SnowSeToolsWeb.Scheduling.ScheduleViewerScheduleOwnerList
 
@@ -44,12 +44,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
     ~H"""
     <div id="scheduling-page" class="mx-auto flex h-full min-h-0 w-full max-w-[2000px] gap-4 p-4">
       <aside class="flex shrink-0 flex-col gap-3 pr-2 w-30 sm:w-80">
-        <div class="flex items-center justify-between gap-2 flex-col sm:flex-row">
-          <h1 class="text-sm font-semibold text-slate-100">Scheduling</h1>
-          <div class="text-xs text-slate-500">Selected schedule details</div>
-        </div>
-
         <.term_and_search state={@state} />
+        <ScheduleChangeGroups.render state={@schedule_change_groups_state} />
         <.schedule_owner_list
           state={@state}
           selected_schedule_order={@schedule_details_order.selected_schedule_order}
@@ -59,6 +55,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
       <ScheduleDetailsOrder.render
         state={@schedule_details_order}
         week_schedules={@week_schedules}
+        active_change_group={ScheduleChangeGroups.active_change_group(@schedule_change_groups_state)}
       />
     </div>
     """

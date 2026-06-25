@@ -1,9 +1,11 @@
 defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   use SnowSeToolsWeb, :live_view
 
+  alias SnowSeTools.Scheduling.{ScheduleChangeDomainManager, ScheduleChangePubSub}
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramEditor
   alias SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel
+  alias SnowSeToolsWeb.Scheduling.ScheduleChangeGroups
   alias SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder
   alias SnowSeToolsWeb.Scheduling.ScheduleViewer
   alias SnowSeToolsWeb.Scheduling.WeekSchedule
@@ -11,6 +13,15 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   on_mount {SnowSeToolsWeb.UserAuth, :ensure_authenticated}
 
   def mount(_params, _session, socket) do
+    socket =
+      if connected?(socket) do
+        ScheduleChangePubSub.subscribe()
+        ScheduleChangeDomainManager.list_groups(pid: self())
+        socket
+      else
+        socket
+      end
+
     {:ok,
      socket
      |> assign(:page_title, "Scheduling")
@@ -24,6 +35,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
        editor_key: :academic_program_editor,
        picker_key: :academic_program_course_picker
      )
+     |> ScheduleChangeGroups.assign_component()
      |> WeekSchedule.assign_component()
      |> assign(:mode, :viewer)
      |> assign(:modes, viewer: "Schedule Viewer", programs: "Academic Programs")}
@@ -53,6 +65,17 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
          )
      )}
   end
+
+  def handle_info({:schedule_change_groups, groups}, socket) do
+    {:noreply, ScheduleChangeGroups.sync_groups(socket, groups)}
+  end
+
+  def handle_info({:schedule_changes, _event}, socket) do
+    ScheduleChangeDomainManager.list_groups(pid: self())
+    {:noreply, socket}
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   def render(assigns) do
     ~H"""
@@ -91,6 +114,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
                 state={@schedule_viewer_state}
                 schedule_details_order={@schedule_details_order}
                 week_schedules={@week_schedules}
+                schedule_change_groups_state={@schedule_change_groups_state}
               />
             <% :programs -> %>
               <AcademicProgramsPanel.render

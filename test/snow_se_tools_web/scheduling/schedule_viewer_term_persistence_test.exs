@@ -2,7 +2,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerTermPersistenceTest do
   use SnowSeToolsWeb.ConnCase, async: false
 
   alias SnowSeTools.Data.User
-  alias SnowSeTools.Scheduling.ScheduleOwnerDomainManager
+  alias SnowSeTools.Scheduling.{ScheduleChangeDomainManager, ScheduleOwnerDomainManager}
   alias SnowSeTools.Snow.SnowCourseCacheDb
   alias SnowSeTools.Snow.SnowCourseCacheDomainManager
 
@@ -10,6 +10,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerTermPersistenceTest do
     insert_test_courses()
     start_supervised!(SnowCourseCacheDomainManager)
     start_supervised!(ScheduleOwnerDomainManager)
+    start_supervised!(ScheduleChangeDomainManager)
     :ok
   end
 

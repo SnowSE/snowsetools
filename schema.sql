@@ -205,3 +205,26 @@ CREATE TABLE academic_program_semester_courses (
 
 CREATE INDEX academic_program_semester_courses_semester_idx
 ON academic_program_semester_courses(academic_program_semester_id, position);
+
+CREATE TABLE schedule_change_groups (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        TEXT        NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  inserted_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE schedule_changes (
+  id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  group_id          UUID        NOT NULL REFERENCES schedule_change_groups(id) ON DELETE CASCADE,
+  crn               TEXT        NOT NULL,
+  term              TEXT        NOT NULL,
+  course_name       TEXT,
+  target_professor TEXT,
+  meet_info         JSONB,
+  operation         TEXT        NOT NULL DEFAULT 'update' CHECK (operation IN ('add', 'update')),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  inserted_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_schedule_changes_group_id ON schedule_changes(group_id);
+CREATE INDEX idx_schedule_changes_crn_term ON schedule_changes(crn, term);

@@ -5,6 +5,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
 
   attr :schedule_owner, :map, required: true
   attr :owner_key, :string, required: true
+  attr :active_change_group, :map, default: nil
 
   def schedule_grid(assigns) do
     ~H"""
@@ -47,45 +48,57 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
                 />
               <% end %>
 
-              <div class="flex flex-col gap-1">
-                <%= for meeting <- Map.get(@schedule_owner.meetings_by_day, day, []) do %>
-                  <div class="rounded  bg-slate-900 px-1.5 py-1  leading-tight  shadow-sm shadow-black z-10">
-                    <.hover_tooltip id={
-                        "hover-tooltip-#{:erlang.phash2({@owner_key, meeting.crn, meeting.start_minutes, meeting.end_minutes})}"
-                      }>
-                      <:label>
-                        <div class="overflow-hidden cursor-default">
-                          <div class="truncate text-slate-300">{meeting.course_name}</div>
-                          <div class="truncate text-slate-400 text-xs">
-                            {meeting.subject_code} {meeting.course_number}
-                          </div>
+              <%= for meeting <- Map.get(@schedule_owner.meetings_by_day, day, []) do %>
+                <% source = Map.get(meeting, "__source", :base) %>
+                <div
+                  class={[
+                    "absolute left-0 right-0 z-10 rounded px-1.5 py-1 leading-tight shadow-sm shadow-black",
+                    source == :added && "bg-emerald-950/60 ring-1 ring-emerald-500/50",
+                    source == :updated && "bg-amber-950/40 ring-1 ring-amber-500/50",
+                    source == :base && "bg-slate-900"
+                  ]}
+                  style={
+                    meeting_style(
+                      meeting: meeting,
+                      schedule_start_minutes: @schedule_owner.start_minutes
+                    )
+                  }
+                >
+                  <.hover_tooltip id={
+                      "hover-tooltip-#{:erlang.phash2({@owner_key, meeting.crn, meeting.start_minutes, meeting.end_minutes})}"
+                    }>
+                    <:label>
+                      <div class="overflow-hidden cursor-default">
+                        <div class="truncate text-slate-300">{meeting.course_name}</div>
+                        <div class="truncate text-slate-400 text-xs">
+                          {meeting.subject_code} {meeting.course_number}
                         </div>
-                      </:label>
-                      <:body>
-                        <div class="space-y-1.5">
-                          <div class="text-xs font-semibold text-slate-100 truncate">
-                            {meeting.course_name}
-                          </div>
-                          <div class="text-[11px] text-slate-300">
-                            {meeting.subject_code} {meeting.course_number}
-                          </div>
-                          <div class="text-[11px] text-slate-400">
-                            {format_minutes(meeting.start_minutes)} – {format_minutes(
-                              meeting.end_minutes
-                            )}
-                          </div>
-                          <div :if={meeting.room} class="text-[11px] text-slate-400">
-                            {meeting.room}
-                          </div>
-                          <div :if={meeting.instructors != []} class="text-[11px] text-slate-500">
-                            {Enum.join(meeting.instructors, ", ")}
-                          </div>
+                      </div>
+                    </:label>
+                    <:body>
+                      <div class="space-y-1.5">
+                        <div class="text-xs font-semibold text-slate-100 truncate">
+                          {meeting.course_name}
                         </div>
-                      </:body>
-                    </.hover_tooltip>
-                  </div>
-                <% end %>
-              </div>
+                        <div class="text-[11px] text-slate-300">
+                          {meeting.subject_code} {meeting.course_number}
+                        </div>
+                        <div class="text-[11px] text-slate-400">
+                          {format_minutes(meeting.start_minutes)} – {format_minutes(
+                            meeting.end_minutes
+                          )}
+                        </div>
+                        <div :if={meeting.room} class="text-[11px] text-slate-400">
+                          {meeting.room}
+                        </div>
+                        <div :if={meeting.instructors != []} class="text-[11px] text-slate-500">
+                          {Enum.join(meeting.instructors, ", ")}
+                        </div>
+                      </div>
+                    </:body>
+                  </.hover_tooltip>
+                </div>
+              <% end %>
             </div>
           </div>
         <% end %>
@@ -120,7 +133,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
   end
 
   defp time_labels(start_minutes: start_minutes, end_minutes: end_minutes) do
-    start_minutes
+    (start_minutes + 30)
     |> Stream.iterate(&(&1 + 60))
     |> Enum.take_while(&(&1 <= end_minutes))
     |> Enum.map(fn minutes ->
@@ -136,6 +149,13 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
     |> Stream.iterate(&(&1 + 30))
     |> Enum.take_while(&(&1 <= end_minutes))
     |> Enum.map(&(&1 - start_minutes))
+  end
+
+  defp meeting_style(meeting: meeting, schedule_start_minutes: schedule_start_minutes) do
+    top = meeting.start_minutes - schedule_start_minutes
+    height = max(meeting.end_minutes - meeting.start_minutes, 24)
+
+    "top: #{top}px; height: #{height}px"
   end
 
   defp format_minutes(minutes) do
