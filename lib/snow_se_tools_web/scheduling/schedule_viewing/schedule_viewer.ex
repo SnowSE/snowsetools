@@ -61,6 +61,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
         <ScheduleChangeGroups.render
           state={@schedule_change_groups_state}
           schedule_owners={@state.schedule_owners_metadata_by_term[@state.selected_term_code] || []}
+          week_schedules={@week_schedules}
+          active_change_group={
+            ScheduleChangeGroups.active_change_group(@schedule_change_groups_state)
+          }
         />
       </aside>
     </div>
