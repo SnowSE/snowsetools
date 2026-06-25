@@ -1,16 +1,15 @@
 defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
   use SnowSeToolsWeb, :html
+  require Logger
 
   alias Phoenix.LiveView
 
   alias SnowSeTools.Scheduling.{
     ScheduleOwnerDomainManager,
     ScheduleOwnerPubSub,
-    ScheduleOwnerMetadata,
-    ScheduleOwnerSchedule
+    ScheduleOwnerMetadata
   }
 
-  alias SnowSeToolsWeb.Scheduling.WeekSchedule
   import SnowSeToolsWeb.Scheduling.ScheduleViewerTermAndSearch
   import SnowSeToolsWeb.Scheduling.ScheduleViewerScheduleOwnerList
 
@@ -126,7 +125,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
       case {socket.assigns[@key].selected_term_code, terms} do
         {nil, [first_term | _]} -> first_term["term_code"]
         {selected, _} -> selected
-        _ -> nil
       end
 
     term_metadata_loaded =
@@ -165,46 +163,167 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
   end
 
   def hooked_info(
+        {:schedule_owners, {:terms_changed, terms}},
+        socket
+      ) do
+    selected_term_code =
+      cond do
+        Enum.any?(terms, &(&1["term_code"] == socket.assigns[@key].selected_term_code)) ->
+          socket.assigns[@key].selected_term_code
+
+        terms == [] ->
+          nil
+
+        true ->
+          terms |> List.first() |> Map.get("term_code")
+      end
+
+    if is_binary(selected_term_code) and
+         !Map.has_key?(socket.assigns[@key].schedule_owners_metadata_by_term, selected_term_code) do
+      ScheduleOwnerDomainManager.request_schedule_owners_metadata(
+        pid: self(),
+        term_code: selected_term_code
+      )
+    end
+
+    {:halt,
+     assign(socket, @key, %{
+       socket.assigns[@key]
+       | terms: terms,
+         selected_term_code: selected_term_code
+     })}
+  end
+
+  def hooked_info(
+        {:schedule_owners,
+         {:term_schedule_owners_replaced,
+          %{term_code: term_code, schedule_owners: schedule_owners}}},
+        socket
+      ) do
+    replacement_keys = MapSet.new(schedule_owners, & &1.key)
+
+    selected_schedule_keys =
+      if socket.assigns[@key].selected_term_code == term_code do
+        MapSet.intersection(socket.assigns[@key].selected_schedule_keys, replacement_keys)
+      else
+        socket.assigns[@key].selected_schedule_keys
+      end
+
+    {:halt,
+     assign(socket, @key, %{
+       socket.assigns[@key]
+       | selected_schedule_keys: selected_schedule_keys,
+         schedule_owners_metadata_by_term:
+           Map.put(
+             socket.assigns[@key].schedule_owners_metadata_by_term,
+             term_code,
+             schedule_owners
+           )
+     })}
+  end
+
+  def hooked_info(
+        {:schedule_owners,
+         {:schedule_owner_metadata_upserted,
+          %{term_code: term_code, schedule_owner: schedule_owner}}},
+        socket
+      ) do
+    {:halt,
+     assign(socket, @key, %{
+       socket.assigns[@key]
+       | schedule_owners_metadata_by_term:
+           Map.update(
+             socket.assigns[@key].schedule_owners_metadata_by_term,
+             term_code,
+             [schedule_owner],
+             fn schedule_owners ->
+               schedule_owners
+               |> Enum.reject(&(&1.key == schedule_owner.key))
+               |> Kernel.++([schedule_owner])
+             end
+           )
+     })}
+  end
+
+  def hooked_info(
+        {:schedule_owners,
+         {:schedule_owner_metadata_deleted, %{term_code: term_code, owner_key: owner_key}}},
+        socket
+      ) do
+    selected_schedule_keys =
+      if socket.assigns[@key].selected_term_code == term_code do
+        MapSet.delete(socket.assigns[@key].selected_schedule_keys, owner_key)
+      else
+        socket.assigns[@key].selected_schedule_keys
+      end
+
+    {:halt,
+     assign(socket, @key, %{
+       socket.assigns[@key]
+       | selected_schedule_keys: selected_schedule_keys,
+         schedule_owners_metadata_by_term:
+           Map.update(
+             socket.assigns[@key].schedule_owners_metadata_by_term,
+             term_code,
+             [],
+             &Enum.reject(&1, fn schedule_owner -> schedule_owner.key == owner_key end)
+           )
+     })}
+  end
+
+  def hooked_info({:schedule_owners, {:term_deleted, %{term_code: term_code}}}, socket) do
+    terms = Enum.reject(socket.assigns[@key].terms, &(&1["term_code"] == term_code))
+
+    selected_term_code =
+      if socket.assigns[@key].selected_term_code == term_code do
+        case terms do
+          [first_term | _] -> first_term["term_code"]
+          [] -> nil
+        end
+      else
+        socket.assigns[@key].selected_term_code
+      end
+
+    selected_schedule_keys =
+      if socket.assigns[@key].selected_term_code == term_code do
+        MapSet.new()
+      else
+        socket.assigns[@key].selected_schedule_keys
+      end
+
+    if is_binary(selected_term_code) and
+         !Map.has_key?(socket.assigns[@key].schedule_owners_metadata_by_term, selected_term_code) do
+      ScheduleOwnerDomainManager.request_schedule_owners_metadata(
+        pid: self(),
+        term_code: selected_term_code
+      )
+    end
+
+    {:halt,
+     assign(socket, @key, %{
+       socket.assigns[@key]
+       | terms: terms,
+         selected_term_code: selected_term_code,
+         selected_schedule_keys: selected_schedule_keys,
+         schedule_owners_metadata_by_term:
+           Map.delete(socket.assigns[@key].schedule_owners_metadata_by_term, term_code)
+     })}
+  end
+
+  def hooked_info(
+        {:schedule_owners, {:schedule_owner_detail_changed, _detail_changed}},
+        socket
+      ) do
+    {:cont, socket}
+  end
+
+  def hooked_info(
         {:schedule_owners, unexpected_message},
         socket
       ) do
-    Logger.warn("Received unexpected schedule_owners message: #{inspect(unexpected_message)}")
+    Logger.warning("Received unexpected schedule_owners message: #{inspect(unexpected_message)}")
     {:halt, socket}
   end
-
-  # def hooked_info(
-  #       {:schedule_owners,
-  #        {:term_schedule_owners_replaced,
-  #         %{term_code: term_code, schedule_owners: [%ScheduleOwner{} | _] = schedule_owners}}},
-  #       socket
-  #     ) do
-  #   state = state(socket)
-
-  #   if state.selected_term_code == term_code do
-  #     Enum.each(state.selected_schedule_keys, fn owner_key ->
-  #       ScheduleOwnerDomainManager.request_schedule_owner_detail(
-  #         pid: self(),
-  #         term_code: term_code,
-  #         owner_key: owner_key
-  #       )
-  #     end)
-  #   end
-
-  #   {:halt,
-  #    apply_term_schedule_owners(socket, term_code: term_code, schedule_owners: schedule_owners)}
-  # end
-
-  # def hooked_info(
-  #       {:schedule_owners,
-  #        {:term_schedule_owners_replaced, %{term_code: term_code, schedule_owners: []}}},
-  #       socket
-  #     ) do
-  #   {:halt, apply_term_schedule_owners(socket, term_code: term_code, schedule_owners: [])}
-  # end
-
-  # def hooked_info({:schedule_owners, {:term_deleted, %{term_code: term_code}}}, socket) do
-  #   {:halt, apply_term_deleted(socket, term_code: term_code)}
-  # end
 
   def hooked_info(_message, socket), do: {:cont, socket}
 

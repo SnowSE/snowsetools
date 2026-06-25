@@ -16,7 +16,15 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerSchedule do
           owner_key: String.t(),
           type: :professor | :room | :academic_program_semester,
           name: String.t(),
-          courses: [map()],
+          type_label: String.t(),
+          program_name: String.t() | nil,
+          semester_name: String.t() | nil,
+          credit_count: integer(),
+          start_minutes: integer(),
+          end_minutes: integer(),
+          meetings_by_day: %{String.t() => [meeting()]},
+          online_courses: [map()],
+          courses: [map()]
         }
 
   @days ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
@@ -26,8 +34,16 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerSchedule do
   defstruct [
     :owner_key,
     :type,
+    :type_label,
     :name,
-    :courses,
+    :program_name,
+    :semester_name,
+    :credit_count,
+    :start_minutes,
+    :end_minutes,
+    :meetings_by_day,
+    :online_courses,
+    :courses
   ]
 
   def new(type, name, courses) do
@@ -46,8 +62,14 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerSchedule do
     %__MODULE__{
       owner_key: owner_key(type, name),
       type: type,
+      type_label: type_label(type),
       name: name,
-      courses: Enum.uniq_by(courses, & &1["crn"]),
+      credit_count: credit_count(courses),
+      start_minutes: start_minutes,
+      end_minutes: end_minutes,
+      meetings_by_day: meetings_by_day,
+      online_courses: courses -- regular_courses,
+      courses: Enum.uniq_by(courses, & &1["crn"])
     }
   end
 
@@ -61,6 +83,8 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerSchedule do
     |> then(fn owner ->
       Map.merge(owner, %{
         owner_key: owner_key(:academic_program_semester, "#{program["id"]}:#{semester["id"]}"),
+        program_name: program["name"],
+        semester_name: semester_name
       })
     end)
   end
@@ -74,6 +98,19 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerSchedule do
     professor_schedules(courses_with_preparsed) ++
       academic_program_semester_schedules(courses_with_preparsed, academic_programs) ++
       room_schedules(courses_with_preparsed)
+  end
+
+  def room_name(meeting: meeting) do
+    building_code = meeting["building_code"]
+    building = meeting["building"]
+    room = meeting["room"]
+
+    cond do
+      blank?(room) -> nil
+      !blank?(building) -> "#{building} #{room}"
+      !blank?(building_code) -> "#{building_code} #{room}"
+      true -> room
+    end
   end
 
   def professor_schedules(courses) do
@@ -204,19 +241,6 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerSchedule do
   defp floor_to_hour(minutes), do: div(minutes, 60) * 60
   defp ceil_to_hour(minutes), do: div(minutes + 59, 60) * 60
 
-  defp room_name(meeting) do
-    building_code = meeting["building_code"]
-    building = meeting["building"]
-    room = meeting["room"]
-
-    cond do
-      blank?(room) -> nil
-      !blank?(building_code) -> "#{building_code} #{room}"
-      !blank?(building) -> "#{building} #{room}"
-      true -> room
-    end
-  end
-
   defp credit_count(courses) do
     courses
     |> Enum.uniq_by(& &1["crn"])
@@ -230,27 +254,12 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerSchedule do
   defp type_label(:academic_program_semester), do: "Program Semester"
   defp type_label(:room), do: "Room"
 
-  defp dom_id(type, name) do
-    "#{type}-#{name}"
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
-
   defp preparse_meeting(meeting) do
     meeting
-    |> Map.put("__room_name", room_name(meeting))
+    |> Map.put("__room_name", room_name(meeting: meeting))
     |> Map.put(:start_minutes, parse_minutes(meeting["start_time"]))
     |> Map.put(:end_minutes, parse_minutes(meeting["end_time"]))
   end
-
-  defp query_matches_all?(value, words) do
-    normalized = normalize(value)
-    Enum.all?(words, &String.contains?(normalized, &1))
-  end
-
-  defp normalize(value) when is_binary(value), do: value |> String.downcase() |> String.trim()
-  defp normalize(_value), do: ""
 
   defp normalize_course_code(value) when is_binary(value),
     do: value |> String.trim() |> String.upcase()

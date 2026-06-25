@@ -23,6 +23,38 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerPubSub do
     )
   end
 
+  def broadcast_schedule_owner_metadata_upserted(term_code, schedule_owner)
+      when is_binary(term_code) do
+    Phoenix.PubSub.broadcast(
+      SnowSeTools.PubSub,
+      @topic,
+      {:schedule_owners,
+       {:schedule_owner_metadata_upserted,
+        %{term_code: term_code, schedule_owner: schedule_owner}}}
+    )
+  end
+
+  def broadcast_schedule_owner_metadata_deleted(term_code, owner_key)
+      when is_binary(term_code) and is_binary(owner_key) do
+    Phoenix.PubSub.broadcast(
+      SnowSeTools.PubSub,
+      @topic,
+      {:schedule_owners,
+       {:schedule_owner_metadata_deleted, %{term_code: term_code, owner_key: owner_key}}}
+    )
+  end
+
+  def broadcast_schedule_owner_detail_changed(term_code, owner_key, detail)
+      when is_binary(term_code) and is_binary(owner_key) do
+    Phoenix.PubSub.broadcast(
+      SnowSeTools.PubSub,
+      @topic,
+      {:schedule_owners,
+       {:schedule_owner_detail_changed,
+        %{term_code: term_code, owner_key: owner_key, detail: detail}}}
+    )
+  end
+
   def broadcast_term_deleted(term_code) when is_binary(term_code) do
     Phoenix.PubSub.broadcast(
       SnowSeTools.PubSub,

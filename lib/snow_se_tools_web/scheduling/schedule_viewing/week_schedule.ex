@@ -2,14 +2,13 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
   use SnowSeToolsWeb, :html
 
   alias Phoenix.LiveView
-  alias SnowSeTools.Scheduling.{ScheduleOwner, ScheduleOwnerDomainManager, ScheduleOwnerSchedule}
+  alias SnowSeTools.Scheduling.ScheduleOwnerSchedule
 
   defstruct [
     :selected_term_code,
     :schedule_owner,
     :loading?
   ]
-
 
   def assign_component(socket) do
     socket
@@ -195,6 +194,24 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
          state
          | schedule_owner: detail,
            loading?: is_nil(detail)
+       })}
+    else
+      {:cont, socket}
+    end
+  end
+
+  def hooked_info(
+        {:schedule_owners, {:schedule_owner_detail_changed, %{owner_key: key, detail: detail}}},
+        socket
+      ) do
+    state = socket.assigns[:"week_schedule_#{key}"]
+
+    if state != nil and state.owner_key == key do
+      {:cont,
+       assign(socket, :"week_schedule_#{key}", %{
+         state
+         | schedule_owner: detail,
+           loading?: false
        })}
     else
       {:cont, socket}

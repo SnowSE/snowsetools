@@ -5,7 +5,6 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   alias SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel
   alias SnowSeToolsWeb.Scheduling.ScheduleViewer
-  alias SnowSeToolsWeb.Scheduling.ScheduleViewing.WeekSchedule
 
   on_mount {SnowSeToolsWeb.UserAuth, :ensure_authenticated}
 
@@ -22,7 +21,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
        editor_key: :academic_program_editor,
        picker_key: :academic_program_course_picker
      )
-    #  |> WeekSchedule.assign_component()
+     #  |> WeekSchedule.assign_component()
      |> assign(:mode, :viewer)
      |> assign(:modes, viewer: "Schedule Viewer", programs: "Academic Programs")}
   end

@@ -1,7 +1,6 @@
 defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerScheduleOwnerList do
   use SnowSeToolsWeb, :html
 
-  alias SnowSeTools.Scheduling.ScheduleOwnerSchedule
   alias SnowSeTools.Scheduling.ScheduleOwnerMetadata
 
   attr :state, :any, required: true
@@ -78,19 +77,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerScheduleOwnerList do
     normalized = normalize(search_text)
     Enum.all?(query_words, &String.contains?(normalized, &1))
   end
-
-  defp keep_selected_term(selected_term_code, terms) do
-    term_codes = MapSet.new(terms, & &1["term_code"])
-
-    if MapSet.member?(term_codes, selected_term_code) do
-      selected_term_code
-    else
-      default_selected_term_code(terms)
-    end
-  end
-
-  defp default_selected_term_code([]), do: nil
-  defp default_selected_term_code([term | _]), do: term["term_code"]
 
   defp normalize(value) when is_binary(value), do: value |> String.downcase() |> String.trim()
   defp normalize(_value), do: ""
