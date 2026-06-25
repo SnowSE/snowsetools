@@ -86,7 +86,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
       ]}
     >
-      <div class="rounded-lg border border-slate-800/80 bg-slate-950/55 p-3 shadow-sm shadow-slate-950/20">
+      <div class="rounded-lg border border-slate-800/80 bg-slate-950/55 p-3 shadow-sm shadow-slate-950/20 h-full">
         <%= if @state.loading? or is_nil(@state.week_schedule) do %>
           <div class="flex h-40 items-center justify-center text-sm text-slate-500">
             <.icon name="hero-arrow-path" class="size-4 animate-spin" />

@@ -104,7 +104,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
         </div>
       </:title_row>
       <:body>
-        <div class="divide-y divide-slate-800/70 pt-1">
+        <div class="divide-y divide-slate-800/70 pt-1 max-h-[250px] overflow-auto">
           <%= for course <- @schedule_owner.online_courses do %>
             <div class="grid grid-cols-[5.5rem_1fr] gap-2 py-1.5 text-xs">
               <div class="font-medium text-slate-300">
