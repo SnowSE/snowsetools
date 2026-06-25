@@ -3,7 +3,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApply do
   # add pattern matching with structs on args to enforce structure
   def apply_changes(schedule_owner, changes) when is_list(changes) do
     courses = Map.get(schedule_owner, :courses, [])
-    applied = apply_to_courses(courses, changes)
+    applied = apply_to_courses(courses, changes, schedule_owner.type)
 
     rebuilt =
       ScheduleUtils.build_week_schedule(
@@ -27,8 +27,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApply do
   end
 
   # add pattern matching with structs on args to enforce structure
-  defp apply_to_courses(courses, changes) do
+  defp apply_to_courses(courses, changes, owner_type) do
     changes_by_crn = Enum.group_by(changes, & &1["crn"])
+    existing_crns = MapSet.new(courses, & &1["crn"])
 
     updated_courses =
       Enum.flat_map(courses, fn course ->
@@ -52,7 +53,19 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApply do
       |> Enum.filter(&(&1["operation"] == "add"))
       |> Enum.map(&change_to_course/1)
 
-    updated_courses ++ new_courses
+    moved_courses = moved_courses_for_owner(changes, existing_crns, owner_type)
+
+    updated_courses ++ new_courses ++ moved_courses
+  end
+
+  defp moved_courses_for_owner(_changes, _existing_crns, :academic_program_semester), do: []
+
+  defp moved_courses_for_owner(changes, existing_crns, _owner_type) do
+    changes
+    |> Enum.filter(&(&1["operation"] == "update"))
+    |> Enum.reject(&(&1["course_name"] == "__DELETED__"))
+    |> Enum.reject(&MapSet.member?(existing_crns, &1["crn"]))
+    |> Enum.map(&change_to_course/1)
   end
 
   # add pattern matching with structs on args to enforce structure

@@ -2,7 +2,13 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
   use SnowSeToolsWeb.ConnCase, async: false
 
   alias SnowSeTools.Data.User
-  alias SnowSeTools.Scheduling.{ScheduleChangeDomainManager, ScheduleOwnerDomainManager}
+
+  alias SnowSeTools.Scheduling.{
+    ScheduleChangeDb,
+    ScheduleChangeDomainManager,
+    ScheduleOwnerDomainManager
+  }
+
   alias SnowSeTools.Snow.{SnowCourseCacheDb, SnowCourseCacheDomainManager}
 
   @term_code "202777"
@@ -15,6 +21,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
     start_supervised!(SnowCourseCacheDomainManager)
     start_supervised!(ScheduleOwnerDomainManager)
     start_supervised!(ScheduleChangeDomainManager)
+    on_exit(&delete_realtime_test_groups/0)
     :ok
   end
 
@@ -55,6 +62,52 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
              view,
              "[data-schedule-key='room:#{@target_room}'] [data-week-schedule-course]",
              @course_name
+           )
+  end
+
+  test "dragging a course to a new time in a new building removes the old source-room card",
+       %{conn: conn} do
+    conn = log_in_test_user(conn)
+
+    {:ok, view, _html} = live(conn, ~p"/scheduling?mode=viewer&term=#{@term_code}")
+
+    wait_for_schedule_metadata(view)
+    create_change_group(view)
+    select_schedule_owner(view, "room:#{@source_room}")
+    select_schedule_owner(view, "room:#{@target_room}")
+    wait_for_week_schedules(view)
+
+    assert has_element?(
+             view,
+             "[data-schedule-key='room:#{@source_room}'] [data-week-schedule-course]",
+             @course_name
+           )
+
+    assert has_element?(
+             view,
+             "[data-schedule-key='room:#{@source_room}'] [data-week-schedule-course]",
+             "9:00 AM"
+           )
+
+    render_hook(view, "week-schedule-grid:move_course", move_payload())
+    wait_for_change_group_refresh(view)
+
+    refute has_element?(
+             view,
+             "[data-schedule-key='room:#{@source_room}'] [data-week-schedule-course]",
+             @course_name
+           )
+
+    assert has_element?(
+             view,
+             "[data-schedule-key='room:#{@target_room}'] [data-week-schedule-course]",
+             @course_name
+           )
+
+    assert has_element?(
+             view,
+             "[data-schedule-key='room:#{@target_room}'] [data-week-schedule-course]",
+             "10:30 AM"
            )
   end
 
@@ -176,5 +229,17 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
         }
       ]
     )
+  end
+
+  defp delete_realtime_test_groups do
+    case ScheduleChangeDb.list_groups() do
+      {:ok, groups} ->
+        groups
+        |> Enum.filter(&(&1["name"] == "Realtime Test"))
+        |> Enum.each(fn group -> ScheduleChangeDb.delete_group(group["id"]) end)
+
+      {:error, _reason} ->
+        :ok
+    end
   end
 end
