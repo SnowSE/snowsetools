@@ -6,7 +6,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
 
   defstruct [
     :selected_term_code,
-    :schedule_owner,
+    :schedule_owner_key,
+    :course_list,
     :loading?
   ]
 
@@ -30,7 +31,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
   #   state = socket.assigns[:"week_schedule_#{id}"]
 
   #   if state.loading? and is_binary(state.selected_term_code) do
-  #     ScheduleOwnerDomainManager.request_schedule_owner_detail(
+  #     ScheduleOwnerDomainManager.request_schedule_owner_course_list(
   #       pid: self(),
   #       term_code: state.selected_term_code,
   #       owner_key: owner_key

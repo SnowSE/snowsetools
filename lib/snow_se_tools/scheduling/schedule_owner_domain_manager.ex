@@ -22,9 +22,9 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
     GenServer.cast(__MODULE__, {:request_schedule_owners_metadata, pid, term_code})
   end
 
-  def request_schedule_owner_detail(pid: pid, term_code: term_code, owner_key: owner_key)
+  def request_schedule_owner_course_list(pid: pid, term_code: term_code, owner_key: owner_key)
       when is_pid(pid) and is_binary(term_code) and is_binary(owner_key) do
-    GenServer.cast(__MODULE__, {:request_schedule_owner_detail, pid, term_code, owner_key})
+    GenServer.cast(__MODULE__, {:request_schedule_owner_course_list, pid, term_code, owner_key})
   end
 
   def init(:ok) do
@@ -71,7 +71,7 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
      )}
   end
 
-  def handle_cast({:request_schedule_owner_detail, pid, term_code, owner_key}, state) do
+  def handle_cast({:request_schedule_owner_course_list, pid, term_code, owner_key}, state) do
     {schedules_by_owner, state} =
       case Map.fetch(state.schedules_by_owner_by_term, term_code) do
         {:ok, schedules_by_owner} ->
