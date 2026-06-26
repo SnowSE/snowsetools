@@ -1,14 +1,14 @@
 defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApply do
   alias SnowSeTools.Scheduling.ScheduleUtils
-  # add pattern matching with structs on args to enforce structure
-  def apply_changes(schedule_owner, changes) when is_list(changes) do
+
+  def apply_changes(%{type: type, name: name} = schedule_owner, changes) when is_list(changes) do
     courses = Map.get(schedule_owner, :courses, [])
-    applied = apply_to_courses(courses, changes, schedule_owner.type)
+    applied = apply_to_courses(courses, changes, type)
 
     rebuilt =
       ScheduleUtils.build_week_schedule(
-        type: schedule_owner.type,
-        name: schedule_owner.name,
+        type: type,
+        name: name,
         courses: applied
       )
       |> Map.merge(%{
@@ -26,8 +26,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApply do
     apply_changes(schedule_owner, changes)
   end
 
-  # add pattern matching with structs on args to enforce structure
-  defp apply_to_courses(courses, changes, owner_type) do
+  defp apply_to_courses(courses, changes, owner_type)
+       when is_list(courses) and is_list(changes) do
     changes_by_crn = Enum.group_by(changes, & &1["crn"])
     existing_crns = MapSet.new(courses, & &1["crn"])
 
@@ -68,10 +68,12 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApply do
     |> Enum.map(&change_to_course/1)
   end
 
-  # add pattern matching with structs on args to enforce structure
-  defp apply_change_to_course(course, change) do
+  defp apply_change_to_course(
+         %{"crn" => _crn} = course,
+         %{"crn" => crn, "operation" => "update"} = change
+       ) do
     course
-    |> Map.put("crn", change["crn"])
+    |> Map.put("crn", crn)
     |> Map.put("name", change["course_name"] || course["name"])
     |> Map.put(
       "instructors",
@@ -84,10 +86,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApply do
     |> Map.put("__source", :updated)
   end
 
-  # add pattern matching with structs on args to enforce structure
-  defp change_to_course(change) do
+  defp change_to_course(%{"crn" => crn, "operation" => operation} = change)
+       when operation in ["add", "update"] do
     %{
-      "crn" => change["crn"],
+      "crn" => crn,
       "name" => change["course_name"] || "",
       "subject_code" => "",
       "course_number" => "",
