@@ -41,7 +41,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
       <div class="flex min-h-0 flex-col gap-2 overflow-y-auto pr-1">
         <%= for change <- active_changes(@state) do %>
           <% original_course = original_course_for_change(change, @week_schedules) %>
-          <% conflicts = conflicts_for_change(change, @week_schedules) %>
+          <% conflicts = Map.get(change, "conflicts", []) %>
           <% changed_meeting = List.first(Map.get(change, "meet_info", [])) %>
           <% original_meeting = first_matching_meeting(original_course, changed_meeting) %>
           <% affected_semesters =
@@ -301,21 +301,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
     |> Enum.find(&(&1["crn"] == change["crn"]))
   end
 
-  defp conflicts_for_change(%{"course_name" => "__DELETED__"}, _week_schedules), do: []
-
-  defp conflicts_for_change(change, week_schedules) do
-    changed_meeting = List.first(Map.get(change, "meet_info", []))
-
-    if is_nil(changed_meeting) do
-      []
-    else
-      courses = all_courses(week_schedules)
-
-      professor_conflicts(change, changed_meeting, courses) ++
-        room_conflicts(change, changed_meeting, courses)
-    end
-  end
-
   defp affected_semesters_for_change(change, original_course, academic_programs) do
     {subject_code, course_number} = change_course_identity(change, original_course)
 
@@ -404,53 +389,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
   defp course_value(nil, _key), do: nil
   defp course_value(course, key), do: Map.get(course, key)
 
-  defp professor_conflicts(%{"target_professor" => professor} = change, changed_meeting, courses)
-       when is_binary(professor) and professor != "" do
-    courses
-    |> Enum.reject(&(&1["crn"] == change["crn"]))
-    |> Enum.filter(&course_has_professor?(&1, professor))
-    |> Enum.flat_map(fn course ->
-      course
-      |> Map.get("meet_info", [])
-      |> Enum.filter(&meetings_overlap?(changed_meeting, &1))
-      |> Enum.map(fn meeting ->
-        %{
-          title: "Professor conflict",
-          description:
-            "#{professor} already teaches #{course_label(course)} #{format_time_range(meeting)}"
-        }
-      end)
-    end)
-  end
-
-  defp professor_conflicts(_change, _changed_meeting, _courses), do: []
-
-  defp room_conflicts(change, changed_meeting, courses) do
-    changed_room = ScheduleUtils.room_name(meeting: changed_meeting)
-
-    if blank?(changed_room) do
-      []
-    else
-      courses
-      |> Enum.reject(&(&1["crn"] == change["crn"]))
-      |> Enum.flat_map(fn course ->
-        course
-        |> Map.get("meet_info", [])
-        |> Enum.filter(fn meeting ->
-          ScheduleUtils.room_name(meeting: meeting) == changed_room and
-            meetings_overlap?(changed_meeting, meeting)
-        end)
-        |> Enum.map(fn meeting ->
-          %{
-            title: "Room conflict",
-            description:
-              "#{changed_room} is already used by #{course_label(course)} #{format_time_range(meeting)}"
-          }
-        end)
-      end)
-    end
-  end
-
   defp all_courses(week_schedules) do
     week_schedules
     |> Map.values()
@@ -459,18 +397,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
       _other -> []
     end)
     |> Enum.uniq_by(& &1["crn"])
-  end
-
-  defp meetings_overlap?(%{} = left, %{} = right) do
-    shares_day?(left["days"] || [], right["days"] || []) and
-      time_minutes(left["start_time"]) < time_minutes(right["end_time"]) and
-      time_minutes(right["start_time"]) < time_minutes(left["end_time"])
-  end
-
-  defp meetings_overlap?(_left, _right), do: false
-
-  defp shares_day?(left_days, right_days) do
-    !MapSet.disjoint?(MapSet.new(left_days), MapSet.new(right_days))
   end
 
   defp first_matching_meeting(nil, _changed_meeting), do: nil
@@ -505,20 +431,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
       name when is_binary(name) -> name
       _other -> nil
     end
-  end
-
-  defp course_has_professor?(course, professor) do
-    Enum.any?(Map.get(course, "instructors", []), fn
-      %{"name" => ^professor} -> true
-      ^professor -> true
-      _other -> false
-    end)
-  end
-
-  defp course_label(course) do
-    [course["subject_code"], course["course_number"], course["name"]]
-    |> Enum.reject(&blank?/1)
-    |> Enum.join(" ")
   end
 
   defp format_days(days) do
@@ -558,23 +470,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
   defp related_schedule_button_class(:academic_program_semester) do
     "border-amber-400/25 bg-amber-500/10 text-amber-100 hover:border-amber-300/45 hover:bg-amber-500/20"
   end
-
-  defp time_minutes(time) when is_binary(time) do
-    case String.split(time, ":") do
-      [hour, minute | _] ->
-        with {h, ""} <- Integer.parse(hour),
-             {m, ""} <- Integer.parse(minute) do
-          h * 60 + m
-        else
-          _other -> 0
-        end
-
-      _other ->
-        0
-    end
-  end
-
-  defp time_minutes(_time), do: 0
 
   defp room_label(change) do
     case List.first(Map.get(change, "meet_info", [])) do

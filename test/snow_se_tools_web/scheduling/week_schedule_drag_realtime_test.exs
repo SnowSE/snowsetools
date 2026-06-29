@@ -221,7 +221,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
     refute has_element?(view, "#schedule-change-groups", @course_name)
   end
 
-  test "change card shows only changed fields and describes room conflicts",
+  test "change card shows only changed fields and describes room conflicts without selecting the target room",
        %{conn: conn, term_code: term_code} do
     conn = log_in_test_user(conn)
 
@@ -230,7 +230,6 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
     wait_for_schedule_metadata(view)
     create_change_group(view)
     select_schedule_owner(view, "room:#{@source_room}")
-    select_schedule_owner(view, "room:#{@target_room}")
     wait_for_week_schedules(view)
 
     render_hook(view, "week-schedule-grid:move_course", move_payload(term_code))

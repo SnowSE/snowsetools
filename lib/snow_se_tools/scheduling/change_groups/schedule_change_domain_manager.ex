@@ -2,7 +2,12 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDomainManager do
   use GenServer
   require Logger
 
-  alias SnowSeTools.Scheduling.{ScheduleChangeDb, ScheduleChangePubSub}
+  alias SnowSeTools.Scheduling.{
+    ScheduleChangeDb,
+    ScheduleChangePubSub,
+    ScheduleConflictDetector,
+    ScheduleOwnerDomainManager
+  }
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
@@ -107,13 +112,14 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDomainManager do
   def handle_cast({:add_or_update_change, group_id, change_attrs}, state) do
     case ScheduleChangeDb.add_or_update_change(group_id, change_attrs) do
       {:ok, change} ->
-        ScheduleChangePubSub.broadcast_change_updated(group_id, change)
-
         changes = Map.get(state.changes_by_group, group_id, [])
         updated_changes = upsert_change(changes, change)
+        updated_changes_by_group = Map.put(state.changes_by_group, group_id, updated_changes)
+        enriched_change = enrich_change(change: change, changes: updated_changes)
 
-        {:noreply,
-         %{state | changes_by_group: Map.put(state.changes_by_group, group_id, updated_changes)}}
+        ScheduleChangePubSub.broadcast_change_updated(group_id, enriched_change)
+
+        {:noreply, %{state | changes_by_group: updated_changes_by_group}}
 
       {:error, reason} ->
         Logger.error("Failed to add/update schedule change: #{inspect(reason)}")
@@ -199,8 +205,61 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDomainManager do
   end
 
   defp groups_with_changes(state) do
+    enriched_changes_by_group =
+      enrich_changes_by_group(changes_by_group: state.changes_by_group)
+
     Enum.map(state.groups, fn group ->
-      Map.put(group, "changes", Map.get(state.changes_by_group, group["id"], []))
+      Map.put(group, "changes", Map.get(enriched_changes_by_group, group["id"], []))
     end)
+  end
+
+  defp enrich_change(change: change, changes: changes) do
+    changes
+    |> conflicts_by_change_id_for_changes()
+    |> Map.get(change["id"], [])
+    |> then(&Map.put(change, "conflicts", &1))
+  end
+
+  defp enrich_changes_by_group(changes_by_group: changes_by_group) do
+    Map.new(changes_by_group, fn {group_id, changes} ->
+      conflicts_by_change_id = conflicts_by_change_id_for_changes(changes)
+
+      enriched_changes =
+        Enum.map(changes, fn change ->
+          Map.put(change, "conflicts", Map.get(conflicts_by_change_id, change["id"], []))
+        end)
+
+      {group_id, enriched_changes}
+    end)
+  end
+
+  defp conflicts_by_change_id_for_changes(changes) do
+    changes
+    |> Enum.group_by(& &1["term"])
+    |> Enum.reduce(%{}, fn {term_code, term_changes}, acc ->
+      case owner_course_lists_for_term(term_code: term_code) do
+        {:ok, owner_course_lists} ->
+          result =
+            ScheduleConflictDetector.detect_term_conflicts(
+              owner_course_lists: owner_course_lists,
+              active_changes: term_changes
+            )
+
+          Map.merge(acc, result.conflicts_by_change_id)
+
+        {:error, reason} ->
+          Logger.error(
+            "Failed to load schedule owner course lists for conflict detection term=#{term_code}: #{inspect(reason)}"
+          )
+
+          acc
+      end
+    end)
+  end
+
+  defp owner_course_lists_for_term(term_code: term_code) do
+    ScheduleOwnerDomainManager.get_term_owner_course_lists(term_code: term_code)
+  catch
+    :exit, reason -> {:error, reason}
   end
 end

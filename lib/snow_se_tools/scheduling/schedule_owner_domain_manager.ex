@@ -28,6 +28,10 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
     GenServer.cast(__MODULE__, {:request_schedule_owner_course_list, pid, term_code, owner_key})
   end
 
+  def get_term_owner_course_lists(term_code: term_code) when is_binary(term_code) do
+    GenServer.call(__MODULE__, {:get_term_owner_course_lists, term_code})
+  end
+
   def init(:ok) do
     academic_programs = load_academic_programs()
 
@@ -74,20 +78,7 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
 
   def handle_cast({:request_schedule_owner_course_list, pid, term_code, owner_key}, state) do
     {course_lists_by_owner, state} =
-      case Map.fetch(state.course_lists_by_owner_by_term, term_code) do
-        {:ok, course_lists_by_owner} ->
-          {course_lists_by_owner, state}
-
-        :error ->
-          course_lists_by_owner = build_course_lists_by_owner(term_code: term_code, state: state)
-
-          {course_lists_by_owner,
-           Map.put(
-             state,
-             :course_lists_by_owner_by_term,
-             Map.put(state.course_lists_by_owner_by_term, term_code, course_lists_by_owner)
-           )}
-      end
+      course_lists_by_owner_for_term(term_code: term_code, state: state)
 
     case Map.get(course_lists_by_owner, owner_key) do
       nil ->
@@ -110,6 +101,13 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
     end
 
     {:noreply, state}
+  end
+
+  def handle_call({:get_term_owner_course_lists, term_code}, _from, state) do
+    {course_lists_by_owner, state} =
+      course_lists_by_owner_for_term(term_code: term_code, state: state)
+
+    {:reply, {:ok, Map.values(course_lists_by_owner)}, state}
   end
 
   def handle_info({:academic_programs, {:program_created, program}}, state) do
@@ -428,6 +426,23 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
     |> Map.keys()
     |> MapSet.new()
     |> MapSet.union(MapSet.new(Map.keys(state.course_lists_by_owner_by_term)))
+  end
+
+  defp course_lists_by_owner_for_term(term_code: term_code, state: state) do
+    case Map.fetch(state.course_lists_by_owner_by_term, term_code) do
+      {:ok, course_lists_by_owner} ->
+        {course_lists_by_owner, state}
+
+      :error ->
+        course_lists_by_owner = build_course_lists_by_owner(term_code: term_code, state: state)
+
+        {course_lists_by_owner,
+         Map.put(
+           state,
+           :course_lists_by_owner_by_term,
+           Map.put(state.course_lists_by_owner_by_term, term_code, course_lists_by_owner)
+         )}
+    end
   end
 
   defp build_course_lists_by_owner(term_code: term_code, state: state) do
