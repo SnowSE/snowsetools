@@ -115,6 +115,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
                 schedule_details_order={@schedule_details_order}
                 week_schedules={@week_schedules}
                 schedule_change_groups_state={@schedule_change_groups_state}
+                academic_programs={@academic_programs}
               />
             <% :programs -> %>
               <AcademicProgramsPanel.render

@@ -297,6 +297,8 @@ when checking if changes compile use `mix precommit` on the terminal (not in con
 
 when running tests they will not work in the docker environment. run `mix precommit` or `mix test <file>` on the host to run tests.
 
+`mix precommit` will also format the documents
+
 
 ## Data Flows
 

@@ -7,13 +7,13 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
 
   attr :state, :map, required: true
   attr :week_schedules, :map, default: %{}
+  attr :academic_programs, :list, default: []
 
   def render(assigns) do
     ~H"""
     <div
       id="schedule-change-group-details"
       class="min-h-0 border-t border-slate-800/80 pt-3"
-      phx-hook=".ScheduleChangeGroupsMenu"
     >
       <div class="mb-2 flex items-center justify-between gap-2">
         <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -42,6 +42,16 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
         <%= for change <- active_changes(@state) do %>
           <% original_course = original_course_for_change(change, @week_schedules) %>
           <% conflicts = conflicts_for_change(change, @week_schedules) %>
+          <% changed_meeting = List.first(Map.get(change, "meet_info", [])) %>
+          <% original_meeting = first_matching_meeting(original_course, changed_meeting) %>
+          <% affected_semesters =
+            affected_semesters_for_change(change, original_course, @academic_programs) %>
+          <% related_schedule_targets =
+            related_schedule_targets(change, original_course, affected_semesters) %>
+          <% professor_change = List.first(changed_professor(change, original_course)) %>
+          <% days_change = changed_days(changed_meeting, original_meeting) %>
+          <% time_change = changed_time(changed_meeting, original_meeting) %>
+          <% room_change = changed_room(changed_meeting, original_meeting) %>
           <div
             id={"schedule-change-#{change["id"]}"}
             class={change_card_class(change, conflicts)}
@@ -56,15 +66,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
                 </div>
               </div>
 
-              <div class="flex shrink-0 items-center gap-1">
-                <button
-                  type="button"
-                  data-change-menu-button
-                  data-change-id={change["id"]}
-                  class="rounded px-1.5 py-0.5 text-xs text-slate-400 transition hover:bg-slate-800 hover:text-slate-200"
-                >
-                  View
-                </button>
+              <div class="flex shrink-0 items-center">
                 <button
                   type="button"
                   phx-click="schedule-change-groups:delete_change"
@@ -79,12 +81,48 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
 
             <div class="mt-2 space-y-1">
               <div
-                :for={field <- changed_fields(change, original_course)}
+                :if={change["course_name"] == "__DELETED__"}
                 class="rounded-md border border-slate-800/80 bg-slate-900/55 px-2 py-1 text-[11px]"
               >
-                <span class="font-semibold text-slate-300">{field.label}</span>
+                <span class="font-semibold text-slate-300">Status</span>
                 <span class="text-slate-500"> changed to </span>
-                <span class="text-slate-200">{field.value}</span>
+                <span class="text-slate-200">removed from schedules</span>
+              </div>
+
+              <div
+                :if={professor_change}
+                class="rounded-md border border-slate-800/80 bg-slate-900/55 px-2 py-1 text-[11px]"
+              >
+                <span class="font-semibold text-slate-300">Professor</span>
+                <span class="text-slate-500"> changed to </span>
+                <span class="text-slate-200">{professor_change.value}</span>
+              </div>
+
+              <div
+                :if={days_change}
+                class="rounded-md border border-slate-800/80 bg-slate-900/55 px-2 py-1 text-[11px]"
+              >
+                <span class="font-semibold text-slate-300">Days</span>
+                <span class="text-slate-500"> changed to </span>
+                <span class="text-slate-200">{days_change.value}</span>
+              </div>
+
+              <div
+                :if={time_change}
+                class="rounded-md border border-slate-800/80 bg-slate-900/55 px-2 py-1 text-[11px]"
+              >
+                <span class="font-semibold text-slate-300">Time</span>
+                <span class="text-slate-500"> changed to </span>
+                <span class="text-slate-200">{time_change.value}</span>
+              </div>
+
+              <div
+                :if={room_change}
+                class="rounded-md border border-slate-800/80 bg-slate-900/55 px-2 py-1 text-[11px]"
+              >
+                <span class="font-semibold text-slate-300">Room</span>
+                <span class="text-slate-500"> changed to </span>
+                <span class="text-slate-200">{room_change.value}</span>
               </div>
             </div>
 
@@ -97,74 +135,49 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
                 <span class="text-red-200/85">: {conflict.description}</span>
               </div>
             </div>
+
+            <div :if={related_schedule_targets != []} class="mt-2 border-t border-slate-800/70 pt-2">
+              <div class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                Related schedules
+              </div>
+              <div class="flex flex-wrap gap-1">
+                <.related_schedule_button
+                  :for={target <- related_schedule_targets}
+                  key={target.key}
+                  label={target.label}
+                  kind={target.kind}
+                />
+              </div>
+            </div>
           </div>
         <% end %>
       </div>
-
-      <.modal
-        :if={open_change_menu_change(@state)}
-        id="schedule-change-menu-modal"
-        on_close="schedule-change-groups:close_change_menu"
-        x={@state.open_change_menu.x}
-        y={@state.open_change_menu.y}
-        panel_class="fixed w-60 overflow-hidden rounded-md border border-slate-700 bg-slate-950 py-1 text-xs shadow-2xl shadow-slate-950/60"
-      >
-        <% change = open_change_menu_change(@state) %>
-        <div class="border-b border-slate-800 px-2 py-2">
-          <div class="truncate text-sm font-medium text-slate-200">{change_title(change)}</div>
-          <div class="mt-0.5 text-[11px] text-slate-500">{change_summary(change)}</div>
-        </div>
-        <.change_target_button
-          :if={professor_key(change)}
-          key={professor_key(change)}
-          label={"Professor: #{change["target_professor"]}"}
-        />
-        <.change_target_button
-          :if={room_key(change)}
-          key={room_key(change)}
-          label={"Room: #{room_label(change)}"}
-        />
-      </.modal>
-
-      <script :type={Phoenix.LiveView.ColocatedHook} name=".ScheduleChangeGroupsMenu">
-        export default {
-          mounted() {
-            this.onClick = (event) => {
-              const button = event.target.closest("[data-change-menu-button]");
-              if (!button || !this.el.contains(button)) return;
-
-              const rect = button.getBoundingClientRect();
-              this.pushEvent("schedule-change-groups:open_change_menu", {
-                change_id: button.dataset.changeId,
-                x: Math.round(Math.min(rect.left, window.innerWidth - 260)),
-                y: Math.round(rect.bottom + 4),
-              });
-            };
-
-            this.el.addEventListener("click", this.onClick);
-          },
-
-          destroyed() {
-            this.el.removeEventListener("click", this.onClick);
-          },
-        };
-      </script>
     </div>
     """
   end
 
   attr :key, :string, required: true
   attr :label, :string, required: true
+  attr :kind, :atom, required: true
 
-  defp change_target_button(assigns) do
+  defp related_schedule_button(assigns) do
     ~H"""
     <button
       type="button"
       phx-click="schedule-change-groups:view_schedule"
       phx-value-key={@key}
-      class="block w-full truncate px-2 py-1.5 text-left text-slate-300 transition hover:bg-slate-800 hover:text-slate-100"
+      class={[
+        "inline-flex max-w-full items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium transition",
+        related_schedule_button_class(@kind)
+      ]}
     >
-      {@label}
+      <.icon :if={@kind == :room} name="hero-building-office-2" class="size-3 shrink-0" />
+      <.icon
+        :if={@kind == :academic_program_semester}
+        name="hero-academic-cap"
+        class="size-3 shrink-0"
+      />
+      <span class="truncate">{@label}</span>
     </button>
     """
   end
@@ -173,14 +186,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
 
   defp active_changes(%ScheduleChangeGroups{active_change_group: active_change_group}) do
     Map.get(active_change_group, "changes", [])
-  end
-
-  defp open_change_menu_change(%ScheduleChangeGroups{open_change_menu: nil}), do: nil
-
-  defp open_change_menu_change(
-         %ScheduleChangeGroups{open_change_menu: %{change_id: change_id}} = state
-       ) do
-    Enum.find(active_changes(state), &(&1["id"] == change_id))
   end
 
   defp change_title(%{"course_name" => "__DELETED__"} = change),
@@ -229,14 +234,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
     "rounded-lg border border-emerald-500/25 bg-emerald-950/10 p-2.5"
   end
 
-  defp changed_fields(%{"course_name" => "__DELETED__"}, _original_course) do
-    [%{label: "Status", value: "removed from schedules"}]
-  end
-
-  defp changed_fields(change, original_course) do
-    changed_professor(change, original_course) ++ changed_meeting_fields(change, original_course)
-  end
-
   defp changed_professor(%{"target_professor" => professor}, original_course)
        when is_binary(professor) and professor != "" do
     original_professor = first_professor(original_course)
@@ -249,18 +246,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
   end
 
   defp changed_professor(_change, _original_course), do: []
-
-  defp changed_meeting_fields(change, original_course) do
-    changed_meeting = List.first(Map.get(change, "meet_info", []))
-    original_meeting = first_matching_meeting(original_course, changed_meeting)
-
-    [
-      changed_days(changed_meeting, original_meeting),
-      changed_time(changed_meeting, original_meeting),
-      changed_room(changed_meeting, original_meeting)
-    ]
-    |> Enum.reject(&is_nil/1)
-  end
 
   defp changed_days(%{} = changed_meeting, nil) do
     days = format_days(changed_meeting["days"] || [])
@@ -330,6 +315,94 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
         room_conflicts(change, changed_meeting, courses)
     end
   end
+
+  defp affected_semesters_for_change(change, original_course, academic_programs) do
+    {subject_code, course_number} = change_course_identity(change, original_course)
+
+    if blank?(subject_code) or blank?(course_number) do
+      []
+    else
+      academic_programs
+      |> Enum.flat_map(&affected_program_semesters(&1, subject_code, course_number))
+    end
+  end
+
+  defp affected_program_semesters(program, subject_code, course_number) do
+    program
+    |> Map.get("semesters", [])
+    |> Enum.with_index()
+    |> Enum.filter(fn {semester, _index} ->
+      Enum.any?(Map.get(semester, "courses", []), fn course ->
+        normalize_course_part(course["subject_code"]) == normalize_course_part(subject_code) and
+          normalize_course_part(course["course_number"]) == normalize_course_part(course_number)
+      end)
+    end)
+    |> Enum.map(fn {_semester, index} ->
+      %{
+        program_name: program["name"] || "Academic program",
+        semester_name: semester_label(index),
+        key: program_semester_key(program, Enum.at(program["semesters"] || [], index))
+      }
+    end)
+  end
+
+  defp related_schedule_targets(change, original_course, affected_semesters) do
+    [
+      professor_schedule_target(change, original_course),
+      room_schedule_target(change)
+      | Enum.map(affected_semesters, &academic_program_schedule_target/1)
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq_by(& &1.key)
+  end
+
+  defp room_schedule_target(change) do
+    case room_label(change) do
+      room when is_binary(room) and room != "" ->
+        %{kind: :room, key: "room:#{room}", label: "Room: #{room}"}
+
+      _other ->
+        nil
+    end
+  end
+
+  defp professor_schedule_target(change, original_course) do
+    case professor_name(change, original_course) do
+      professor when is_binary(professor) and professor != "" ->
+        %{kind: :professor, key: "professor:#{professor}", label: "Professor: #{professor}"}
+
+      _other ->
+        nil
+    end
+  end
+
+  defp academic_program_schedule_target(%{key: key} = semester)
+       when is_binary(key) and key != "" do
+    %{
+      kind: :academic_program_semester,
+      key: key,
+      label: "#{semester.program_name} · #{semester.semester_name}"
+    }
+  end
+
+  defp academic_program_schedule_target(_semester), do: nil
+
+  defp program_semester_key(%{"id" => program_id}, %{"id" => semester_id})
+       when is_binary(program_id) and is_binary(semester_id) do
+    "academic_program_semester:#{program_id}:#{semester_id}"
+  end
+
+  defp program_semester_key(_program, _semester), do: nil
+
+  defp change_course_identity(change, original_course) do
+    {
+      change["subject_code"] || course_value(original_course, "subject_code"),
+      change["course_number"] || course_value(original_course, "course_number")
+    }
+  end
+
+  defp course_value(nil, _key), do: nil
+  defp course_value(course, key), do: Map.get(course, key)
 
   defp professor_conflicts(%{"target_professor" => professor} = change, changed_meeting, courses)
        when is_binary(professor) and professor != "" do
@@ -471,6 +544,21 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
 
   defp normalize_time(_time), do: nil
 
+  defp normalize_course_part(value) when is_binary(value), do: String.downcase(String.trim(value))
+  defp normalize_course_part(_value), do: ""
+
+  defp related_schedule_button_class(:room) do
+    "border-cyan-400/25 bg-cyan-500/10 text-cyan-100 hover:border-cyan-300/45 hover:bg-cyan-500/20"
+  end
+
+  defp related_schedule_button_class(:professor) do
+    "border-emerald-400/25 bg-emerald-500/10 text-emerald-100 hover:border-emerald-300/45 hover:bg-emerald-500/20"
+  end
+
+  defp related_schedule_button_class(:academic_program_semester) do
+    "border-amber-400/25 bg-amber-500/10 text-amber-100 hover:border-amber-300/45 hover:bg-amber-500/20"
+  end
+
   defp time_minutes(time) when is_binary(time) do
     case String.split(time, ":") do
       [hour, minute | _] ->
@@ -488,19 +576,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
 
   defp time_minutes(_time), do: 0
 
-  defp professor_key(%{"target_professor" => professor})
-       when is_binary(professor) and professor != "",
-       do: "professor:#{professor}"
-
-  defp professor_key(_change), do: nil
-
-  defp room_key(change) do
-    case room_label(change) do
-      nil -> nil
-      room -> "room:#{room}"
-    end
-  end
-
   defp room_label(change) do
     case List.first(Map.get(change, "meet_info", [])) do
       %{} = meeting -> ScheduleUtils.room_name(meeting: meeting)
@@ -508,5 +583,21 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
     end
   end
 
+  defp professor_name(%{"target_professor" => professor}, _original_course)
+       when is_binary(professor) and professor != "",
+       do: professor
+
+  defp professor_name(_change, original_course), do: first_professor(original_course)
+
   defp blank?(value), do: is_nil(value) or value == ""
+
+  defp semester_label(0), do: "Freshman first semester"
+  defp semester_label(1), do: "Freshman second semester"
+  defp semester_label(2), do: "Sophomore first semester"
+  defp semester_label(3), do: "Sophomore second semester"
+  defp semester_label(4), do: "Junior first semester"
+  defp semester_label(5), do: "Junior second semester"
+  defp semester_label(6), do: "Senior first semester"
+  defp semester_label(7), do: "Senior second semester"
+  defp semester_label(index), do: "Year #{div(index, 2) + 1} semester #{rem(index, 2) + 1}"
 end

@@ -12,7 +12,9 @@ defmodule SnowSeToolsWeb.Scheduling.CourseChangeIntent do
          {:ok, start_time} <- fetch_string(params, "target_time"),
          {:ok, target_day} <- fetch_string(params, "target_day"),
          {:ok, crn} <- fetch_string(params, "crn"),
-         {:ok, term} <- fetch_string(params, "term") do
+         {:ok, term} <- fetch_string(params, "term"),
+         {:ok, subject_code} <- fetch_string(params, "subject_code"),
+         {:ok, course_number} <- fetch_string(params, "course_number") do
       original_meet_info = Map.get(params, "meet_info", [])
       original_days = Map.get(meeting, "days", [])
       new_days = new_days(original_days, target_day)
@@ -23,6 +25,8 @@ defmodule SnowSeToolsWeb.Scheduling.CourseChangeIntent do
        %{
          "crn" => crn,
          "term" => term,
+         "subject_code" => subject_code,
+         "course_number" => course_number,
          "course_name" => Map.get(params, "course_name"),
          "target_professor" => target_professor(owner, params),
          "meet_info" =>
@@ -40,6 +44,8 @@ defmodule SnowSeToolsWeb.Scheduling.CourseChangeIntent do
     with {:ok, owner} <- owner_from_params(params),
          {:ok, crn} <- fetch_string(params, "crn"),
          {:ok, term} <- fetch_string(params, "term"),
+         {:ok, subject_code} <- fetch_string(params, "subject_code"),
+         {:ok, course_number} <- fetch_string(params, "course_number"),
          {:ok, start_time} <- fetch_string(params, "start_time"),
          {:ok, end_time} <- fetch_string(params, "end_time") do
       days = Map.get(params, "days", []) |> Enum.filter(&is_binary/1)
@@ -51,6 +57,8 @@ defmodule SnowSeToolsWeb.Scheduling.CourseChangeIntent do
        %{
          "crn" => crn,
          "term" => term,
+         "subject_code" => subject_code,
+         "course_number" => course_number,
          "course_name" => Map.get(params, "course_name"),
          "target_professor" => target_professor(owner, params),
          "meet_info" => [
@@ -63,11 +71,15 @@ defmodule SnowSeToolsWeb.Scheduling.CourseChangeIntent do
 
   def delete_course_attrs(params) when is_map(params) do
     with {:ok, crn} <- fetch_string(params, "crn"),
-         {:ok, term} <- fetch_string(params, "term") do
+         {:ok, term} <- fetch_string(params, "term"),
+         {:ok, subject_code} <- fetch_string(params, "subject_code"),
+         {:ok, course_number} <- fetch_string(params, "course_number") do
       {:ok,
        %{
          "crn" => crn,
          "term" => term,
+         "subject_code" => subject_code,
+         "course_number" => course_number,
          "course_name" => "__DELETED__",
          "target_professor" => "",
          "meet_info" => [],

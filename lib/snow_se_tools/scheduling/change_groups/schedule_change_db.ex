@@ -15,6 +15,8 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
                    "group_id" => Zoi.uuid(),
                    "crn" => Zoi.string(),
                    "term" => Zoi.string(),
+                   "subject_code" => Zoi.string(),
+                   "course_number" => Zoi.string(),
                    "course_name" => Zoi.optional(Zoi.string()),
                    "target_professor" => Zoi.optional(Zoi.string()),
                    "meet_info" => Zoi.optional(Zoi.any()),
@@ -39,6 +41,8 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
         group_id          UUID        NOT NULL REFERENCES schedule_change_groups(id) ON DELETE CASCADE,
         crn               TEXT        NOT NULL,
         term              TEXT        NOT NULL,
+        subject_code      TEXT        NOT NULL,
+        course_number     TEXT        NOT NULL,
         course_name       TEXT,
         target_professor TEXT,
         meet_info         JSONB,
@@ -49,6 +53,30 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
       """,
       """
       CREATE INDEX IF NOT EXISTS idx_schedule_changes_group_id ON schedule_changes(group_id)
+      """,
+      """
+      ALTER TABLE schedule_changes ADD COLUMN IF NOT EXISTS subject_code TEXT NOT NULL DEFAULT ''
+      """,
+      """
+      ALTER TABLE schedule_changes ADD COLUMN IF NOT EXISTS course_number TEXT NOT NULL DEFAULT ''
+      """,
+      """
+      ALTER TABLE schedule_changes ALTER COLUMN subject_code SET DEFAULT ''
+      """,
+      """
+      ALTER TABLE schedule_changes ALTER COLUMN course_number SET DEFAULT ''
+      """,
+      """
+      UPDATE schedule_changes SET subject_code = '' WHERE subject_code IS NULL
+      """,
+      """
+      UPDATE schedule_changes SET course_number = '' WHERE course_number IS NULL
+      """,
+      """
+      ALTER TABLE schedule_changes ALTER COLUMN subject_code SET NOT NULL
+      """,
+      """
+      ALTER TABLE schedule_changes ALTER COLUMN course_number SET NOT NULL
       """,
       """
       CREATE INDEX IF NOT EXISTS idx_schedule_changes_crn_term ON schedule_changes(crn, term)
@@ -136,6 +164,8 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
       group_id,
       crn,
       term,
+      subject_code,
+      course_number,
       course_name,
       target_professor,
       meet_info,
@@ -199,9 +229,29 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
 
   defp insert_change(group_id, attrs) do
     sql = """
-    INSERT INTO schedule_changes (group_id, crn, term, course_name, target_professor, meet_info, operation)
-    VALUES ($(group_id), $(crn), $(term), $(course_name), $(target_professor), $(meet_info), $(operation))
-    RETURNING id, group_id, crn, term, course_name, target_professor, meet_info, operation,
+    INSERT INTO schedule_changes (
+      group_id,
+      crn,
+      term,
+      subject_code,
+      course_number,
+      course_name,
+      target_professor,
+      meet_info,
+      operation
+    )
+    VALUES (
+      $(group_id),
+      $(crn),
+      $(term),
+      $(subject_code),
+      $(course_number),
+      $(course_name),
+      $(target_professor),
+      $(meet_info),
+      $(operation)
+    )
+    RETURNING id, group_id, crn, term, subject_code, course_number, course_name, target_professor, meet_info, operation,
       to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
       to_char(inserted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS inserted_at
     """
@@ -210,6 +260,8 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
       "group_id" => group_id,
       "crn" => attrs["crn"] || attrs[:crn],
       "term" => attrs["term"] || attrs[:term],
+      "subject_code" => attrs["subject_code"] || attrs[:subject_code],
+      "course_number" => attrs["course_number"] || attrs[:course_number],
       "course_name" => attrs["course_name"] || attrs[:course_name],
       "target_professor" => attrs["target_professor"] || attrs[:target_professor],
       "meet_info" => attrs["meet_info"] || attrs[:meet_info],
@@ -228,12 +280,14 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
     UPDATE schedule_changes
     SET
       term = COALESCE($(term), term),
+      subject_code = COALESCE($(subject_code), subject_code),
+      course_number = COALESCE($(course_number), course_number),
       course_name = COALESCE($(course_name), course_name),
       target_professor = COALESCE($(target_professor), target_professor),
       meet_info = COALESCE($(meet_info), meet_info),
       operation = COALESCE($(operation), operation)
     WHERE id = $(id)
-    RETURNING id, group_id, crn, term, course_name, target_professor, meet_info, operation,
+    RETURNING id, group_id, crn, term, subject_code, course_number, course_name, target_professor, meet_info, operation,
       to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
       to_char(inserted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS inserted_at
     """
@@ -241,6 +295,8 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
     params = %{
       "id" => Uuid.to_binary(change_id),
       "term" => attrs["term"] || attrs[:term],
+      "subject_code" => attrs["subject_code"] || attrs[:subject_code],
+      "course_number" => attrs["course_number"] || attrs[:course_number],
       "course_name" => attrs["course_name"] || attrs[:course_name],
       "target_professor" => attrs["target_professor"] || attrs[:target_professor],
       "meet_info" => attrs["meet_info"] || attrs[:meet_info],

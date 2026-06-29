@@ -114,6 +114,8 @@ defmodule SnowSeToolsWeb.Scheduling.CourseChangeIntentTest do
     %{
       "crn" => "10001",
       "term" => "202501",
+      "subject_code" => "CE",
+      "course_number" => "2010",
       "course_name" => "Statics",
       "credit_hours" => 3,
       "instructors" => ["Dr. Smith"],

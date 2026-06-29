@@ -12,13 +12,13 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroups do
     :groups,
     :active_change_group_id,
     :active_change_group,
-    :creating,
-    :open_change_menu
+    :creating
   ]
 
   @key :schedule_change_groups_state
 
   attr :week_schedules, :map, default: %{}
+  attr :academic_programs, :list, default: []
 
   def assign_component(socket) do
     socket
@@ -26,8 +26,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroups do
       groups: [],
       active_change_group_id: nil,
       active_change_group: nil,
-      creating: false,
-      open_change_menu: nil
+      creating: false
     })
     |> maybe_attach_hooks()
   end
@@ -39,6 +38,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroups do
       <ScheduleChangeGroupDetails.render
         state={@state}
         week_schedules={@week_schedules}
+        academic_programs={@academic_programs}
       />
     </div>
     """
@@ -90,32 +90,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroups do
      assign(socket, @key, %{
        state
        | active_change_group_id: new_active_id,
-         active_change_group: active_group,
-         open_change_menu: nil
+         active_change_group: active_group
      })}
-  end
-
-  def hooked_event(
-        "schedule-change-groups:open_change_menu",
-        %{"change_id" => change_id, "x" => x, "y" => y},
-        socket
-      ) do
-    state = socket.assigns[@key]
-
-    {:halt,
-     assign(socket, @key, %{
-       state
-       | open_change_menu: %{
-           change_id: change_id,
-           x: parse_coordinate(x),
-           y: parse_coordinate(y)
-         }
-     })}
-  end
-
-  def hooked_event("schedule-change-groups:close_change_menu", _params, socket) do
-    state = socket.assigns[@key]
-    {:halt, assign(socket, @key, %{state | open_change_menu: nil})}
   end
 
   def hooked_event("schedule-change-groups:view_schedule", %{"key" => key}, socket) do
@@ -141,14 +117,12 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroups do
         socket
       end
 
-    state = socket.assigns[@key]
-    {:halt, assign(socket, @key, %{state | open_change_menu: nil})}
+    {:halt, socket}
   end
 
   def hooked_event("schedule-change-groups:delete_change", %{"change-id" => change_id}, socket) do
     ScheduleChangeDomainManager.remove_change(change_id)
-    state = socket.assigns[@key]
-    {:halt, assign(socket, @key, %{state | open_change_menu: nil})}
+    {:halt, socket}
   end
 
   def hooked_event(_event, _params, socket), do: {:cont, socket}
@@ -178,15 +152,4 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroups do
   def active_change_group(state) do
     state.active_change_group
   end
-
-  defp parse_coordinate(value) when is_integer(value), do: value
-
-  defp parse_coordinate(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {coordinate, ""} -> coordinate
-      _other -> 0
-    end
-  end
-
-  defp parse_coordinate(_value), do: 0
 end

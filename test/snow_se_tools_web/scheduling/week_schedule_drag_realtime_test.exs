@@ -26,12 +26,13 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
   @conflict_course_name "Target Room Conflict"
 
   setup do
-    start_supervised!(ProgramDomainManager)
+    delete_realtime_test_groups()
 
     program = insert_test_program()
     term_code = "202777#{System.unique_integer([:positive])}"
 
     insert_test_courses(term_code)
+    start_supervised!(ProgramDomainManager)
     start_supervised!(SnowCourseCacheDomainManager)
     start_supervised!(ScheduleOwnerDomainManager)
     start_supervised!(ScheduleChangeDomainManager)
@@ -112,12 +113,17 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
   end
 
   test "change list can open related room schedule from the active change group",
-       %{conn: conn, term_code: term_code} do
+       %{
+         conn: conn,
+         term_code: term_code,
+         academic_program_owner_key: academic_program_owner_key
+       } do
     conn = log_in_test_user(conn)
 
     {:ok, view, _html} = live(conn, ~p"/scheduling?mode=viewer&term=#{term_code}")
 
     wait_for_schedule_metadata(view)
+    wait_for_academic_programs(view)
     create_change_group(view)
     select_schedule_owner(view, "room:#{@source_room}")
     wait_for_week_schedules(view)
@@ -129,18 +135,26 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
 
     change_id = active_change_id(view)
 
-    render_hook(view, "schedule-change-groups:open_change_menu", %{
-      "change_id" => change_id,
-      "x" => "320",
-      "y" => "240"
-    })
+    assert has_element?(
+             view,
+             "#schedule-change-#{change_id} button[phx-value-key='room:#{@target_room}']",
+             @target_room
+           )
 
-    assert has_element?(view, "#schedule-change-menu-modal")
+    assert has_element?(
+             view,
+             "#schedule-change-#{change_id} button[phx-value-key='#{academic_program_owner_key}']",
+             "Freshman first semester"
+           )
+
+    assert has_element?(
+             view,
+             "#schedule-change-#{change_id} button[phx-value-key='professor:Professor Example']",
+             "Professor: Professor Example"
+           )
 
     view
-    |> element(
-      "button[phx-click='schedule-change-groups:view_schedule'][phx-value-key='room:#{@target_room}']"
-    )
+    |> element("#schedule-change-#{change_id} button[phx-value-key='room:#{@target_room}']")
     |> render_click()
 
     wait_for_week_schedules(view)
@@ -151,10 +165,36 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
              @course_name
            )
 
-    refute has_element?(view, "#schedule-change-menu-modal")
+    view
+    |> element(
+      "#schedule-change-#{change_id} button[phx-value-key='#{academic_program_owner_key}']"
+    )
+    |> render_click()
+
+    wait_for_week_schedules(view)
+
+    assert has_element?(
+             view,
+             "[data-schedule-key='#{academic_program_owner_key}'] [data-week-schedule-course]",
+             @course_name
+           )
+
+    view
+    |> element(
+      "#schedule-change-#{change_id} button[phx-value-key='professor:Professor Example']"
+    )
+    |> render_click()
+
+    wait_for_week_schedules(view)
+
+    assert has_element?(
+             view,
+             "[data-schedule-key='professor:Professor Example'] [data-week-schedule-course]",
+             @course_name
+           )
   end
 
-  test "change menu closes from modal close event and can delete a change",
+  test "change card can delete a change",
        %{conn: conn, term_code: term_code} do
     conn = log_in_test_user(conn)
 
@@ -169,17 +209,6 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
     wait_for_change_group_refresh(view)
 
     change_id = active_change_id(view)
-
-    render_hook(view, "schedule-change-groups:open_change_menu", %{
-      "change_id" => change_id,
-      "x" => "320",
-      "y" => "240"
-    })
-
-    assert has_element?(view, "#schedule-change-menu-modal")
-
-    render_hook(view, "schedule-change-groups:close_change_menu", %{})
-    refute has_element?(view, "#schedule-change-menu-modal")
 
     view
     |> element(
@@ -231,12 +260,18 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
 
   defp select_schedule_owner(view, owner_key) do
     view
-    |> element("button[phx-value-key='#{owner_key}']")
+    |> element("button[phx-click='schedule-details-order:toggle'][phx-value-key='#{owner_key}']")
     |> render_click()
   end
 
   defp wait_for_schedule_metadata(view) do
     _ = :sys.get_state(ScheduleOwnerDomainManager)
+    render(view)
+  end
+
+  defp wait_for_academic_programs(view) do
+    _ = :sys.get_state(ProgramDomainManager)
+    _ = :sys.get_state(view.pid)
     render(view)
   end
 
@@ -399,9 +434,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
   defp delete_realtime_test_groups do
     case ScheduleChangeDb.list_groups() do
       {:ok, groups} ->
-        groups
-        |> Enum.filter(&(&1["name"] == "Realtime Test"))
-        |> Enum.each(fn group -> ScheduleChangeDb.delete_group(group["id"]) end)
+        Enum.each(groups, fn group -> ScheduleChangeDb.delete_group(group["id"]) end)
 
       {:error, _reason} ->
         :ok

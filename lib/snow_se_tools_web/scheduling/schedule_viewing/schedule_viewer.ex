@@ -61,6 +61,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
         <ScheduleChangeGroups.render
           state={@schedule_change_groups_state}
           week_schedules={@week_schedules}
+          academic_programs={@academic_programs}
         />
       </aside>
     </div>
