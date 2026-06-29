@@ -148,6 +148,55 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApplyTest do
       updated = hd(result.courses)
       assert hd(updated["instructors"])["name"] == "Dr. Smith"
     end
+
+    test "room schedule removes an updated course moved to another room" do
+      course =
+        build_course("10001", "Intro to CS", [
+          build_meeting(["Monday"], "09:00", "10:30", "Room 101")
+        ])
+
+      schedule = build_schedule_owner([course], :room, "Room 101")
+
+      change =
+        build_update_change("10001", "Intro to CS", [
+          build_meeting(["Monday"], "09:00", "10:30", "Room 202")
+        ])
+
+      result = ScheduleChangeApply.apply_changes(schedule, [change])
+
+      assert result.courses == []
+      assert Map.get(result.meetings_by_day, "Monday") == []
+    end
+
+    test "room schedule shows an updated course moved into the room" do
+      schedule = build_schedule_owner([], :room, "Room 202")
+
+      change =
+        build_update_change("10001", "Intro to CS", [
+          build_meeting(["Monday"], "09:00", "10:30", "Room 202")
+        ])
+
+      result = ScheduleChangeApply.apply_changes(schedule, [change])
+
+      assert length(result.courses) == 1
+      assert hd(result.courses)["crn"] == "10001"
+      assert length(Map.get(result.meetings_by_day, "Monday")) == 1
+    end
+
+    test "professor schedule removes an updated course reassigned to another professor" do
+      course =
+        build_course("10001", "Intro to CS", [
+          build_meeting(["Monday"], "09:00", "10:30", "Room 101")
+        ])
+
+      schedule = build_schedule_owner([course], :professor, "Dr. Smith")
+      change = build_update_change("10001", "Intro to CS", nil, "Dr. Jones")
+
+      result = ScheduleChangeApply.apply_changes(schedule, [change])
+
+      assert result.courses == []
+      assert Map.get(result.meetings_by_day, "Monday") == []
+    end
   end
 
   describe "meetings_by_day after applying changes" do

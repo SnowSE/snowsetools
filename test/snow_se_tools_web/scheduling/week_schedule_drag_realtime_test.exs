@@ -112,6 +112,34 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
            )
   end
 
+  test "dragging a changed course back to its original time and room removes the change",
+       %{conn: conn, term_code: term_code} do
+    conn = log_in_test_user(conn)
+
+    {:ok, view, _html} = live(conn, ~p"/scheduling?mode=viewer&term=#{term_code}")
+
+    wait_for_schedule_metadata(view)
+    create_change_group(view)
+    select_schedule_owner(view, "room:#{@source_room}")
+    select_schedule_owner(view, "room:#{@target_room}")
+    wait_for_week_schedules(view)
+
+    render_hook(view, "week-schedule-grid:move_course", move_payload(term_code))
+    wait_for_change_group_refresh(view)
+
+    assert has_element?(view, "#schedule-change-groups", @course_name)
+    refute has_element?(view, course_card_selector("room:#{@source_room}", @course_crn))
+    assert has_element?(view, course_card_selector("room:#{@target_room}", @course_crn))
+
+    render_hook(view, "week-schedule-grid:move_course", move_back_payload(term_code))
+    wait_for_change_group_refresh(view)
+    wait_for_week_schedules(view)
+
+    refute has_element?(view, "#schedule-change-groups", @course_name)
+    assert has_element?(view, course_card_selector("room:#{@source_room}", @course_crn))
+    refute has_element?(view, course_card_selector("room:#{@target_room}", @course_crn))
+  end
+
   test "change list can open related room schedule from the active change group",
        %{
          conn: conn,
@@ -323,6 +351,36 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
       "subject_code" => "TEST",
       "target_day" => "Wednesday",
       "target_time" => "10:30",
+      "term" => term_code
+    }
+  end
+
+  defp move_back_payload(term_code) do
+    meeting = %{
+      "building" => "Target Building",
+      "building_code" => "TGT",
+      "days" => ["Monday", "Wednesday"],
+      "end_time" => "11:20",
+      "room" => "202",
+      "start_time" => "10:30"
+    }
+
+    %{
+      "course_name" => @course_name,
+      "course_number" => "1130",
+      "credit_hours" => 2,
+      "crn" => @course_crn,
+      "end_time" => "11:20",
+      "instructors" => ["Professor Example"],
+      "meet_info" => [meeting],
+      "meeting" => meeting,
+      "owner_key" => "room:#{@source_room}",
+      "owner_name" => @source_room,
+      "owner_type" => "room",
+      "start_time" => "10:30",
+      "subject_code" => "TEST",
+      "target_day" => "Wednesday",
+      "target_time" => "09:00",
       "term" => term_code
     }
   end

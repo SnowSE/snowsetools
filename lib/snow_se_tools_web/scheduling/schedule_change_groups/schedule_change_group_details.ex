@@ -19,9 +19,26 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
         <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">
           Changes
         </h3>
-        <span class="text-[10px] text-slate-500">
-          {length(active_changes(@state))}
-        </span>
+        <div class="flex items-center gap-2">
+          <div
+            :if={conflict_check_status(@state) == :checking}
+            class="inline-flex items-center gap-1 text-[10px] font-medium text-indigo-300"
+          >
+            <.icon name="hero-arrow-path" class="size-3 animate-spin" />
+            <span>Checking conflicts</span>
+          </div>
+          <div
+            :if={conflict_check_status(@state) == :error}
+            class="inline-flex items-center gap-1 text-[10px] font-medium text-red-300"
+            title={conflict_check_error(@state) || "Conflict detection failed"}
+          >
+            <.icon name="hero-exclamation-triangle" class="size-3" />
+            <span>Conflict check failed</span>
+          </div>
+          <span class="text-[10px] text-slate-500">
+            {length(active_changes(@state))}
+          </span>
+        </div>
       </div>
 
       <div
@@ -186,6 +203,18 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
 
   defp active_changes(%ScheduleChangeGroups{active_change_group: active_change_group}) do
     Map.get(active_change_group, "changes", [])
+  end
+
+  defp conflict_check_status(%ScheduleChangeGroups{active_change_group: nil}), do: :not_checking
+
+  defp conflict_check_status(%ScheduleChangeGroups{active_change_group: active_change_group}) do
+    Map.get(active_change_group, "conflict_check_status", :not_checking)
+  end
+
+  defp conflict_check_error(%ScheduleChangeGroups{active_change_group: nil}), do: nil
+
+  defp conflict_check_error(%ScheduleChangeGroups{active_change_group: active_change_group}) do
+    Map.get(active_change_group, "conflict_check_error")
   end
 
   defp change_title(%{"course_name" => "__DELETED__"} = change),

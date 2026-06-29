@@ -59,8 +59,18 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupSelector do
             ]}
           >
             <span class="truncate">{group["name"]}</span>
-            <span class="ml-2 shrink-0 text-[10px] text-slate-500">
-              {length(Map.get(group, "changes", []))} changes
+            <span class="ml-2 flex shrink-0 items-center gap-1 text-[10px] text-slate-500">
+              <.icon
+                :if={group["conflict_check_status"] == :checking}
+                name="hero-arrow-path"
+                class="size-3 animate-spin text-indigo-300"
+              />
+              <.icon
+                :if={group["conflict_check_status"] == :error}
+                name="hero-exclamation-triangle"
+                class="size-3 text-red-300"
+              />
+              <span>{length(Map.get(group, "changes", []))} changes</span>
             </span>
           </button>
         <% end %>

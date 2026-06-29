@@ -44,4 +44,12 @@ defmodule SnowSeTools.Scheduling.ScheduleChangePubSub do
       {:schedule_changes, {:change_removed, group_id, change_id}}
     )
   end
+
+  def broadcast_conflict_check_updated(group_id) do
+    Phoenix.PubSub.broadcast(
+      SnowSeTools.PubSub,
+      @topic,
+      {:schedule_changes, {:conflict_check_updated, group_id}}
+    )
+  end
 end

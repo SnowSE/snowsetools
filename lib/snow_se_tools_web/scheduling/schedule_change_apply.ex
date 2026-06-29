@@ -3,20 +3,19 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApply do
 
   def apply_changes(%{type: type, name: name} = schedule_owner, changes) when is_list(changes) do
     courses = Map.get(schedule_owner, :courses, [])
-    applied = apply_to_courses(courses, changes, type)
 
-    rebuilt =
-      ScheduleUtils.build_week_schedule(
-        type: type,
-        name: name,
-        courses: applied
-      )
-      |> Map.merge(%{
-        program_name: schedule_owner[:program_name],
-        semester_name: schedule_owner[:semester_name]
-      })
+    applied =
+      apply_to_courses(courses: courses, changes: changes, owner_type: type, owner_name: name)
 
-    %{rebuilt | online_courses: schedule_owner[:online_courses] || []}
+    ScheduleUtils.build_week_schedule(
+      type: type,
+      name: name,
+      courses: applied
+    )
+    |> Map.merge(%{
+      program_name: schedule_owner[:program_name],
+      semester_name: schedule_owner[:semester_name]
+    })
   end
 
   def effective_schedule(schedule_owner, nil), do: schedule_owner
@@ -26,7 +25,12 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApply do
     apply_changes(schedule_owner, changes)
   end
 
-  defp apply_to_courses(courses, changes, owner_type)
+  defp apply_to_courses(
+         courses: courses,
+         changes: changes,
+         owner_type: owner_type,
+         owner_name: owner_name
+       )
        when is_list(courses) and is_list(changes) do
     changes_by_crn = Enum.group_by(changes, & &1["crn"])
     existing_crns = MapSet.new(courses, & &1["crn"])
@@ -55,7 +59,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApply do
 
     moved_courses = moved_courses_for_owner(changes, existing_crns, owner_type)
 
-    updated_courses ++ new_courses ++ moved_courses
+    (updated_courses ++ new_courses ++ moved_courses)
+    |> Enum.filter(
+      &course_matches_owner?(course: &1, owner_type: owner_type, owner_name: owner_name)
+    )
   end
 
   defp moved_courses_for_owner(_changes, _existing_crns, :academic_program_semester), do: []
@@ -91,8 +98,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApply do
     %{
       "crn" => crn,
       "name" => change["course_name"] || "",
-      "subject_code" => "",
-      "course_number" => "",
+      "subject_code" => change["subject_code"] || "",
+      "course_number" => change["course_number"] || "",
       "section_number" => "",
       "credit_hours" => 0,
       "instructors" =>
@@ -104,4 +111,26 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApply do
       "__source" => :added
     }
   end
+
+  defp course_matches_owner?(
+         course: _course,
+         owner_type: :academic_program_semester,
+         owner_name: _owner_name
+       ),
+       do: true
+
+  defp course_matches_owner?(course: course, owner_type: :room, owner_name: owner_name) do
+    Enum.any?(course["meet_info"] || [], fn meeting ->
+      ScheduleUtils.room_name(meeting: meeting) == owner_name
+    end)
+  end
+
+  defp course_matches_owner?(course: course, owner_type: :professor, owner_name: owner_name) do
+    Enum.any?(course["instructors"] || [], fn instructor ->
+      instructor["name"] == owner_name
+    end)
+  end
+
+  defp course_matches_owner?(course: _course, owner_type: _owner_type, owner_name: _owner_name),
+    do: true
 end
