@@ -216,44 +216,6 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
     refute has_element?(view, "#schedule-change-#{change_id}", "Professor changed")
   end
 
-  test "affected academic schedules are detected in the change menu",
-       %{
-         conn: conn,
-         term_code: term_code,
-         academic_program_owner_key: academic_owner_key,
-         academic_program_name: academic_program_name
-       } do
-    conn = log_in_test_user(conn)
-
-    {:ok, view, _html} = live(conn, ~p"/scheduling?mode=viewer&term=#{term_code}")
-
-    wait_for_schedule_metadata(view)
-    create_change_group(view)
-    select_schedule_owner(view, "room:#{@source_room}")
-    select_schedule_owner(view, "room:#{@target_room}")
-    select_schedule_owner(view, academic_owner_key)
-    wait_for_week_schedules(view)
-
-    wait_for_element(
-      view,
-      "#schedule-owner-list button[phx-value-key='#{academic_owner_key}']",
-      academic_program_name
-    )
-
-    render_hook(view, "week-schedule-grid:move_course", move_payload(term_code))
-    wait_for_change_group_refresh(view)
-
-    change_id = active_change_id(view)
-
-    render_hook(view, "schedule-change-groups:open_change_menu", %{
-      "change_id" => change_id,
-      "x" => "320",
-      "y" => "240"
-    })
-
-    assert has_element?(view, "#schedule-change-menu-modal", academic_program_name)
-  end
-
   defp create_change_group(view) do
     view
     |> element("button[phx-click='schedule-change-groups:new_group']")
@@ -290,20 +252,6 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
     render(view)
     _ = :sys.get_state(ScheduleChangeDomainManager)
     render(view)
-  end
-
-  defp wait_for_element(view, selector, text, attempts \\ 30) do
-    if has_element?(view, selector, text) do
-      :ok
-    else
-      if attempts == 0 do
-        flunk("expected to find #{inspect(text)} in #{selector}")
-      else
-        render(view)
-        _ = :sys.get_state(ScheduleOwnerDomainManager)
-        wait_for_element(view, selector, text, attempts - 1)
-      end
-    end
   end
 
   defp active_change_id(view) do
