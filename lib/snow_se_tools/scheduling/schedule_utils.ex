@@ -84,6 +84,25 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
     end)
   end
 
+  def academic_program_semester_schedule_variants(
+        courses: courses,
+        required_courses: required_courses
+      ) do
+    courses = Enum.map(courses, &preparse_course/1)
+
+    required_courses
+    |> candidate_groups_for_requirements(courses: courses)
+    |> build_non_conflicting_variants()
+    |> Enum.with_index(1)
+    |> Enum.map(fn {variant_courses, index} ->
+      %{
+        index: index - 1,
+        label: "Option #{index}",
+        courses: variant_courses
+      }
+    end)
+  end
+
   defp professor_course_lists(courses: courses) do
     courses
     |> Enum.flat_map(fn course ->
@@ -135,6 +154,12 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
         required_courses = semester["courses"] || []
         semester_name = semester_label(semester_index)
 
+        variants =
+          academic_program_semester_schedule_variants(
+            courses: courses,
+            required_courses: required_courses
+          )
+
         %{
           owner_key:
             owner_key(
@@ -145,15 +170,84 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
           name: "#{program["name"]} #{semester_name}",
           program_name: program["name"],
           semester_name: semester_name,
-          courses:
-            courses_matching_requirements(
-              courses: courses,
-              required_courses: required_courses
-            )
+          courses: courses_for_first_variant(variants),
+          schedule_variants: variants
         }
       end)
     end)
   end
+
+  defp candidate_groups_for_requirements(required_courses, courses: courses) do
+    Enum.map(required_courses, fn required_course ->
+      courses
+      |> Enum.filter(&course_matches_requirement?(course: &1, required_course: required_course))
+      |> Enum.uniq_by(& &1["crn"])
+    end)
+  end
+
+  defp course_matches_requirement?(course: course, required_course: required_course) do
+    normalize_course_code(course["subject_code"]) ==
+      normalize_course_code(required_course["subject_code"]) and
+      normalize_course_code(course["course_number"]) ==
+        normalize_course_code(required_course["course_number"])
+  end
+
+  defp build_non_conflicting_variants([]), do: []
+
+  defp build_non_conflicting_variants(candidate_groups) do
+    if Enum.any?(candidate_groups, &(&1 == [])) do
+      []
+    else
+      candidate_groups
+      |> Enum.reduce([[]], fn candidates, variants ->
+        Enum.flat_map(variants, fn variant ->
+          candidates
+          |> Enum.reject(&course_already_selected?(course: &1, selected_courses: variant))
+          |> Enum.reject(&course_conflicts_with_selected?(course: &1, selected_courses: variant))
+          |> Enum.map(&(variant ++ [&1]))
+        end)
+      end)
+    end
+  end
+
+  defp course_already_selected?(course: course, selected_courses: selected_courses) do
+    Enum.any?(selected_courses, &(&1["crn"] == course["crn"]))
+  end
+
+  defp course_conflicts_with_selected?(course: course, selected_courses: selected_courses) do
+    Enum.any?(selected_courses, &courses_overlap?(left: course, right: &1))
+  end
+
+  defp courses_overlap?(left: left, right: right) do
+    Enum.any?(left["meet_info"] || [], fn left_meeting ->
+      Enum.any?(right["meet_info"] || [], fn right_meeting ->
+        meetings_overlap?(left: left_meeting, right: right_meeting)
+      end)
+    end)
+  end
+
+  defp meetings_overlap?(left: left, right: right) do
+    days_overlap?(left["days"] || [], right["days"] || []) and
+      has_real_time?(left) and
+      has_real_time?(right) and
+      left[:start_minutes] < right[:end_minutes] and
+      right[:start_minutes] < left[:end_minutes]
+  end
+
+  defp days_overlap?(left_days, right_days) do
+    left_days
+    |> MapSet.new()
+    |> MapSet.intersection(MapSet.new(right_days))
+    |> MapSet.size()
+    |> Kernel.>(0)
+  end
+
+  defp has_real_time?(meeting) do
+    is_binary(meeting["start_time"]) and is_binary(meeting["end_time"])
+  end
+
+  defp courses_for_first_variant([%{courses: courses} | _variants]), do: courses
+  defp courses_for_first_variant([]), do: []
 
   defp meetings_by_day(type: type, name: name, courses: courses) do
     tagged_meetings =

@@ -460,7 +460,8 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
             courses: course_list.courses,
             opts: [
               program_name: Map.get(course_list, :program_name),
-              semester_name: Map.get(course_list, :semester_name)
+              semester_name: Map.get(course_list, :semester_name),
+              schedule_variants: Map.get(course_list, :schedule_variants, [])
             ]
           )
         end)
@@ -499,17 +500,23 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
         |> Enum.map(fn {semester, semester_index} ->
           semester_name = ScheduleUtils.semester_label(semester_index)
 
+          schedule_variants =
+            ScheduleUtils.academic_program_semester_schedule_variants(
+              courses: courses,
+              required_courses: semester["courses"] || []
+            )
+
           ScheduleOwnerSchedule.new(
             owner_key:
               program_semester_owner_key(program_id: program["id"], semester_id: semester["id"]),
             type: :academic_program_semester,
             name: "#{program["name"]} #{semester_name}",
-            courses:
-              ScheduleUtils.courses_matching_requirements(
-                courses: courses,
-                required_courses: semester["courses"] || []
-              ),
-            opts: [program_name: program["name"], semester_name: semester_name]
+            courses: courses_for_first_variant(schedule_variants),
+            opts: [
+              program_name: program["name"],
+              semester_name: semester_name,
+              schedule_variants: schedule_variants
+            ]
           )
         end)
 
@@ -525,6 +532,9 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
   defp program_semester_owner_key(program_id: program_id, semester_id: semester_id) do
     "academic_program_semester:#{program_id}:#{semester_id}"
   end
+
+  defp courses_for_first_variant([%{courses: courses} | _variants]), do: courses
+  defp courses_for_first_variant([]), do: []
 
   defp build_schedule_owners_metadata_for_term(term_code, state) do
     courses =

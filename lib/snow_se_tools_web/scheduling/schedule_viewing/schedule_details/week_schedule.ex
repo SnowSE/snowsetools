@@ -18,6 +18,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
     :owner_key,
     :course_list,
     :week_schedule,
+    :selected_variant_index,
     :loading?
   ]
 
@@ -64,6 +65,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
         selected_term_code: selected_term_code,
         course_list: nil,
         week_schedule: nil,
+        selected_variant_index: 0,
         loading?: true
       }
 
@@ -113,6 +115,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
             owner_key={@state.owner_key}
             position={@position}
             total_count={@total_count}
+            selected_variant_index={@state.selected_variant_index || 0}
           />
           <.schedule_grid
             schedule_owner={effective_schedule(@state.week_schedule, @active_change_group)}
@@ -130,6 +133,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
   attr :owner_key, :string, required: true
   attr :position, :integer, required: true
   attr :total_count, :integer, required: true
+  attr :selected_variant_index, :integer, default: 0
 
   defp schedule_header(assigns) do
     ~H"""
@@ -141,6 +145,38 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
             <span class="ml-1 text-xs font-medium text-slate-500">{@schedule_owner.credit_count} cr.</span>
           </h2>
           <p class="text-xs text-slate-500">{@schedule_owner.semester_name}</p>
+          <div
+            :if={variant_count(@schedule_owner) > 1}
+            class="mt-2 flex items-center gap-1.5 text-xs text-slate-400"
+          >
+            <button
+              type="button"
+              id={"schedule-variant-previous-#{@owner_key}"}
+              phx-click="schedule-owner-week-schedule:change_variant"
+              phx-value-owner-key={@owner_key}
+              phx-value-direction="previous"
+              disabled={@selected_variant_index == 0}
+              class="rounded border border-slate-800 bg-slate-900/70 p-1 text-slate-300 transition-colors hover:border-slate-700 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-35"
+              aria-label="Previous schedule option"
+            >
+              <.icon name="hero-chevron-left" class="size-3.5" />
+            </button>
+            <span id={"schedule-variant-label-#{@owner_key}"} class="tabular-nums">
+              Option {@selected_variant_index + 1} of {variant_count(@schedule_owner)}
+            </span>
+            <button
+              type="button"
+              id={"schedule-variant-next-#{@owner_key}"}
+              phx-click="schedule-owner-week-schedule:change_variant"
+              phx-value-owner-key={@owner_key}
+              phx-value-direction="next"
+              disabled={@selected_variant_index >= variant_count(@schedule_owner) - 1}
+              class="rounded border border-slate-800 bg-slate-900/70 p-1 text-slate-300 transition-colors hover:border-slate-700 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-35"
+              aria-label="Next schedule option"
+            >
+              <.icon name="hero-chevron-right" class="size-3.5" />
+            </button>
+          </div>
         <% else %>
           <h2 class="truncate text-base font-semibold leading-tight text-slate-100">
             {@schedule_owner.name}
@@ -239,6 +275,14 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
     persist_course_change(params, &CourseChangeIntent.delete_course_attrs/1, socket)
   end
 
+  def hooked_event(
+        "schedule-owner-week-schedule:change_variant",
+        %{"owner-key" => owner_key, "direction" => direction},
+        socket
+      ) do
+    {:halt, change_variant(socket, owner_key: owner_key, direction: direction)}
+  end
+
   def hooked_event(_event, _params, socket), do: {:cont, socket}
 
   defp persist_course_change(params, attrs_fun, socket) do
@@ -285,19 +329,106 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
   end
 
   defp loaded_state(state, %ScheduleOwnerSchedule{} = course_list) do
+    selected_variant_index =
+      clamped_variant_index(
+        index: state.selected_variant_index || 0,
+        course_list: course_list
+      )
+
+    courses =
+      courses_for_selected_variant(course_list: course_list, index: selected_variant_index)
+
     week_schedule =
       ScheduleUtils.build_week_schedule(
         type: course_list.type,
         name: course_list.name,
-        courses: course_list.courses
+        courses: courses
       )
       |> Map.merge(%{
         program_name: course_list.program_name,
-        semester_name: course_list.semester_name
+        semester_name: course_list.semester_name,
+        schedule_variants: course_list.schedule_variants || []
       })
 
-    %{state | course_list: course_list, week_schedule: week_schedule, loading?: false}
+    %{
+      state
+      | course_list: course_list,
+        week_schedule: week_schedule,
+        selected_variant_index: selected_variant_index,
+        loading?: false
+    }
   end
+
+  defp change_variant(socket, owner_key: owner_key, direction: direction) do
+    state = Map.get(socket.assigns.week_schedules, owner_key)
+
+    if is_nil(state) or is_nil(state.course_list) do
+      socket
+    else
+      next_index =
+        next_variant_index(
+          current_index: state.selected_variant_index || 0,
+          direction: direction,
+          course_list: state.course_list
+        )
+
+      updated_state =
+        state
+        |> Map.put(:selected_variant_index, next_index)
+        |> loaded_state(state.course_list)
+
+      assign(
+        socket,
+        :week_schedules,
+        Map.put(socket.assigns.week_schedules, owner_key, updated_state)
+      )
+    end
+  end
+
+  defp next_variant_index(
+         current_index: current_index,
+         direction: "previous",
+         course_list: course_list
+       ) do
+    clamped_variant_index(index: current_index - 1, course_list: course_list)
+  end
+
+  defp next_variant_index(
+         current_index: current_index,
+         direction: "next",
+         course_list: course_list
+       ) do
+    clamped_variant_index(index: current_index + 1, course_list: course_list)
+  end
+
+  defp next_variant_index(
+         current_index: current_index,
+         direction: _direction,
+         course_list: course_list
+       ) do
+    clamped_variant_index(index: current_index, course_list: course_list)
+  end
+
+  defp courses_for_selected_variant(course_list: course_list, index: index) do
+    case Enum.at(course_list.schedule_variants || [], index) do
+      %{courses: courses} -> courses
+      _variant -> course_list.courses
+    end
+  end
+
+  defp clamped_variant_index(index: index, course_list: course_list) do
+    variant_count = length(course_list.schedule_variants || [])
+
+    cond do
+      variant_count <= 1 -> 0
+      index < 0 -> 0
+      index >= variant_count -> variant_count - 1
+      true -> index
+    end
+  end
+
+  defp variant_count(%{schedule_variants: variants}) when is_list(variants), do: length(variants)
+  defp variant_count(_schedule_owner), do: 0
 
   defp empty_week_schedule(owner_key: owner_key) when is_binary(owner_key) do
     {type, name} = empty_week_schedule_type(owner_key)

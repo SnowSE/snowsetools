@@ -5,7 +5,8 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerSchedule do
           name: String.t(),
           program_name: String.t() | nil,
           semester_name: String.t() | nil,
-          courses: [map()]
+          courses: [map()],
+          schedule_variants: [map()]
         }
 
   defstruct [
@@ -14,7 +15,8 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerSchedule do
     :name,
     :program_name,
     :semester_name,
-    :courses
+    :courses,
+    :schedule_variants
   ]
 
   def new(owner_key: owner_key, type: type, name: name, courses: courses) do
@@ -28,7 +30,8 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerSchedule do
       name: name,
       program_name: opts[:program_name],
       semester_name: opts[:semester_name],
-      courses: Enum.uniq_by(courses, & &1["crn"])
+      courses: Enum.uniq_by(courses, & &1["crn"]),
+      schedule_variants: opts[:schedule_variants] || []
     }
   end
 end
