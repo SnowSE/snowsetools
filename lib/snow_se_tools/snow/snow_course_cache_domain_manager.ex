@@ -17,6 +17,11 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
     GenServer.cast(__MODULE__, {:request_course_catalog, pid})
   end
 
+  def request_term_courses(pid: pid, term_code: term_code)
+      when is_pid(pid) and is_binary(term_code) do
+    GenServer.cast(__MODULE__, {:request_term_courses, pid, term_code})
+  end
+
   def sync_course_list(pid: pid, term_code: term_code, jwt_token: jwt_token) do
     GenServer.cast(__MODULE__, {:sync_course_list, pid, term_code, jwt_token})
   end
@@ -59,6 +64,24 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
       end
 
     send(pid, {:snow_course_cache, {:course_catalog_loaded, catalog}})
+    {:noreply, state}
+  end
+
+  def handle_cast({:request_term_courses, pid, term_code}, state) do
+    result =
+      case SnowCourseCacheDb.list_course_data_for_term(term_code: term_code) do
+        {:ok, courses} ->
+          {:ok, %{term_code: term_code, courses: courses}}
+
+        {:error, reason} ->
+          Logger.error(
+            "Snow course cache term course load failed term_code=#{term_code} reason=#{inspect(reason)}"
+          )
+
+          {:error, %{term_code: term_code, reason: reason}}
+      end
+
+    send(pid, {:snow_course_cache, {:term_courses_loaded, result}})
     {:noreply, state}
   end
 

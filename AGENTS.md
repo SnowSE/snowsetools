@@ -1,3 +1,7 @@
+
+above all else, ask the user clarifying quesitons whenever it is necessary. before making assumptions about things not inlcuded in the instructions, verify the user is OK with that direction.
+
+
 - **Use named parameters for functions with multiple parameters**
       defp fetch_paginated_items(url: url, current_page: current_page, total_pages: total_pages) do
         # ... function body

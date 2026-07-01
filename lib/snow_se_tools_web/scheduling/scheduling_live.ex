@@ -5,6 +5,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramEditor
   alias SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel
+  alias SnowSeToolsWeb.Scheduling.CourseListForTerm
   alias SnowSeToolsWeb.Scheduling.ScheduleChangeGroups
   alias SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder
   alias SnowSeToolsWeb.Scheduling.ScheduleViewer
@@ -26,6 +27,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
      socket
      |> assign(:page_title, "Scheduling")
      |> ScheduleViewer.assign_component()
+     |> CourseListForTerm.assign_component()
      |> ScheduleDetailsOrder.assign_component()
      |> AcademicProgramEditor.assign_component(:academic_program_editor)
      |> AcademicProgramCoursePicker.assign_component(:academic_program_course_picker,
@@ -114,6 +116,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
                 state={@schedule_viewer_state}
                 schedule_details_order={@schedule_details_order}
                 week_schedules={@week_schedules}
+                courses={CourseListForTerm.courses(@scheduling_course_data)}
                 schedule_change_groups_state={@schedule_change_groups_state}
                 academic_programs={@academic_programs}
               />
@@ -147,9 +150,11 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
       if is_binary(selected_term_code) do
         socket
         |> ScheduleViewer.sync_selected_term(term_code: selected_term_code)
+        |> CourseListForTerm.sync_selected_term(term_code: selected_term_code)
         |> ScheduleDetailsOrder.sync_selected_term(term_code: selected_term_code)
       else
         socket
+        |> CourseListForTerm.sync_selected_term(term_code: nil)
         |> ScheduleDetailsOrder.sync_selected_term(term_code: nil)
       end
 

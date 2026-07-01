@@ -5,8 +5,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroups do
   alias SnowSeTools.Scheduling.ScheduleChangeDomainManager
   alias SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails
   alias SnowSeToolsWeb.Scheduling.ScheduleChangeGroupSelector
-  alias SnowSeToolsWeb.Scheduling.ScheduleOrder
-  alias SnowSeToolsWeb.Scheduling.WeekSchedule
+  alias SnowSeToolsWeb.Scheduling.{ScheduleOrder, WeekSchedule}
 
   defstruct [
     :groups,
@@ -17,7 +16,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroups do
 
   @key :schedule_change_groups_state
 
-  attr :week_schedules, :map, default: %{}
+  attr :courses, :list, default: []
   attr :academic_programs, :list, default: []
 
   def assign_component(socket) do
@@ -37,7 +36,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroups do
       <ScheduleChangeGroupSelector.render state={@state} />
       <ScheduleChangeGroupDetails.render
         state={@state}
-        week_schedules={@week_schedules}
+        courses={@courses}
         academic_programs={@academic_programs}
       />
     </div>

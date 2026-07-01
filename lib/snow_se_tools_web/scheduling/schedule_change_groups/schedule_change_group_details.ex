@@ -3,10 +3,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
 
   alias SnowSeTools.Scheduling.ScheduleUtils
   alias SnowSeToolsWeb.Scheduling.ScheduleChangeGroups
-  alias SnowSeToolsWeb.Scheduling.WeekSchedule
 
   attr :state, :map, required: true
-  attr :week_schedules, :map, default: %{}
+  attr :courses, :list, default: []
   attr :academic_programs, :list, default: []
 
   def render(assigns) do
@@ -57,7 +56,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
 
       <div class="flex min-h-0 flex-col gap-2 overflow-y-auto pr-1">
         <%= for change <- active_changes(@state) do %>
-          <% original_course = original_course_for_change(change, @week_schedules) %>
+          <% original_course = original_course_for_change(change, @courses) %>
           <% conflicts = Map.get(change, "conflicts", []) %>
           <% changed_meeting = List.first(Map.get(change, "meet_info", [])) %>
           <% original_meeting = first_matching_meeting(original_course, changed_meeting) %>
@@ -325,9 +324,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
 
   defp changed_room(_changed_meeting, _original_meeting), do: nil
 
-  defp original_course_for_change(change, week_schedules) do
-    all_courses(week_schedules)
-    |> Enum.find(&(&1["crn"] == change["crn"]))
+  defp original_course_for_change(change, courses) do
+    Enum.find(courses, &(&1["crn"] == change["crn"]))
   end
 
   defp affected_semesters_for_change(change, original_course, academic_programs) do
@@ -417,16 +415,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
 
   defp course_value(nil, _key), do: nil
   defp course_value(course, key), do: Map.get(course, key)
-
-  defp all_courses(week_schedules) do
-    week_schedules
-    |> Map.values()
-    |> Enum.flat_map(fn
-      %WeekSchedule{week_schedule: %{courses: courses}} when is_list(courses) -> courses
-      _other -> []
-    end)
-    |> Enum.uniq_by(& &1["crn"])
-  end
 
   defp first_matching_meeting(nil, _changed_meeting), do: nil
 

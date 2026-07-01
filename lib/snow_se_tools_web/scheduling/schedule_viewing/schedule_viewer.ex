@@ -10,7 +10,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
     ScheduleOwnerMetadata
   }
 
-  alias SnowSeToolsWeb.Scheduling.{ScheduleChangeGroups, ScheduleDetailsOrder}
+  alias SnowSeToolsWeb.Scheduling.{CourseListForTerm, ScheduleChangeGroups, ScheduleDetailsOrder}
   import SnowSeToolsWeb.Scheduling.ScheduleViewerTermAndSearch
   import SnowSeToolsWeb.Scheduling.ScheduleViewerScheduleOwnerList
 
@@ -29,6 +29,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
         }
   @key :schedule_viewer_state
 
+
   def assign_component(socket) do
     socket
     |> assign(@key, %__MODULE__{
@@ -40,6 +41,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
     |> initial_setup()
   end
 
+  attr :courses, :list, default: []
   def render(assigns) do
     ~H"""
     <div id="scheduling-page" class="mx-auto flex h-full min-h-0 w-full max-w-full gap-4 p-4">
@@ -60,7 +62,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
       <aside class="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-slate-800/70 pl-4">
         <ScheduleChangeGroups.render
           state={@schedule_change_groups_state}
-          week_schedules={@week_schedules}
+          courses={@courses}
           academic_programs={@academic_programs}
         />
       </aside>
@@ -153,6 +155,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
        | terms: terms,
          selected_term_code: selected_term_code
      })
+     |> CourseListForTerm.sync_selected_term(term_code: selected_term_code)
      |> ScheduleDetailsOrder.sync_selected_term(term_code: selected_term_code)}
   end
 
@@ -261,6 +264,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
        | terms: terms,
          selected_term_code: selected_term_code
      })
+     |> CourseListForTerm.sync_selected_term(term_code: selected_term_code)
      |> ScheduleDetailsOrder.sync_selected_term(term_code: selected_term_code)}
   end
 
@@ -294,6 +298,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
          schedule_owners_metadata_by_term:
            Map.delete(socket.assigns[@key].schedule_owners_metadata_by_term, term_code)
      })
+     |> CourseListForTerm.sync_selected_term(term_code: selected_term_code)
      |> ScheduleDetailsOrder.sync_selected_term(term_code: selected_term_code)}
   end
 
