@@ -41,6 +41,12 @@ defmodule SnowSeToolsWeb.AppHeader do
           >
             Scheduling
           </.link>
+          <.link
+            navigate={~p"/discord"}
+            class={nav_link_class(@current_path, ~p"/discord")}
+          >
+            Discord
+          </.link>
           <%= if admin_user?(@current_user) do %>
             <.link
               navigate={~p"/admin"}
