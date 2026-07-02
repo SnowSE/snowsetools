@@ -1,5 +1,4 @@
 defmodule SnowSeTools.Syllabi.AvailableTermsDb do
-  require Logger
   alias SnowSeTools.Data.DbHelpers
 
   def upsert_terms(terms) when is_list(terms) do

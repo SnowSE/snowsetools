@@ -1,5 +1,4 @@
 defmodule SnowSeTools.Reports.GeneratedReportDB do
-  require Logger
   alias SnowSeTools.Data.{DbHelpers, Uuid}
 
   @schema Zoi.object(%{

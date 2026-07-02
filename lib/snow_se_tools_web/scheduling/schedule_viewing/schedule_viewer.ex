@@ -29,7 +29,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
         }
   @key :schedule_viewer_state
 
-
   def assign_component(socket) do
     socket
     |> assign(@key, %__MODULE__{
@@ -41,7 +40,13 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
     |> initial_setup()
   end
 
+  attr :state, __MODULE__, required: true
+  attr :schedule_details_order, :any, required: true
+  attr :week_schedules, :list, default: []
+  attr :schedule_change_groups_state, :any, required: true
+  attr :academic_programs, :list, default: []
   attr :courses, :list, default: []
+
   def render(assigns) do
     ~H"""
     <div id="scheduling-page" class="mx-auto flex h-full min-h-0 w-full max-w-full gap-4 p-4">

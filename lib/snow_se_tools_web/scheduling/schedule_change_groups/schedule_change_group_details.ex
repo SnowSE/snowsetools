@@ -1,6 +1,7 @@
 defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
   use SnowSeToolsWeb, :html
 
+  require Logger
   alias SnowSeTools.Scheduling.ScheduleUtils
   alias SnowSeToolsWeb.Scheduling.ScheduleChangeGroups
 
@@ -210,10 +211,12 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
     Map.get(active_change_group, "conflict_check_status", :not_checking)
   end
 
-  defp conflict_check_error(%ScheduleChangeGroups{active_change_group: nil}), do: nil
-
   defp conflict_check_error(%ScheduleChangeGroups{active_change_group: active_change_group}) do
-    Map.get(active_change_group, "conflict_check_error")
+    if active_change_group do
+      Map.get(active_change_group, "conflict_check_error")
+    else
+      Logger.info("skipping conflict_check_error because active_change_group is nil")
+    end
   end
 
   defp change_title(%{"course_name" => "__DELETED__"} = change),

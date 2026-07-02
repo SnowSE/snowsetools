@@ -1,6 +1,5 @@
 defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchResultsList do
   use SnowSeToolsWeb, :live_component
-  require Logger
 
   import SnowSeToolsWeb.Syllabus.ProfessorSyllabusListItems
 

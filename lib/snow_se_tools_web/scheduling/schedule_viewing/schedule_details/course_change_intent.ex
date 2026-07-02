@@ -1,6 +1,4 @@
 defmodule SnowSeToolsWeb.Scheduling.CourseChangeIntent do
-  require Logger
-
   alias SnowSeTools.Scheduling.ScheduleUtils
 
   @mwf_days ["Monday", "Wednesday", "Friday"]

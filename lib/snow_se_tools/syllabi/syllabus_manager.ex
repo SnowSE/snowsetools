@@ -1,6 +1,4 @@
 defmodule SnowSeTools.Syllabi.SyllabusDomainManager do
-  require Logger
-
   alias SnowSeTools.Syllabi.{SyllabusDB, CachedOrganizationsDb}
 
   def search_by_org(org_id), do: search_by_org(org_id, term_id: nil)

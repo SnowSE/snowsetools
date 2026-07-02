@@ -1,6 +1,4 @@
 defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
-  require Logger
-
   alias SnowSeTools.Data.{DbHelpers, Uuid}
 
   @group_schema Zoi.object(%{

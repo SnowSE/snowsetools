@@ -1,5 +1,4 @@
 defmodule SnowSeTools.Syllabi.CachedOrganizationsDb do
-  require Logger
   alias SnowSeTools.Data.DbHelpers
 
   def upsert_organizations(orgs) when is_list(orgs) do
