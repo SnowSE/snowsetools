@@ -76,6 +76,7 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
         {:ok, terms} -> {:ok, group_courses_by_term(terms)}
         {:error, reason} -> {:error, reason}
         [] -> {:ok, %{}}
+        terms when is_list(terms) -> {:ok, group_courses_by_term(terms)}
       end
 
     send(pid, {:snow_course_cache, {:all_courses_loaded, result}})

@@ -10,6 +10,8 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentMapping do
   defstruct key: nil,
             assignment: nil,
             students: [],
+            student_items: [],
+            filtered_mappings: [],
             loading?: true,
             error: nil
 
@@ -20,15 +22,22 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentMapping do
 
     state =
       if is_map(assignment) do
-        %{state | assignment: assignment, students: [], loading?: true, error: nil}
+        %{
+          state
+          | assignment: assignment,
+            students: [],
+            student_items: [],
+            loading?: true,
+            error: nil
+        }
       else
-        %{state | assignment: nil, students: [], loading?: false, error: nil}
+        %{state | assignment: nil, students: [], student_items: [], loading?: false, error: nil}
       end
 
     socket
     |> put_state(key, state)
     |> maybe_attach_hooks()
-    |> maybe_request_students(key: key, assignment: assignment)
+    |> maybe_request_data(key: key, assignment: assignment)
   end
 
   def fetch_state(assigns, key) do
@@ -47,8 +56,6 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentMapping do
     assigns =
       assign(assigns, :mapped_discord_user_ids, mapped_discord_user_ids(assigns.mappings))
 
-    assigns = assign(assigns, :student_items, student_items(assigns))
-
     ~H"""
     <div class="pl-4">
       <div
@@ -66,19 +73,19 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentMapping do
       </div>
 
       <div
-        :if={!@state.loading? and @student_items == []}
+        :if={!@state.loading? and @state.student_items == []}
         class="rounded-md border border-slate-800 bg-slate-950/35 p-3 text-sm text-slate-500"
       >
         No students cached. Sync this course to load roster.
       </div>
 
-      <div :if={!@state.loading? and @student_items != []} class="space-y-2">
+      <div :if={!@state.loading? and @state.student_items != []} class="space-y-2">
         <div class="text-xs uppercase tracking-wide text-slate-500">
-          students in the course ({length(@student_items)})
+          students in the course ({length(@state.student_items)})
         </div>
 
         <DiscordStudentRow.render
-          :for={item <- @student_items}
+          :for={item <- @state.student_items}
           state={item.state}
           student={item.student}
           mapping={item.mapping}
@@ -103,9 +110,16 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentMapping do
     end
   end
 
-  defp maybe_request_students(socket, key: key, assignment: assignment) do
-    if LiveView.connected?(socket) and assignment do
+  defp maybe_request_data(socket, key: key, assignment: assignment) when is_map(assignment) do
+    if LiveView.connected?(socket) do
       SnowCourseCacheDomainManager.request_section_students(
+        pid: self(),
+        key: key,
+        term_code: assignment["term_code"],
+        crn: assignment["crn"]
+      )
+
+      DiscordDomainManager.request_student_mappings_for_course(
         pid: self(),
         key: key,
         term_code: assignment["term_code"],
@@ -116,7 +130,14 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentMapping do
     socket
   end
 
-  defp hooked_info({:snow_course_cache, {:section_students_loaded, key, {:ok, payload}}}, socket) do
+  defp maybe_request_data(socket, _opts), do: socket
+
+  # -- info hooks --
+
+  defp hooked_info(
+         {:snow_course_cache, {:section_students_loaded, key, {:ok, payload}}},
+         socket
+       ) do
     case fetch_state(socket.assigns, key) do
       nil ->
         {:cont, socket}
@@ -124,9 +145,10 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentMapping do
       state ->
         students = Map.get(payload, :students, [])
         socket = ensure_student_rows(socket, key, students)
+        socket = put_state(socket, key, %{state | students: students})
+        socket = rebuild_student_items(socket, key)
 
-        {:cont,
-         put_state(socket, key, %{state | students: students, loading?: false, error: nil})}
+        {:cont, socket}
     end
   end
 
@@ -146,8 +168,45 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentMapping do
     end
   end
 
+  defp hooked_info(
+         {:discord, {:student_mappings_for_course_loaded, key, {:ok, filtered_mappings}}},
+         socket
+       ) do
+    case fetch_state(socket.assigns, key) do
+      nil ->
+        {:cont, socket}
+
+      state ->
+        socket = put_state(socket, key, %{state | filtered_mappings: filtered_mappings})
+        socket = rebuild_student_items(socket, key)
+
+        {:cont, socket}
+    end
+  end
+
+  defp hooked_info(
+         {:discord, {:student_mappings_for_course_loaded, _key, {:error, reason}}},
+         socket
+       ) do
+    Logger.error("Discord student mappings for course load failed reason=#{inspect(reason)}")
+    {:cont, socket}
+  end
+
   defp hooked_info({:snow_course_cache, {:section_students_synced, key, {:ok, _result}}}, socket) do
-    request_students(socket, key)
+    case fetch_state(socket.assigns, key) do
+      %{assignment: assignment} when is_map(assignment) ->
+        SnowCourseCacheDomainManager.request_section_students(
+          pid: self(),
+          key: key,
+          term_code: assignment["term_code"],
+          crn: assignment["crn"]
+        )
+
+      _other ->
+        :ok
+    end
+
+    {:cont, socket}
   end
 
   defp hooked_info(
@@ -175,18 +234,28 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentMapping do
       state ->
         updated = %{state | assignment: assignment}
 
-        if assignment do
+        if is_map(assignment) do
           {:cont,
            socket
-           |> put_state(key, updated)
-           |> maybe_request_students(key: key, assignment: assignment)}
+           |> put_state(key, %{
+             updated
+             | students: [],
+               student_items: [],
+               loading?: true,
+               error: nil
+           })
+           |> maybe_request_data(key: key, assignment: assignment)}
         else
-          {:cont, put_state(socket, key, %{updated | students: [], loading?: false})}
+          {:cont,
+           put_state(socket, key, %{updated | students: [], student_items: [], loading?: false})}
         end
     end
   end
 
-  defp hooked_info({:discord, {:course_channel_assignment_loaded, key, {:error, reason}}}, socket) do
+  defp hooked_info(
+         {:discord, {:course_channel_assignment_loaded, key, {:error, reason}}},
+         socket
+       ) do
     case fetch_state(socket.assigns, key) do
       nil ->
         {:cont, socket}
@@ -201,6 +270,30 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentMapping do
              error: "Could not load course assignment."
          })}
     end
+  end
+
+  defp hooked_info({:discord, {:student_discord_mapping_saved, _key, {:ok, _}}}, socket) do
+    request_all_student_mappings(socket)
+  end
+
+  defp hooked_info(
+         {:discord, {:student_discord_mapping_saved, _key, {:error, reason}}},
+         socket
+       ) do
+    Logger.error("Discord student mapping save failed reason=#{inspect(reason)}")
+    {:cont, socket}
+  end
+
+  defp hooked_info({:discord, {:student_discord_mapping_deleted, _key, {:ok, _}}}, socket) do
+    request_all_student_mappings(socket)
+  end
+
+  defp hooked_info(
+         {:discord, {:student_discord_mapping_deleted, _key, {:error, reason}}},
+         socket
+       ) do
+    Logger.error("Discord student mapping delete failed reason=#{inspect(reason)}")
+    {:cont, socket}
   end
 
   defp hooked_info({:discord, {:data_synced, _summary}}, socket) do
@@ -221,37 +314,35 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentMapping do
 
   defp hooked_info(_message, socket), do: {:cont, socket}
 
-  defp request_students(socket, key) do
+  # -- helpers --
+
+  defp rebuild_student_items(socket, key) do
     case fetch_state(socket.assigns, key) do
-      %{assignment: assignment} when is_map(assignment) ->
-        SnowCourseCacheDomainManager.request_section_students(
-          pid: self(),
-          key: key,
-          term_code: assignment["term_code"],
-          crn: assignment["crn"]
-        )
+      nil ->
+        socket
 
-      _other ->
-        :ok
+      state ->
+        student_row_states = Map.get(socket.assigns, :discord_student_row_states, %{})
+        items = build_student_items(state, student_row_states)
+
+        {:ok, put_state(socket, key, %{state | student_items: items})}
     end
-
-    {:cont, socket}
   end
 
-  defp student_items(assigns) do
-    assignment = assigns.state.assignment
-    mappings_by_badger_id = Map.new(assigns.mappings || [], &{&1["badger_id"], &1})
+  defp build_student_items(state, student_row_states) do
+    assignment = state.assignment
+    mappings_by_badger_id = Map.new(state.filtered_mappings || [], &{&1["badger_id"], &1})
 
-    assigns.state.students
+    (state.students || [])
     |> Enum.filter(&Map.get(&1, "badger_id"))
     |> Enum.sort_by(fn student -> String.downcase(Map.get(student, "last_name", "")) end)
     |> Enum.map(fn student ->
       mapping = Map.get(mappings_by_badger_id, student["badger_id"])
-      row_key = student_row_key(assigns.state.key, student["badger_id"])
+      row_key = student_row_key(state.key, student["badger_id"])
 
       row_state =
         DiscordStudentRow.fetch_state(
-          %{:discord_student_row_states => assigns.student_row_states},
+          %{:discord_student_row_states => student_row_states},
           row_key
         ) || %DiscordStudentRow{key: row_key}
 
@@ -261,16 +352,26 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentMapping do
         student: student,
         mapping: mapping,
         is_mapped: mapping != nil,
-        required_role_id: if(assignment, do: assignment["discord_role_id"], else: nil)
+        required_role_id: if(is_map(assignment), do: assignment["discord_role_id"], else: nil)
       }
     end)
   end
 
-  defp mapped_discord_user_ids(mappings) do
-    mappings
-    |> Enum.map(& &1["discord_user_id"])
-    |> Enum.reject(&is_nil/1)
-    |> MapSet.new()
+  defp request_all_student_mappings(socket) do
+    Enum.each(socket.assigns, fn
+      {key, %__MODULE__{assignment: assignment}} when is_map(assignment) ->
+        DiscordDomainManager.request_student_mappings_for_course(
+          pid: self(),
+          key: key,
+          term_code: assignment["term_code"],
+          crn: assignment["crn"]
+        )
+
+      _assign ->
+        :ok
+    end)
+
+    {:cont, socket}
   end
 
   defp student_row_key(mapping_key, badger_id),
@@ -286,6 +387,13 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentMapping do
         acc
       end
     end)
+  end
+
+  defp mapped_discord_user_ids(mappings) do
+    mappings
+    |> Enum.map(& &1["discord_user_id"])
+    |> Enum.reject(&is_nil/1)
+    |> MapSet.new()
   end
 
   defp put_state(socket, key, state) do

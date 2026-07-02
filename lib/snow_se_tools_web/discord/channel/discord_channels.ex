@@ -4,10 +4,16 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
 
   alias Phoenix.LiveView
   alias SnowSeTools.Discord.DiscordDomainManager
-  alias SnowSeToolsWeb.Discord.DiscordChannelRow
+
+  alias SnowSeToolsWeb.Discord.{
+    DiscordChannelRow,
+    DiscordChannelSyncModal,
+    DiscordStudentMapping
+  }
 
   defstruct key: nil,
             channels: [],
+            groups: [],
             loading?: true,
             error: nil
 
@@ -30,8 +36,6 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
   attr :courses_by_term, :map, default: %{}
 
   def render(assigns) do
-    assigns = assign(assigns, :grouped_channels, grouped_channels(assigns.state.channels))
-
     ~H"""
     <div id="discord-channel-groups" class="flex flex-col gap-4">
       <div
@@ -46,7 +50,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
       </div>
 
       <section
-        :for={group <- @grouped_channels}
+        :for={group <- @state.groups}
         id={"discord-channel-group-#{group.id}"}
         class="rounded-md border border-slate-800 bg-slate-950/40 p-4"
       >
@@ -69,22 +73,60 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
         </div>
 
         <div class="flex flex-col gap-2">
-          <DiscordChannelRow.render
-            :for={channel <- group.children}
-            state={channel_row_state(assigns, channel)}
-            mappings={@student_mappings.mappings}
-            members={@members.members}
-            roles={@roles.roles}
-            student_mapping_states={@student_mapping_states}
-            student_row_states={@student_row_states}
-            assign_modal_state={@assign_modal_state}
-            sync_modal_states={@sync_modal_states}
-            courses_by_term={@courses_by_term}
-          />
+          <%= for channel <- group.children do %>
+            <DiscordChannelRow.render
+              state={resolve_channel_row_state(assigns, channel)}
+              mappings={@student_mappings.mappings}
+              members={@members.members}
+              roles={@roles.roles}
+              student_mapping_states={@student_mapping_states}
+              student_row_states={@student_row_states}
+              assign_modal_state={@assign_modal_state}
+              sync_modal_states={@sync_modal_states}
+              courses_by_term={@courses_by_term}
+              student_mapping_state={resolve_student_mapping_state(assigns, channel)}
+              sync_modal_state={resolve_sync_modal_state(assigns, channel)}
+            />
+          <% end %>
         </div>
       </section>
     </div>
     """
+  end
+
+  defp resolve_channel_row_state(assigns, channel) do
+    row_key = channel_row_key(channel)
+    channel_row_states = Map.get(assigns, :channel_row_states, %{})
+
+    DiscordChannelRow.fetch_state(
+      %{:discord_channel_row_states => channel_row_states},
+      row_key
+    ) ||
+      %DiscordChannelRow{key: row_key, channel: normalize_channel(channel)}
+  end
+
+  defp resolve_student_mapping_state(assigns, channel) do
+    row_key = channel_row_key(channel)
+    mapping_key = "discord-student-mapping:#{row_key}"
+    student_mapping_states = Map.get(assigns, :student_mapping_states, %{})
+
+    DiscordStudentMapping.fetch_state(
+      %{:discord_student_mapping_states => student_mapping_states},
+      mapping_key
+    ) ||
+      %DiscordStudentMapping{key: mapping_key, assignment: nil}
+  end
+
+  defp resolve_sync_modal_state(assigns, channel) do
+    row_key = channel_row_key(channel)
+    channel_data = normalize_channel(channel)
+    sync_modal_states = Map.get(assigns, :sync_modal_states, %{})
+
+    DiscordChannelSyncModal.fetch_state(
+      %{:discord_channel_sync_modal_states => sync_modal_states},
+      row_key
+    ) ||
+      %DiscordChannelSyncModal{key: row_key, channel: channel_data}
   end
 
   defp maybe_attach_hooks(socket) do
@@ -105,9 +147,17 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
   end
 
   defp hooked_info({:discord, {:channels_loaded, key, {:ok, channels}}}, socket) do
+    groups = build_groups(channels)
+
     socket =
       socket
-      |> assign(key, %{socket.assigns[key] | channels: channels, loading?: false, error: nil})
+      |> assign(key, %{
+        socket.assigns[key]
+        | channels: channels,
+          groups: groups,
+          loading?: false,
+          error: nil
+      })
       |> ensure_channel_rows(channels)
 
     {:cont, socket}
@@ -135,7 +185,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
 
   defp hooked_info(_message, socket), do: {:cont, socket}
 
-  defp grouped_channels(channels) do
+  defp build_groups(channels) do
     channel_models =
       channels
       |> Enum.map(&channel_model/1)
@@ -192,16 +242,6 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
     Enum.reduce(channels, socket, fn channel, acc ->
       DiscordChannelRow.assign_component(acc, channel_row_key(channel), channel: channel)
     end)
-  end
-
-  defp channel_row_state(assigns, channel) do
-    row_key = channel_row_key(channel)
-
-    DiscordChannelRow.fetch_state(
-      %{:discord_channel_row_states => assigns.channel_row_states},
-      row_key
-    ) ||
-      %DiscordChannelRow{key: row_key, channel: normalize_channel(channel)}
   end
 
   defp channel_row_key(channel) do

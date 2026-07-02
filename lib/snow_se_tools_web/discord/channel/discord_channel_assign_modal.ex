@@ -17,7 +17,10 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
 
   def assign_component(socket, _key) do
     state = fetch_state(socket.assigns) || %__MODULE__{}
-    socket |> put_state(state) |> maybe_attach_hooks()
+
+    socket
+    |> put_state(state)
+    |> maybe_attach_hooks()
   end
 
   def fetch_state(assigns), do: Map.get(assigns, @state_assign)
@@ -147,12 +150,14 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
     """
   end
 
-  # -- hooks --
-
   defp maybe_attach_hooks(socket) do
     if Map.get(socket.private, :discord_channel_assign_modal_hooks_attached?) do
       socket
     else
+      Logger.info(
+        "attaching hooks for discord-channel-assign-modal to socket=#{inspect(socket.id)}"
+      )
+
       socket
       |> LiveView.attach_hook(
         "discord-channel-assign-modal:event",
@@ -162,8 +167,6 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
       |> put_in([Access.key(:private), :discord_channel_assign_modal_hooks_attached?], true)
     end
   end
-
-  # -- event handlers --
 
   defp hooked_event("discord-channel-assign-modal:open", %{"channel_id" => channel_id}, socket) do
     state = fetch_state(socket.assigns) || %__MODULE__{}
@@ -182,8 +185,12 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
      })}
   end
 
-  defp hooked_event("discord-channel-assign-modal:close", _params, socket) do
+  defp hooked_event("discord-channel-assign-modal:close", params, socket) do
     state = fetch_state(socket.assigns) || %__MODULE__{}
+
+    Logger.debug(
+      "AssignModal close hook fired: open_channel_id=#{inspect(state.open_channel_id)} params=#{inspect(params)}"
+    )
 
     {:halt,
      put_state(socket, %{
@@ -199,6 +206,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
   end
 
   defp hooked_event("discord-channel-assign-modal:term_change", %{"value" => term}, socket) do
+    Logger.info("AssignModal term_change hook fired: term=#{inspect(term)}")
     state = fetch_state(socket.assigns) || %__MODULE__{}
 
     {:halt,

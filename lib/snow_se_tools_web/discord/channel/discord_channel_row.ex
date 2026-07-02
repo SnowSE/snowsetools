@@ -20,7 +20,8 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
             course: nil,
             loading_assignment?: true,
             loading_course?: true,
-            error: nil
+            error: nil,
+            assignment_label: nil
 
   @state_assign :discord_channel_row_states
 
@@ -46,42 +47,15 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
   attr :mappings, :list, default: []
   attr :members, :list, default: []
   attr :roles, :list, default: []
+  attr :student_mapping_state, :any, required: true
   attr :student_mapping_states, :map, default: %{}
   attr :student_row_states, :map, default: %{}
   attr :assign_modal_state, :any, required: true
+  attr :sync_modal_state, :any, required: true
   attr :sync_modal_states, :map, default: %{}
   attr :courses_by_term, :map, default: %{}
 
   def render(assigns) do
-    assigns =
-      assign(
-        assigns,
-        :assignment_label,
-        assignment_label(assigns.state.assignment, assigns.state.course)
-      )
-
-    assigns =
-      assign(
-        assigns,
-        :student_mapping_state,
-        DiscordStudentMapping.fetch_state(
-          %{:discord_student_mapping_states => assigns.student_mapping_states},
-          student_mapping_key(assigns.state.key)
-        ) ||
-          %DiscordStudentMapping{
-            key: student_mapping_key(assigns.state.key),
-            assignment: assigns.state.assignment
-          }
-      )
-
-    sync_modal_state =
-      DiscordChannelSyncModal.fetch_state(
-        assigns.sync_modal_states,
-        assigns.state.key
-      ) || %DiscordChannelSyncModal{key: assigns.state.key, channel: assigns.state.channel}
-
-    assigns = assign(assigns, :sync_modal_state, sync_modal_state)
-
     ~H"""
     <.expandable id={"discord-channel-row-#{@state.key}"}>
       <:title_row>
@@ -105,10 +79,10 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
             public
           </span>
           <span
-            :if={@assignment_label}
+            :if={@state.assignment_label}
             class="rounded-full border border-indigo-500/20 bg-indigo-500/10 px-2 py-0.5 text-xs text-indigo-100"
           >
-            {@assignment_label}
+            {@state.assignment_label}
           </span>
           <span
             :if={@state.loading_assignment?}
@@ -161,7 +135,6 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
             </div>
 
             <DiscordStudentMapping.render
-              :if={@student_mapping_state}
               state={@student_mapping_state}
               mappings={@mappings}
               members={@members}
@@ -221,7 +194,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
             ensure_student_mapping_component(socket, key, nil)
           end
 
-        {:cont, socket}
+        {:cont, compute_assignment_label(socket)}
     end
   end
 
@@ -301,7 +274,8 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
         course = Map.get(payload, :course)
 
         {:cont,
-         put_state(socket, key, %{state | course: course, loading_course?: false, error: nil})}
+         put_state(socket, key, %{state | course: course, loading_course?: false, error: nil})
+         |> compute_assignment_label()}
     end
   end
 
@@ -353,6 +327,23 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
     DiscordChannelSyncModal.put_state(socket, key, %{sync_state | assignment: assignment})
   end
 
+  defp compute_assignment_label(socket) do
+    states = Map.get(socket.assigns, @state_assign, %{})
+
+    updated_states =
+      Enum.map(states, fn {k, state} -> {k, %{state | assignment_label: compute_label(state)}} end)
+      |> Map.new()
+
+    assign(socket, @state_assign, updated_states)
+  end
+
+  defp compute_label(%{assignment: nil}), do: nil
+
+  defp compute_label(%{assignment: assignment, course: course}) do
+    course_name = Map.get(course || %{}, "course_name") || assignment["crn"]
+    "#{assignment["term_code"]} #{assignment["crn"]} #{course_name}"
+  end
+
   defp student_mapping_key(key), do: "discord-student-mapping:#{key}"
 
   defp put_state(socket, key, state) do
@@ -396,12 +387,5 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
     |> Map.get("data", %{})
     |> Map.get("permission_overwrites", [])
     |> Enum.any?(&(Map.get(&1, "type") == 0))
-  end
-
-  defp assignment_label(nil, _course), do: nil
-
-  defp assignment_label(assignment, course) do
-    course_name = Map.get(course || %{}, "course_name") || assignment["crn"]
-    "#{assignment["term_code"]} #{assignment["crn"]} #{course_name}"
   end
 end

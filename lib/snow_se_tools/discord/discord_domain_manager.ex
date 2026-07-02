@@ -42,6 +42,16 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
     GenServer.cast(__MODULE__, {:request_student_discord_mappings, pid, key})
   end
 
+  def request_student_mappings_for_course(
+        pid: pid,
+        key: key,
+        term_code: term_code,
+        crn: crn
+      )
+      when is_pid(pid) do
+    GenServer.cast(__MODULE__, {:request_student_mappings_for_course, pid, key, term_code, crn})
+  end
+
   def sync_all(pid: pid) when is_pid(pid) do
     GenServer.cast(__MODULE__, {:sync_all, pid})
   end
@@ -190,6 +200,28 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
       fetch: &DiscordDb.list_student_discord_mappings/0,
       error_context: "Discord student discord mappings load failed"
     )
+
+    {:noreply, state}
+  end
+
+  def handle_cast(
+        {:request_student_mappings_for_course, pid, key, term_code, crn},
+        state
+      ) do
+    case DiscordDb.list_student_discord_mappings() do
+      {:error, reason} ->
+        Logger.error("Discord student mappings for course load failed reason=#{inspect(reason)}")
+        send(pid, {:discord, {:student_mappings_for_course_loaded, key, {:error, reason}}})
+
+      all_mappings ->
+        filtered =
+          Enum.filter(
+            all_mappings,
+            fn m -> m["term_code"] == term_code and m["crn"] == crn end
+          )
+
+        send(pid, {:discord, {:student_mappings_for_course_loaded, key, {:ok, filtered}}})
+    end
 
     {:noreply, state}
   end
