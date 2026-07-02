@@ -43,4 +43,5 @@ config :snow_se_tools, SnowSeTools.Repo,
 
 config :snow_se_tools,
   mock_external_dependencies?: true,
+  discord_api_module: SnowSeTools.TestSupport.Fakes.DiscordApi,
   start_db_domain_children?: false

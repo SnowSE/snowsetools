@@ -57,7 +57,6 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
     GenServer.cast(__MODULE__, {:delete_term, pid, term_code})
   end
 
-  @impl true
   def init(:ok) do
     case SnowCourseCacheDb.bootstrap_cache_tables() do
       {:error, reason} ->
@@ -69,14 +68,12 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
     end
   end
 
-  @impl true
   def handle_cast({:request_all_courses, pid}, state) do
     result =
       case SnowCourseCacheDb.list_terms_with_courses() do
-        {:ok, terms} -> {:ok, group_courses_by_term(terms)}
         {:error, reason} -> {:error, reason}
         [] -> {:ok, %{}}
-        terms when is_list(terms) -> {:ok, group_courses_by_term(terms)}
+        terms -> {:ok, load_courses_for_all_terms(terms)}
       end
 
     send(pid, {:snow_course_cache, {:all_courses_loaded, result}})
@@ -393,10 +390,37 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
     end
   end
 
-  defp group_courses_by_term(terms) do
-    terms
-    |> Enum.map(fn term -> {term["term_code"], term["courses"]} end)
-    |> Map.new()
+  defp load_courses_for_all_terms(terms) do
+    term_tasks =
+      terms
+      |> Task.async_stream(
+        fn term ->
+          case SnowCourseCacheDb.list_courses_for_term(term_code: term["term_code"]) do
+            {:error, reason} ->
+              Logger.error(
+                "Failed to load courses for term #{term["term_code"]} reason=#{inspect(reason)}"
+              )
+
+              {term["term_code"], []}
+
+            courses when is_list(courses) ->
+              {term["term_code"], courses}
+          end
+        end,
+        timeout: :infinity,
+        max_concurrency: 8
+      )
+      |> Enum.map(fn
+        {:ok, result} ->
+          result
+
+        {:exit, reason} ->
+          Logger.error("Failed to load courses for term task reason=#{inspect(reason)}")
+          nil
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    Map.new(term_tasks)
   end
 
   defp build_term_display_name(term_code) when is_binary(term_code) do

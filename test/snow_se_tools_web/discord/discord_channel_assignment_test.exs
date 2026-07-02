@@ -1,0 +1,309 @@
+defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
+  use SnowSeToolsWeb.ConnCase, async: false
+
+  alias SnowSeTools.Data.{DbHelpers, User}
+  alias SnowSeTools.Discord.{DiscordDb, DiscordDomainManager}
+  alias SnowSeTools.Snow.{SnowCourseCacheDb, SnowCourseCacheDomainManager}
+  alias SnowSeTools.TestSupport.Fakes.DiscordApi
+
+  setup do
+    delete_course_channel_assignments()
+    seed_course_cache()
+    seed_discord_cache()
+
+    start_supervised!(DiscordApi)
+    start_supervised!(SnowCourseCacheDomainManager)
+    start_supervised!(DiscordDomainManager)
+
+    :ok
+  end
+
+  test "user assigns a Discord channel to a course for a term", %{conn: conn} do
+    conn = log_in_test_user(conn)
+
+    {:ok, view, _html} = live(conn, ~p"/discord")
+
+    _ = :sys.get_state(SnowCourseCacheDomainManager)
+    _ = :sys.get_state(DiscordDomainManager)
+    render(view)
+
+    assert has_element?(view, "[id='discord-channel-row-discord-channel-row:channel-100']")
+
+    view
+    |> element("button[phx-click='discord-channel-assign-modal:open']")
+    |> render_click()
+
+    assert has_element?(view, "#discord-channel-assign-modal-channel-100")
+
+    view
+    |> element("#discord-assign-form")
+    |> render_change(%{"assign_form" => %{"selected_term" => "202640", "course_query" => ""}})
+
+    assert has_element?(view, "#discord-assign-course-option-12345")
+
+    view
+    |> element("#discord-assign-course-option-12345")
+    |> render_click()
+
+    view
+    |> element("#discord-assign-save")
+    |> render_click()
+
+    flush_assignment_flow(view)
+    render(view)
+
+    assignment = DiscordDb.get_course_channel_assignment(channel_id: "channel-100")
+
+    assert %{
+             "crn" => "12345",
+             "term_code" => "202640",
+             "discord_channel_id" => "channel-100",
+             "discord_role_id" => "role-course",
+             "created_at" => created_at
+           } = assignment
+
+    assert is_binary(created_at)
+
+    assert has_element?(
+             view,
+             "[id='discord-channel-row-discord-channel-row:channel-100'] span",
+             "202640 12345 Intro to Engineering"
+           )
+
+    view
+    |> element("button[phx-click='discord-channel-sync-modal:open']")
+    |> render_click()
+
+    assert has_element?(view, "#discord-channel-sync-form-discord-channel-row\\:channel-100")
+
+    assert has_element?(
+             view,
+             "#discord-channel-sync-jwt-discord-channel-row\\:channel-100-copy-button"
+           )
+
+    assert has_element?(
+             view,
+             "#discord-channel-sync-jwt-discord-channel-row\\:channel-100-input[name='snow_sync[jwt_token]']"
+           )
+
+    assert DiscordApi.calls() == []
+  end
+
+  test "course search preserves the selected term and matches name code or subject", %{conn: conn} do
+    conn = log_in_test_user(conn)
+
+    {:ok, view, _html} = live(conn, ~p"/discord")
+
+    _ = :sys.get_state(SnowCourseCacheDomainManager)
+    _ = :sys.get_state(DiscordDomainManager)
+    render(view)
+
+    view
+    |> element("button[phx-click='discord-channel-assign-modal:open']")
+    |> render_click()
+
+    view
+    |> element("#discord-assign-form")
+    |> render_change(%{"assign_form" => %{"selected_term" => "202640", "course_query" => ""}})
+
+    assert has_element?(view, "#discord-assign-course-option-12345")
+    assert has_element?(view, "#discord-assign-course-option-99999")
+
+    view
+    |> element("#discord-assign-form")
+    |> render_change(%{
+      "_target" => ["assign_form", "course_query"],
+      "assign_form" => %{"course_query" => "college"}
+    })
+
+    assert has_element?(view, "#discord-assign-course-option-99999")
+    refute has_element?(view, "#discord-assign-course-option-12345")
+
+    view
+    |> element("#discord-assign-form")
+    |> render_change(%{
+      "_target" => ["assign_form", "course_query"],
+      "assign_form" => %{"course_query" => "engr1010"}
+    })
+
+    assert has_element?(view, "#discord-assign-course-option-12345")
+    refute has_element?(view, "#discord-assign-course-option-99999")
+
+    view
+    |> element("#discord-assign-form")
+    |> render_change(%{
+      "_target" => ["assign_form", "course_query"],
+      "assign_form" => %{"course_query" => "math"}
+    })
+
+    assert has_element?(view, "#discord-assign-course-option-99999")
+    refute has_element?(view, "#discord-assign-course-option-12345")
+
+    assert has_element?(view, "#discord-assign-course-query[phx-debounce='200']")
+    assert DiscordApi.calls() == []
+  end
+
+  test "synced student rosters render from cached database rows", %{conn: conn} do
+    :ok =
+      SnowCourseCacheDb.save_section_students(
+        term_code: "202640",
+        crn: "12345",
+        students: [
+          %{
+            "badgerid" => "b00000001",
+            "first_name" => "Grace",
+            "last_name" => "Hopper",
+            "email" => "grace@example.com"
+          }
+        ]
+      )
+
+    conn = log_in_test_user(conn)
+
+    {:ok, view, _html} = live(conn, ~p"/discord")
+
+    _ = :sys.get_state(SnowCourseCacheDomainManager)
+    _ = :sys.get_state(DiscordDomainManager)
+    render(view)
+
+    view
+    |> element("button[phx-click='discord-channel-assign-modal:open']")
+    |> render_click()
+
+    view
+    |> element("#discord-assign-form")
+    |> render_change(%{"assign_form" => %{"selected_term" => "202640", "course_query" => ""}})
+
+    view
+    |> element("#discord-assign-course-option-12345")
+    |> render_click()
+
+    view
+    |> element("#discord-assign-save")
+    |> render_click()
+
+    flush_assignment_flow(view)
+    render(view)
+
+    assert has_element?(
+             view,
+             "[id='discord-channel-row-discord-channel-row:channel-100']",
+             "Roster 1"
+           )
+
+    assert has_element?(
+             view,
+             "[id='discord-student-row-b00000001-discord-student-row:discord-student-mapping:discord-channel-row:channel-100:b00000001']",
+             "Grace Hopper"
+           )
+
+    assert DiscordApi.calls() == []
+  end
+
+  test "cached roster students are returned as normalized maps" do
+    :ok =
+      SnowCourseCacheDb.save_section_students(
+        term_code: "202640",
+        crn: "12345",
+        students: [
+          %{
+            "badgerid" => "b00000001",
+            "first_name" => "Grace",
+            "last_name" => "Hopper",
+            "email" => "grace@example.com"
+          }
+        ]
+      )
+
+    assert {:ok, [student]} =
+             SnowCourseCacheDb.get_section_students(term_code: "202640", crn: "12345")
+
+    assert %{
+             "badger_id" => "b00000001",
+             "badgerid" => "b00000001",
+             "first_name" => "Grace",
+             "last_name" => "Hopper",
+             "email" => "grace@example.com"
+           } = student
+  end
+
+  defp log_in_test_user(conn) do
+    {:ok, user} = User.find_or_create("discord-channel-assignment@example.com")
+    user_id = Map.get(user, :id) || Map.fetch!(user, "id")
+
+    Plug.Test.init_test_session(conn, %{"current_user_id" => user_id})
+  end
+
+  defp delete_course_channel_assignments do
+    case DbHelpers.run_sql("DELETE FROM course_channel_assignments", %{}) do
+      {:error, reason} -> raise "Failed to clean course channel assignments: #{inspect(reason)}"
+      _result -> :ok
+    end
+  end
+
+  defp seed_course_cache do
+    :ok =
+      SnowCourseCacheDb.save_courses(
+        term_code: "202640",
+        term_name: "Fall 2026",
+        courses: [
+          %{
+            "crn" => "12345",
+            "subject_code" => "ENGR",
+            "course_number" => "1010",
+            "section_number" => "01",
+            "name" => "Intro to Engineering",
+            "instructors" => [%{"name" => "Ada Lovelace", "primary_instructor" => true}]
+          },
+          %{
+            "crn" => "99999",
+            "subject_code" => "MATH",
+            "course_number" => "1050",
+            "section_number" => "01",
+            "name" => "College Algebra",
+            "instructors" => []
+          }
+        ]
+      )
+  end
+
+  defp seed_discord_cache do
+    :ok =
+      DiscordDb.save_channels(
+        channels: [
+          %{
+            "id" => "category-10",
+            "name" => "Courses",
+            "type" => 4,
+            "position" => 1,
+            "permission_overwrites" => []
+          },
+          %{
+            "id" => "channel-100",
+            "name" => "engr-1010",
+            "type" => 0,
+            "parent_id" => "category-10",
+            "position" => 1,
+            "permission_overwrites" => []
+          }
+        ]
+      )
+
+    :ok =
+      DiscordDb.save_roles(
+        roles: [
+          %{"id" => "guild-id", "name" => "@everyone", "position" => 0},
+          %{"id" => "role-course", "name" => "ENGR 1010", "position" => 10}
+        ]
+      )
+  end
+
+  defp flush_assignment_flow(view) do
+    _ = :sys.get_state(DiscordDomainManager)
+    _ = :sys.get_state(view.pid)
+    _ = :sys.get_state(DiscordDomainManager)
+    _ = :sys.get_state(view.pid)
+    _ = :sys.get_state(SnowCourseCacheDomainManager)
+    _ = :sys.get_state(view.pid)
+  end
+end

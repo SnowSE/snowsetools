@@ -465,7 +465,7 @@ defmodule SnowSeTools.Discord.DiscordDb do
     """
 
     case DbHelpers.run_sql(sql, %{"channel_id" => channel_id}, @course_channel_assignment_schema) do
-      [{assignment}] -> assignment
+      [assignment] -> assignment
       [] -> nil
       {:error, reason} -> {:error, reason}
     end
@@ -480,7 +480,7 @@ defmodule SnowSeTools.Discord.DiscordDb do
     """
 
     case DbHelpers.run_sql(sql, %{"crn" => crn}, @course_channel_assignment_schema) do
-      [{assignment}] -> assignment
+      [assignment] -> assignment
       [] -> nil
       {:error, reason} -> {:error, reason}
     end

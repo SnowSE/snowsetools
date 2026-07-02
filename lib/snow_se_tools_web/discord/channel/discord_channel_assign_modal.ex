@@ -4,14 +4,14 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
 
   alias Phoenix.LiveView
   alias SnowSeTools.Discord.DiscordDomainManager
+  alias SnowSeTools.Snow.SnowCourseCacheDomainManager
 
   defstruct open_channel_id: nil,
             channel: nil,
-            selected_term: nil,
-            course_query: "",
             selected_course: nil,
             assigning?: false,
             error: nil,
+            form: %{},
             sorted_terms: [],
             terms_loaded?: false
 
@@ -23,6 +23,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
     socket
     |> put_state(state)
     |> maybe_attach_hooks()
+    |> maybe_request_courses()
   end
 
   def fetch_state(assigns), do: Map.get(assigns, @state_assign)
@@ -51,6 +52,11 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
   attr :courses_by_term, :map, default: %{}
 
   def render(assigns) do
+    assigns =
+      assigns
+      |> assign(:sorted_terms, sorted_terms(assigns.courses_by_term))
+      |> assign(:filtered_courses, filtered_courses(assigns.state, assigns.courses_by_term))
+
     ~H"""
     <%= if @state.open_channel_id do %>
       <.modal
@@ -82,55 +88,71 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
           <div :if={@state.assigning?} class="text-sm text-slate-400">Assigning course...</div>
 
           <div :if={!@state.assigning?}>
-            <label class="mb-2 block text-sm font-medium text-slate-300">Term</label>
-            <select
-              phx-change="discord-channel-assign-modal:term_change"
-              value={Map.get(@state, :selected_term) || ""}
-              class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+            <form
+              id="discord-assign-form"
+              phx-change="discord-channel-assign-modal:assign_form:change"
             >
-              <option value="">Select a term...</option>
-              <option :for={term <- @state.sorted_terms} value={term.code}>{term.display}</option>
-            </select>
-
-            <%= if @state.selected_term do %>
-              <div class="mt-3">
-                <label class="mb-2 block text-sm font-medium text-slate-300">Search courses</label>
-                <input
-                  type="text"
-                  name="course_query"
-                  value={@state.course_query}
-                  phx-input="discord-channel-assign-modal:course_query"
-                  placeholder="MATH 1010 or CRN"
-                  class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                />
-
-                <div class="mt-3 max-h-64 overflow-y-auto space-y-2">
-                  <%= if filtered_courses(@state, @courses_by_term) == [] do %>
-                    <div class="rounded-md border border-slate-800 bg-slate-950/35 p-3 text-sm text-slate-500">
-                      No matching courses found.
-                    </div>
-                  <% else %>
-                    <%= for course <- filtered_courses(@state, @courses_by_term) do %>
-                      <button
-                        type="button"
-                        phx-click="discord-channel-assign-modal:select_course"
-                        phx-value-crn={course["crn"]}
-                        class={[
-                          "flex w-full flex-col gap-1 rounded-md border px-3 py-2 text-left transition",
-                          @state.selected_course && @state.selected_course["crn"] == course["crn"] &&
-                            "border-indigo-500/40 bg-indigo-500/10",
-                          !(@state.selected_course && @state.selected_course["crn"] == course["crn"]) &&
-                            "border-slate-800 bg-slate-950/45 hover:border-slate-700 hover:bg-slate-900/60"
-                        ]}
-                      >
-                        <span class="text-sm font-medium text-slate-100">{course_prefix(course)}</span>
-                        <span class="text-xs text-slate-500">{course["course_name"]}</span>
-                      </button>
-                    <% end %>
-                  <% end %>
-                </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-300">Term</label>
+                <select
+                  id="discord-assign-term-select"
+                  name="assign_form[selected_term]"
+                  value={Map.get(@state.form, "selected_term") || ""}
+                  class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                >
+                  <option value="">Select a term...</option>
+                  <option
+                    :for={term <- @sorted_terms}
+                    value={term.code}
+                    selected={Map.get(@state.form, "selected_term") == term.code}
+                  >
+                    {term.display}
+                  </option>
+                </select>
               </div>
-            <% end %>
+
+              <%= if Map.get(@state.form, "selected_term") do %>
+                <div class="mt-3">
+                  <label class="mb-2 block text-sm font-medium text-slate-300">Search courses</label>
+                  <input
+                    id="discord-assign-course-query"
+                    type="text"
+                    name="assign_form[course_query]"
+                    value={Map.get(@state.form, "course_query", "")}
+                    placeholder="MATH 1010 or College Algebra"
+                    phx-debounce="200"
+                    class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  />
+
+                  <div class="mt-3 max-h-64 overflow-y-auto space-y-2">
+                    <%= if @filtered_courses == [] do %>
+                      <div class="rounded-md border border-slate-800 bg-slate-950/35 p-3 text-sm text-slate-500">
+                        No matching courses found.
+                      </div>
+                    <% else %>
+                      <%= for course <- @filtered_courses do %>
+                        <button
+                          id={"discord-assign-course-option-#{course["crn"]}"}
+                          type="button"
+                          phx-click="discord-channel-assign-modal:select_course"
+                          phx-value-crn={course["crn"]}
+                          class={[
+                            "flex w-full flex-col gap-1 rounded-md border px-3 py-2 text-left transition",
+                            @state.selected_course && @state.selected_course["crn"] == course["crn"] &&
+                              "border-indigo-500/40 bg-indigo-500/10",
+                            !(@state.selected_course && @state.selected_course["crn"] == course["crn"]) &&
+                              "border-slate-800 bg-slate-950/45 hover:border-slate-700 hover:bg-slate-900/60"
+                          ]}
+                        >
+                          <span class="text-sm font-medium text-slate-100">{course_prefix(course)}</span>
+                          <span class="text-xs text-slate-500">{course["course_name"]}</span>
+                        </button>
+                      <% end %>
+                    <% end %>
+                  </div>
+                </div>
+              <% end %>
+            </form>
           </div>
 
           <div class="flex items-center justify-end gap-2">
@@ -142,6 +164,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
               Cancel
             </button>
             <button
+              id="discord-assign-save"
               type="button"
               phx-click="discord-channel-assign-modal:save"
               disabled={is_nil(@state.selected_course) || @state.assigning?}
@@ -179,6 +202,18 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
     end
   end
 
+  defp maybe_request_courses(socket) do
+    state = fetch_state(socket.assigns) || %__MODULE__{}
+
+    if Map.get(state, :terms_loaded?, false) do
+      socket
+    else
+      Logger.info("Requesting all courses from SnowCourseCacheDomainManager...")
+      SnowCourseCacheDomainManager.request_all_courses(pid: self())
+      socket
+    end
+  end
+
   defp hooked_event("discord-channel-assign-modal:open", %{"channel_id" => channel_id}, socket) do
     state = fetch_state(socket.assigns) || %__MODULE__{}
     channel = find_channel_by_id(socket.assigns, channel_id)
@@ -188,8 +223,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
        state
        | open_channel_id: channel_id,
          channel: channel,
-         selected_term: nil,
-         course_query: "",
+         form: %{"selected_term" => nil, "course_query" => ""},
          selected_course: nil,
          assigning?: false,
          error: nil
@@ -208,35 +242,44 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
        state
        | open_channel_id: nil,
          channel: nil,
-         selected_term: nil,
-         course_query: "",
+         form: %{},
          selected_course: nil,
          assigning?: false,
          error: nil
      })}
   end
 
-  defp hooked_event("discord-channel-assign-modal:term_change", %{"value" => term}, socket) do
-    Logger.info("AssignModal term_change hook fired: term=#{inspect(term)}")
+  defp hooked_event("discord-channel-assign-modal:assign_form:change", params, socket) do
     state = fetch_state(socket.assigns) || %__MODULE__{}
+    form_params = Map.get(params, "assign_form", %{})
+
+    selected_term =
+      form_params
+      |> Map.get("selected_term", Map.get(state.form, "selected_term"))
+      |> preserve_selected_term_for_course_search(params, state)
+
+    selected_term = if(selected_term == "", do: nil, else: selected_term)
+
+    course_query = Map.get(form_params, "course_query", Map.get(state.form, "course_query", ""))
 
     {:halt,
      put_state(socket, %{
        state
-       | selected_term: if(term == "", do: nil, else: term),
-         course_query: "",
+       | form: %{"selected_term" => selected_term, "course_query" => course_query},
          selected_course: nil
      })}
   end
 
-  defp hooked_event("discord-channel-assign-modal:course_query", %{"value" => value}, socket) do
-    state = fetch_state(socket.assigns) || %__MODULE__{}
-    {:halt, put_state(socket, %{state | course_query: value, selected_course: nil})}
-  end
-
   defp hooked_event("discord-channel-assign-modal:select_course", %{"crn" => crn}, socket) do
     state = fetch_state(socket.assigns) || %__MODULE__{}
-    courses = Map.get(Map.get(socket.assigns, :courses_by_term, %{}), state.selected_term, [])
+
+    courses =
+      Map.get(
+        Map.get(socket.assigns, :courses_by_term, %{}),
+        Map.get(state.form, "selected_term"),
+        []
+      )
+
     selected_course = Enum.find(courses, &(&1["crn"] == crn))
 
     {:halt, put_state(socket, %{state | selected_course: selected_course})}
@@ -245,7 +288,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
   defp hooked_event("discord-channel-assign-modal:save", _params, socket) do
     state = fetch_state(socket.assigns) || %__MODULE__{}
     channel_id = Map.get(state.channel, :id) || Map.get(state.channel, "id")
-    role_id = find_default_role_id(socket.assigns[:roles] || [])
+    role_id = find_default_role_id(discord_roles(socket.assigns))
 
     cond do
       is_nil(state.selected_course) or is_nil(channel_id) or is_nil(role_id) ->
@@ -272,7 +315,18 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
 
   defp hooked_event(_event, _params, socket), do: {:cont, socket}
 
-  # -- info hooks --
+  defp preserve_selected_term_for_course_search("", params, state) do
+    if form_target?(params, "course_query") do
+      Map.get(state.form, "selected_term")
+    else
+      ""
+    end
+  end
+
+  defp preserve_selected_term_for_course_search(selected_term, _params, _state), do: selected_term
+
+  defp form_target?(%{"_target" => ["assign_form", field_name]}, field_name), do: true
+  defp form_target?(_params, _field_name), do: false
 
   defp hooked_info({:snow_course_cache, {:all_courses_loaded, {:ok, courses_by_term}}}, socket) do
     state = fetch_state(socket.assigns) || %__MODULE__{}
@@ -286,8 +340,6 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
   end
 
   defp hooked_info(_message, socket), do: {:cont, socket}
-
-  # -- helpers --
 
   defp put_state(socket, state), do: assign(socket, @state_assign, state)
 
@@ -316,26 +368,32 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
     end
   end
 
+  defp discord_roles(assigns) do
+    case Map.get(assigns, :discord_roles) do
+      %{roles: roles} when is_list(roles) -> roles
+      _ -> []
+    end
+  end
+
+  defp sorted_terms(courses_by_term) do
+    courses_by_term
+    |> Enum.map(fn {code, _courses} -> %{code: code, display: term_display_name(code)} end)
+    |> Enum.sort_by(& &1.code, :desc)
+  end
+
   defp channel_id(channel), do: Map.get(channel, :id) || Map.get(channel, "id")
 
   defp filtered_courses(state, courses_by_term) do
-    courses = Map.get(courses_by_term, state.selected_term, [])
-    query = normalize(state.course_query)
+    selected_term = Map.get(state.form || %{}, "selected_term")
+    course_query = Map.get(state.form || %{}, "course_query", "")
+
+    courses = Map.get(courses_by_term || %{}, selected_term) || []
+    query = normalize(course_query)
 
     courses
     |> Enum.filter(fn course ->
       query == "" or
-        Enum.any?(
-          [
-            Map.get(course, "crn", ""),
-            Map.get(course, "subject_code", ""),
-            Map.get(course, "course_number", ""),
-            Map.get(course, "section_number", ""),
-            Map.get(course, "course_name", ""),
-            Map.get(course, "primary_instructor_name", "")
-          ],
-          &String.contains?(normalize(&1), query)
-        )
+        String.contains?(course_search_text(course), query)
     end)
     |> Enum.sort_by(fn course ->
       {Map.get(course, "subject_code", ""), Map.get(course, "course_number", ""),
@@ -355,6 +413,23 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
     ]
     |> Enum.reject(&(&1 == ""))
     |> Enum.join(" ")
+  end
+
+  defp course_search_text(course) do
+    subject_code = Map.get(course, "subject_code", "")
+    course_number = Map.get(course, "course_number", "")
+    section_number = Map.get(course, "section_number", "")
+
+    [
+      subject_code,
+      course_number,
+      section_number,
+      "#{subject_code} #{course_number}",
+      "#{subject_code} #{course_number} #{section_number}",
+      Map.get(course, "course_name", ""),
+      Map.get(course, "crn", "")
+    ]
+    |> Enum.map_join(" ", &normalize/1)
   end
 
   defp term_display_name(term_code) when is_binary(term_code) and byte_size(term_code) >= 6 do

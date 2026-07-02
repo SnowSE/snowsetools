@@ -137,18 +137,19 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
     {:noreply, assign(socket, :active_view, view_from_param(view))}
   end
 
-  def handle_info({:discord, _message}, socket), do: {:noreply, socket}
-
   def handle_info({:snow_course_cache, {:all_courses_loaded, {:ok, courses_by_term}}}, socket) do
     {:noreply, assign(socket, :courses_by_term, courses_by_term)}
   end
 
   def handle_info({:snow_course_cache, {:all_courses_loaded, {:error, reason}}}, socket) do
-    Logger.error("Discord all courses load failed reason=#{inspect(reason)}")
+    Logger.error("DiscordLive course cache load failed reason=#{inspect(reason)}")
+
     {:noreply, socket}
   end
 
   def handle_info({:snow_course_cache, _message}, socket), do: {:noreply, socket}
+
+  def handle_info({:discord, _message}, socket), do: {:noreply, socket}
 
   def handle_info(message, socket) do
     Logger.warning("Unhandled DiscordLive message: #{inspect(message)}")

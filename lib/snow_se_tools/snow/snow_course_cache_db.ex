@@ -394,7 +394,13 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
 
   def get_section_students(term_code: term_code, crn: crn) do
     sql = """
-    SELECT data
+    SELECT
+      data::jsonb || jsonb_build_object(
+        'badger_id', badger_id,
+        'first_name', first_name,
+        'last_name', last_name,
+        'email', email
+      ) AS data
     FROM snow_section_students
     WHERE term_code = $(term_code)
       AND crn = $(crn)

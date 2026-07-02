@@ -4,6 +4,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelSyncModal do
 
   alias Phoenix.LiveView
   alias SnowSeTools.Discord.DiscordDomainManager
+  alias SnowSeToolsWeb.Snow.SnowJwtCopy
 
   defstruct key: nil,
             channel: nil,
@@ -77,45 +78,50 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelSyncModal do
             {@state.error}
           </div>
 
-          <label class="block space-y-2">
-            <span class="text-sm font-medium text-slate-300">JWT token</span>
-            <input
-              type="password"
-              name="sync_token"
+          <.form
+            for={sync_form(@state)}
+            id={"discord-channel-sync-form-#{@state.key}"}
+            phx-change="discord-channel-sync-modal:sync_token"
+            phx-submit="discord-channel-sync-modal:sync"
+            phx-value-key={@state.key}
+            class="space-y-4"
+          >
+            <.live_component
+              module={SnowJwtCopy}
+              id={"discord-channel-sync-jwt-#{@state.key}"}
+              label="JWT token"
+              name="snow_sync[jwt_token]"
+              placeholder="Paste JWT from my.snow.edu"
               value={@state.sync_token}
-              phx-input="discord-channel-sync-modal:sync_token"
-              phx-value-key={@state.key}
-              class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+              show_helper={true}
             />
-          </label>
 
-          <div class="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              phx-click="discord-channel-sync-modal:close"
-              phx-value-key={@state.key}
-              class="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-900"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              phx-click="discord-channel-sync-modal:sync"
-              phx-value-key={@state.key}
-              disabled={@state.syncing_roster?}
-              class="inline-flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <.icon
-                name="hero-arrow-path"
-                class={if(@state.syncing_roster?, do: "size-4 animate-spin", else: "size-4")}
-              />
-              <%= if @state.syncing_roster? do %>
-                Syncing...
-              <% else %>
-                Sync roster
-              <% end %>
-            </button>
-          </div>
+            <div class="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                phx-click="discord-channel-sync-modal:close"
+                phx-value-key={@state.key}
+                class="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-900"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={@state.syncing_roster?}
+                class="inline-flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <.icon
+                  name="hero-arrow-path"
+                  class={if(@state.syncing_roster?, do: "size-4 animate-spin", else: "size-4")}
+                />
+                <%= if @state.syncing_roster? do %>
+                  Syncing...
+                <% else %>
+                  Sync roster
+                <% end %>
+              </button>
+            </div>
+          </.form>
         </div>
       </.modal>
     <% end %>
@@ -152,7 +158,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelSyncModal do
 
   defp hooked_event("discord-channel-sync-modal:sync_token", %{"key" => key} = params, socket) do
     state = fetch_socket_state!(socket, key)
-    value = Map.get(params, "sync_token") || Map.get(params, "value", "")
+    value = sync_token_param(params)
     {:halt, put_state(socket, key, %{state | sync_token: value})}
   end
 
@@ -231,4 +237,13 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelSyncModal do
   end
 
   defp channel_name(channel), do: Map.get(channel || %{}, "name", "unnamed")
+
+  defp sync_form(state) do
+    to_form(%{"jwt_token" => state.sync_token || ""}, as: :snow_sync)
+  end
+
+  defp sync_token_param(%{"snow_sync" => %{"jwt_token" => value}}), do: value
+  defp sync_token_param(%{"sync_token" => value}), do: value
+  defp sync_token_param(%{"value" => value}), do: value
+  defp sync_token_param(_params), do: ""
 end

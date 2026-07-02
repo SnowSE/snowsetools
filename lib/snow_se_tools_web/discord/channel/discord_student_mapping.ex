@@ -145,7 +145,10 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentMapping do
       state ->
         students = Map.get(payload, :students, [])
         socket = ensure_student_rows(socket, key, students)
-        socket = put_state(socket, key, %{state | students: students})
+
+        socket =
+          put_state(socket, key, %{state | students: students, loading?: false, error: nil})
+
         socket = rebuild_student_items(socket, key)
 
         {:cont, socket}
@@ -325,7 +328,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentMapping do
         student_row_states = Map.get(socket.assigns, :discord_student_row_states, %{})
         items = build_student_items(state, student_row_states)
 
-        {:ok, put_state(socket, key, %{state | student_items: items})}
+        put_state(socket, key, %{state | student_items: items})
     end
   end
 

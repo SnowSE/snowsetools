@@ -308,7 +308,7 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
   end
 
   def handle_cast({:add_role_to_member, pid, key, member_id, role_id}, state) do
-    case DiscordApi.add_role_to_member(member_id: member_id, role_id: role_id) do
+    case discord_api().add_role_to_member(member_id: member_id, role_id: role_id) do
       {:error, reason} ->
         Logger.error(
           "Discord add role failed member_id=#{member_id} role_id=#{role_id} reason=#{inspect(reason)}"
@@ -394,42 +394,42 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
   end
 
   defp sync_guild do
-    with {:ok, guild} <- DiscordApi.fetch_guild(),
+    with {:ok, guild} <- discord_api().fetch_guild(),
          :ok <- DiscordDb.save_guild(guild: guild) do
       :ok
     end
   end
 
   defp sync_bot_user do
-    with {:ok, bot_user} <- DiscordApi.fetch_current_user(),
+    with {:ok, bot_user} <- discord_api().fetch_current_user(),
          :ok <- DiscordDb.save_bot_user(bot_user: bot_user) do
       :ok
     end
   end
 
   defp sync_members do
-    with {:ok, members} <- DiscordApi.fetch_members(),
+    with {:ok, members} <- discord_api().fetch_members(),
          :ok <- DiscordDb.save_members(members: members) do
       :ok
     end
   end
 
   defp sync_channels do
-    with {:ok, channels} <- DiscordApi.fetch_channels(),
+    with {:ok, channels} <- discord_api().fetch_channels(),
          :ok <- DiscordDb.save_channels(channels: channels) do
       :ok
     end
   end
 
   defp sync_roles do
-    with {:ok, roles} <- DiscordApi.fetch_roles(),
+    with {:ok, roles} <- discord_api().fetch_roles(),
          :ok <- DiscordDb.save_roles(roles: roles) do
       :ok
     end
   end
 
   defp sync_invites do
-    with {:ok, invites} <- DiscordApi.fetch_invites(),
+    with {:ok, invites} <- discord_api().fetch_invites(),
          :ok <- DiscordDb.save_invites(invites: invites) do
       :ok
     end
@@ -477,7 +477,7 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
 
               if is_binary(discord_user_id) do
                 if member_present?(members, discord_user_id) do
-                  DiscordApi.add_role_to_member(member_id: discord_user_id, role_id: role_id)
+                  discord_api().add_role_to_member(member_id: discord_user_id, role_id: role_id)
                 else
                   {:ok, :member_missing}
                 end
@@ -587,5 +587,9 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
       data ->
         send(pid, {:discord, {event, key, {:ok, data}}})
     end
+  end
+
+  defp discord_api do
+    Application.get_env(:snow_se_tools, :discord_api_module, DiscordApi)
   end
 end
