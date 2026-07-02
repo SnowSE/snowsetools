@@ -173,6 +173,60 @@ CREATE TABLE snow_section_students (
 
 CREATE INDEX snow_section_students_term_crn_idx ON snow_section_students(term_code, crn);
 
+CREATE TABLE discord_guilds (
+  id         TEXT        PRIMARY KEY,
+  name       TEXT,
+  data       JSONB       NOT NULL,
+  synced_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE discord_bot_users (
+  id         TEXT        PRIMARY KEY,
+  name       TEXT,
+  data       JSONB       NOT NULL,
+  synced_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE discord_members (
+  id         TEXT        PRIMARY KEY,
+  name       TEXT,
+  data       JSONB       NOT NULL,
+  synced_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX discord_members_name_idx ON discord_members(name);
+
+CREATE TABLE discord_channels (
+  id         TEXT        PRIMARY KEY,
+  name       TEXT,
+  data       JSONB       NOT NULL,
+  synced_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX discord_channels_name_idx ON discord_channels(name);
+
+CREATE TABLE discord_roles (
+  id         TEXT        PRIMARY KEY,
+  name       TEXT,
+  data       JSONB       NOT NULL,
+  synced_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX discord_roles_name_idx ON discord_roles(name);
+
+CREATE TABLE discord_invites (
+  id         TEXT        PRIMARY KEY,
+  name       TEXT,
+  data       JSONB       NOT NULL,
+  synced_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE academic_programs (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   name        TEXT        NOT NULL UNIQUE,

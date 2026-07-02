@@ -82,6 +82,7 @@ defmodule SnowSeTools.Application do
       [
         SnowSeTools.UserGroups.UserGroupDomainManager,
         SnowSeTools.Snow.SnowCourseCacheDomainManager,
+        SnowSeTools.Discord.DiscordDomainManager,
         SnowSeTools.AcademicPrograms.ProgramDomainManager,
         SnowSeTools.Scheduling.ScheduleOwnerDomainManager,
         SnowSeTools.Scheduling.ScheduleChangeDomainManager,
