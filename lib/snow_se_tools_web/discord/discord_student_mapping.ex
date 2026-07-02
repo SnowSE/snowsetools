@@ -41,6 +41,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentMapping do
   attr :mappings, :list, default: []
   attr :members, :list, default: []
   attr :roles, :list, default: []
+  attr :student_row_states, :map, default: %{}
 
   def render(assigns) do
     assigns =
@@ -249,7 +250,10 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentMapping do
       row_key = student_row_key(assigns.state.key, student["badger_id"])
 
       row_state =
-        DiscordStudentRow.fetch_state(assigns, row_key) || %DiscordStudentRow{key: row_key}
+        DiscordStudentRow.fetch_state(
+          %{:discord_student_row_states => assigns.student_row_states},
+          row_key
+        ) || %DiscordStudentRow{key: row_key}
 
       %{
         key: row_key,

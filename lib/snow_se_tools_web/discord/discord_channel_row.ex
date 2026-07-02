@@ -48,6 +48,8 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
   attr :mappings, :list, default: []
   attr :members, :list, default: []
   attr :roles, :list, default: []
+  attr :student_mapping_states, :map, default: %{}
+  attr :student_row_states, :map, default: %{}
 
   def render(assigns) do
     assigns =
@@ -61,7 +63,10 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
       assign(
         assigns,
         :student_mapping_state,
-        DiscordStudentMapping.fetch_state(assigns, student_mapping_key(assigns.state.key)) ||
+        DiscordStudentMapping.fetch_state(
+          %{:discord_student_mapping_states => assigns.student_mapping_states},
+          student_mapping_key(assigns.state.key)
+        ) ||
           %DiscordStudentMapping{
             key: student_mapping_key(assigns.state.key),
             assignment: assigns.state.assignment
@@ -165,6 +170,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
               mappings={@mappings}
               members={@members}
               roles={@roles}
+              student_row_states={@student_row_states}
             />
           </div>
         </div>

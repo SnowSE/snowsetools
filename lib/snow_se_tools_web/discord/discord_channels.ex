@@ -22,6 +22,9 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
   attr :members, :any, required: true
   attr :roles, :any, required: true
   attr :student_mappings, :any, required: true
+  attr :channel_row_states, :map, default: %{}
+  attr :student_mapping_states, :map, default: %{}
+  attr :student_row_states, :map, default: %{}
 
   def render(assigns) do
     assigns = assign(assigns, :grouped_channels, grouped_channels(assigns.state.channels))
@@ -69,6 +72,8 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
             mappings={@student_mappings.mappings}
             members={@members.members}
             roles={@roles.roles}
+            student_mapping_states={@student_mapping_states}
+            student_row_states={@student_row_states}
           />
         </div>
       </section>
@@ -186,7 +191,10 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
   defp channel_row_state(assigns, channel) do
     row_key = channel_row_key(channel)
 
-    DiscordChannelRow.fetch_state(assigns, row_key) ||
+    DiscordChannelRow.fetch_state(
+      %{:discord_channel_row_states => assigns.channel_row_states},
+      row_key
+    ) ||
       %DiscordChannelRow{key: row_key, channel: normalize_channel(channel)}
   end
 

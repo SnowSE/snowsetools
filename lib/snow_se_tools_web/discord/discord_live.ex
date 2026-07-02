@@ -92,6 +92,9 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
                     members={@discord_members}
                     roles={@discord_roles}
                     student_mappings={@discord_student_mappings}
+                    channel_row_states={Map.get(assigns, :discord_channel_row_states, %{})}
+                    student_mapping_states={Map.get(assigns, :discord_student_mapping_states, %{})}
+                    student_row_states={Map.get(assigns, :discord_student_row_states, %{})}
                   />
                 <% :members -> %>
                   <DiscordMembers.render state={@discord_members} />
