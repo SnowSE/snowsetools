@@ -17,6 +17,10 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
     GenServer.cast(__MODULE__, {:request_course_catalog, pid})
   end
 
+  def request_all_courses(pid: pid) when is_pid(pid) do
+    GenServer.cast(__MODULE__, {:request_all_courses, pid})
+  end
+
   def request_term_courses(pid: pid, term_code: term_code)
       when is_pid(pid) and is_binary(term_code) do
     GenServer.cast(__MODULE__, {:request_term_courses, pid, term_code})
@@ -66,6 +70,18 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
   end
 
   @impl true
+  def handle_cast({:request_all_courses, pid}, state) do
+    result =
+      case SnowCourseCacheDb.list_terms_with_courses() do
+        {:ok, terms} -> {:ok, group_courses_by_term(terms)}
+        {:error, reason} -> {:error, reason}
+        [] -> {:ok, %{}}
+      end
+
+    send(pid, {:snow_course_cache, {:all_courses_loaded, result}})
+    {:noreply, state}
+  end
+
   def handle_cast({:request_dashboard, pid}, state) do
     send_snapshot(pid)
     {:noreply, state}
@@ -374,6 +390,12 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
             {:ok, loaded_terms}
         end
     end
+  end
+
+  defp group_courses_by_term(terms) do
+    terms
+    |> Enum.map(fn term -> {term["term_code"], term["courses"]} end)
+    |> Map.new()
   end
 
   defp build_term_display_name(term_code) when is_binary(term_code) do

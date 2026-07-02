@@ -48,81 +48,77 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelSyncModal do
         <.icon name="hero-arrow-path" class="size-4" /> Sync roster
       </button>
     </div>
-    """
-  end
 
-  attr :state, __MODULE__, required: true
-
-  def modal_overlay(assigns) do
-    ~H"""
-    <.modal
-      id={"discord-channel-sync-modal-#{@state.key}"}
-      on_close="discord-channel-sync-modal:close"
-    >
-      <div class="space-y-4">
-        <div class="flex items-start justify-between gap-3">
-          <div>
-            <h3 class="text-lg font-semibold text-slate-100">Sync roster</h3>
-            <p class="text-sm text-slate-400">{channel_name(@state.channel)}</p>
+    <%= if @state.open? do %>
+      <.modal
+        id={"discord-channel-sync-modal-#{@state.key}"}
+        on_close="discord-channel-sync-modal:close"
+      >
+        <div class="space-y-4">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h3 class="text-lg font-semibold text-slate-100">Sync roster</h3>
+              <p class="text-sm text-slate-400">{channel_name(@state.channel)}</p>
+            </div>
+            <button
+              type="button"
+              class="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300"
+              phx-click="discord-channel-sync-modal:close"
+              phx-value-key={@state.key}
+            >
+              Close
+            </button>
           </div>
-          <button
-            type="button"
-            class="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300"
-            phx-click="discord-channel-sync-modal:close"
-            phx-value-key={@state.key}
-          >
-            Close
-          </button>
-        </div>
 
-        <div
-          :if={@state.error}
-          class="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200"
-        >
-          {@state.error}
-        </div>
-
-        <label class="block space-y-2">
-          <span class="text-sm font-medium text-slate-300">JWT token</span>
-          <input
-            type="password"
-            name="sync_token"
-            value={@state.sync_token}
-            phx-input="discord-channel-sync-modal:sync_token"
-            phx-value-key={@state.key}
-            class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-          />
-        </label>
-
-        <div class="flex items-center justify-end gap-2">
-          <button
-            type="button"
-            phx-click="discord-channel-sync-modal:close"
-            phx-value-key={@state.key}
-            class="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-900"
+          <div
+            :if={@state.error}
+            class="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200"
           >
-            Cancel
-          </button>
-          <button
-            type="button"
-            phx-click="discord-channel-sync-modal:sync"
-            phx-value-key={@state.key}
-            disabled={@state.syncing_roster?}
-            class="inline-flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <.icon
-              name="hero-arrow-path"
-              class={if(@state.syncing_roster?, do: "size-4 animate-spin", else: "size-4")}
+            {@state.error}
+          </div>
+
+          <label class="block space-y-2">
+            <span class="text-sm font-medium text-slate-300">JWT token</span>
+            <input
+              type="password"
+              name="sync_token"
+              value={@state.sync_token}
+              phx-input="discord-channel-sync-modal:sync_token"
+              phx-value-key={@state.key}
+              class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
             />
-            <%= if @state.syncing_roster? do %>
-              Syncing...
-            <% else %>
-              Sync roster
-            <% end %>
-          </button>
+          </label>
+
+          <div class="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              phx-click="discord-channel-sync-modal:close"
+              phx-value-key={@state.key}
+              class="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-900"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              phx-click="discord-channel-sync-modal:sync"
+              phx-value-key={@state.key}
+              disabled={@state.syncing_roster?}
+              class="inline-flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <.icon
+                name="hero-arrow-path"
+                class={if(@state.syncing_roster?, do: "size-4 animate-spin", else: "size-4")}
+              />
+              <%= if @state.syncing_roster? do %>
+                Syncing...
+              <% else %>
+                Sync roster
+              <% end %>
+            </button>
+          </div>
         </div>
-      </div>
-    </.modal>
+      </.modal>
+    <% end %>
     """
   end
 

@@ -3,8 +3,10 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
   require Logger
 
   alias SnowSeTools.Discord.DiscordPubSub
+  alias SnowSeTools.Snow.SnowCourseCacheDomainManager
 
   alias SnowSeToolsWeb.Discord.{
+    DiscordChannelAssignModal,
     DiscordChannels,
     DiscordInvites,
     DiscordMembers,
@@ -25,13 +27,23 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
      socket
      |> assign(:page_title, "Discord")
      |> assign(:active_view, :channels)
+     |> assign(:courses_by_term, %{})
      |> DiscordSync.assign_component(:discord_sync)
      |> DiscordServerStatus.assign_component(:discord_server_status)
      |> DiscordChannels.assign_component(:discord_channels)
      |> DiscordStudentMappings.assign_component(:discord_student_mappings)
      |> DiscordMembers.assign_component(:discord_members)
      |> DiscordRoles.assign_component(:discord_roles)
-     |> DiscordInvites.assign_component(:discord_invites)}
+     |> DiscordInvites.assign_component(:discord_invites)
+     |> DiscordChannelAssignModal.assign_component(:discord_channel_assign_modal)}
+  end
+
+  def handle_params(_params, _uri, socket) do
+    if connected?(socket) do
+      SnowCourseCacheDomainManager.request_all_courses(pid: self())
+    end
+
+    {:noreply, socket}
   end
 
   def render(assigns) do
@@ -95,8 +107,9 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
                     channel_row_states={Map.get(assigns, :discord_channel_row_states, %{})}
                     student_mapping_states={Map.get(assigns, :discord_student_mapping_states, %{})}
                     student_row_states={Map.get(assigns, :discord_student_row_states, %{})}
-                    assign_modal_states={Map.get(assigns, :discord_channel_assign_modal_states, %{})}
+                    assign_modal_state={Map.get(assigns, :discord_channel_assign_modal)}
                     sync_modal_states={Map.get(assigns, :discord_channel_sync_modal_states, %{})}
+                    courses_by_term={@courses_by_term}
                   />
                 <% :members -> %>
                   <DiscordMembers.render state={@discord_members} />
@@ -125,6 +138,15 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
   end
 
   def handle_info({:discord, _message}, socket), do: {:noreply, socket}
+
+  def handle_info({:snow_course_cache, {:all_courses_loaded, {:ok, courses_by_term}}}, socket) do
+    {:noreply, assign(socket, :courses_by_term, courses_by_term)}
+  end
+
+  def handle_info({:snow_course_cache, {:all_courses_loaded, {:error, reason}}}, socket) do
+    Logger.error("Discord all courses load failed reason=#{inspect(reason)}")
+    {:noreply, socket}
+  end
 
   def handle_info({:snow_course_cache, _message}, socket), do: {:noreply, socket}
 

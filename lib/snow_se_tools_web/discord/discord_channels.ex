@@ -25,8 +25,9 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
   attr :channel_row_states, :map, default: %{}
   attr :student_mapping_states, :map, default: %{}
   attr :student_row_states, :map, default: %{}
-  attr :assign_modal_states, :map, default: %{}
+  attr :assign_modal_state, :any, required: true
   attr :sync_modal_states, :map, default: %{}
+  attr :courses_by_term, :map, default: %{}
 
   def render(assigns) do
     assigns = assign(assigns, :grouped_channels, grouped_channels(assigns.state.channels))
@@ -76,8 +77,9 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
             roles={@roles.roles}
             student_mapping_states={@student_mapping_states}
             student_row_states={@student_row_states}
-            assign_modal_states={@assign_modal_states}
+            assign_modal_state={@assign_modal_state}
             sync_modal_states={@sync_modal_states}
+            courses_by_term={@courses_by_term}
           />
         </div>
       </section>

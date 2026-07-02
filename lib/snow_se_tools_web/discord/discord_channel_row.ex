@@ -32,7 +32,6 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
     |> put_state(key, state)
     |> maybe_attach_hooks()
     |> DiscordStudentMapping.assign_component(student_mapping_key(key), assignment: nil)
-    |> DiscordChannelAssignModal.assign_component(key, channel: channel)
     |> DiscordChannelSyncModal.assign_component(key, channel: channel)
     |> maybe_request_assignment(key: key, channel: channel)
   end
@@ -49,8 +48,9 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
   attr :roles, :list, default: []
   attr :student_mapping_states, :map, default: %{}
   attr :student_row_states, :map, default: %{}
-  attr :assign_modal_states, :map, default: %{}
+  attr :assign_modal_state, :any, required: true
   attr :sync_modal_states, :map, default: %{}
+  attr :courses_by_term, :map, default: %{}
 
   def render(assigns) do
     assigns =
@@ -74,19 +74,12 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
           }
       )
 
-    assign_modal_state =
-      DiscordChannelAssignModal.fetch_state(
-        assigns.assign_modal_states,
-        assigns.state.key
-      ) || %DiscordChannelAssignModal{key: assigns.state.key, channel: assigns.state.channel}
-
     sync_modal_state =
       DiscordChannelSyncModal.fetch_state(
         assigns.sync_modal_states,
         assigns.state.key
       ) || %DiscordChannelSyncModal{key: assigns.state.key, channel: assigns.state.channel}
 
-    assigns = assign(assigns, :assign_modal_state, assign_modal_state)
     assigns = assign(assigns, :sync_modal_state, sync_modal_state)
 
     ~H"""
@@ -141,6 +134,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
               channel={@state.channel}
               assignment={@state.assignment}
               roles={@roles}
+              courses_by_term={@courses_by_term}
             />
 
             <DiscordChannelSyncModal.render
@@ -178,16 +172,6 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
         </div>
       </:body>
     </.expandable>
-
-    <DiscordChannelAssignModal.modal_overlay
-      :if={@assign_modal_state.open?}
-      state={@assign_modal_state}
-    />
-
-    <DiscordChannelSyncModal.modal_overlay
-      :if={@sync_modal_state.open?}
-      state={@sync_modal_state}
-    />
     """
   end
 
