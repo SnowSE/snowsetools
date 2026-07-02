@@ -35,6 +35,25 @@ defmodule SnowSeTools.Discord.DiscordApi do
     end
   end
 
+  def add_role_to_member(member_id: member_id, role_id: role_id) do
+    with {:ok, guild_id} <- discord_guild_id(),
+         {:ok, headers} <- auth_headers() do
+      request(:put, "guilds/#{guild_id}/members/#{member_id}/roles/#{role_id}", headers: headers)
+    end
+  end
+
+  def rename_channel(channel_id: channel_id, new_name: new_name) do
+    with {:ok, headers} <- auth_headers() do
+      request(:patch, "channels/#{channel_id}", headers: headers, json: %{"name" => new_name})
+    end
+  end
+
+  def delete_channel(channel_id: channel_id) do
+    with {:ok, headers} <- auth_headers() do
+      request(:delete, "channels/#{channel_id}", headers: headers)
+    end
+  end
+
   def fetch_members do
     with {:ok, guild_id} <- discord_guild_id(),
          {:ok, headers} <- auth_headers() do
@@ -81,8 +100,14 @@ defmodule SnowSeTools.Discord.DiscordApi do
     end
   end
 
-  defp request(method, path, headers: headers) do
-    case Req.request(method: method, url: @base_url <> path, headers: headers) do
+  defp request(method, path, headers: headers),
+    do: request(method, path, headers: headers, json: nil)
+
+  defp request(method, path, headers: headers, json: json) do
+    request_opts = [method: method, url: @base_url <> path, headers: headers]
+    request_opts = if is_nil(json), do: request_opts, else: Keyword.put(request_opts, :json, json)
+
+    case Req.request(request_opts) do
       {:ok, %Req.Response{status: status, body: body}} when status in 200..299 ->
         {:ok, body}
 

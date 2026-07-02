@@ -1,5 +1,6 @@
 defmodule SnowSeToolsWeb.Discord.DiscordLive do
   use SnowSeToolsWeb, :live_view
+  require Logger
 
   alias SnowSeTools.Discord.DiscordPubSub
 
@@ -9,6 +10,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
     DiscordMembers,
     DiscordRoles,
     DiscordServerStatus,
+    DiscordStudentMappings,
     DiscordSync
   }
 
@@ -26,6 +28,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
      |> DiscordSync.assign_component(:discord_sync)
      |> DiscordServerStatus.assign_component(:discord_server_status)
      |> DiscordChannels.assign_component(:discord_channels)
+     |> DiscordStudentMappings.assign_component(:discord_student_mappings)
      |> DiscordMembers.assign_component(:discord_members)
      |> DiscordRoles.assign_component(:discord_roles)
      |> DiscordInvites.assign_component(:discord_invites)}
@@ -84,7 +87,12 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
             <div class="min-h-0 flex-1 overflow-y-auto">
               <%= case @active_view do %>
                 <% :channels -> %>
-                  <DiscordChannels.render state={@discord_channels} />
+                  <DiscordChannels.render
+                    state={@discord_channels}
+                    members={@discord_members}
+                    roles={@discord_roles}
+                    student_mappings={@discord_student_mappings}
+                  />
                 <% :members -> %>
                   <DiscordMembers.render state={@discord_members} />
                 <% :roles -> %>
@@ -109,6 +117,15 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
 
   def handle_event("discord:switch_view", %{"view" => view}, socket) do
     {:noreply, assign(socket, :active_view, view_from_param(view))}
+  end
+
+  def handle_info({:discord, _message}, socket), do: {:noreply, socket}
+
+  def handle_info({:snow_course_cache, _message}, socket), do: {:noreply, socket}
+
+  def handle_info(message, socket) do
+    Logger.warning("Unhandled DiscordLive message: #{inspect(message)}")
+    {:noreply, socket}
   end
 
   defp view_from_param("members"), do: :members

@@ -22,12 +22,31 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
     GenServer.cast(__MODULE__, {:request_term_courses, pid, term_code})
   end
 
+  def request_term_courses(pid: pid, key: key, term_code: term_code)
+      when is_pid(pid) and is_binary(term_code) do
+    GenServer.cast(__MODULE__, {:request_term_courses, pid, key, term_code})
+  end
+
+  def request_section_students(pid: pid, key: key, term_code: term_code, crn: crn)
+      when is_pid(pid) and is_binary(term_code) and is_binary(crn) do
+    GenServer.cast(__MODULE__, {:request_section_students, pid, key, term_code, crn})
+  end
+
+  def request_course(pid: pid, key: key, term_code: term_code, crn: crn)
+      when is_pid(pid) and is_binary(term_code) and is_binary(crn) do
+    GenServer.cast(__MODULE__, {:request_course, pid, key, term_code, crn})
+  end
+
   def sync_course_list(pid: pid, term_code: term_code, jwt_token: jwt_token) do
     GenServer.cast(__MODULE__, {:sync_course_list, pid, term_code, jwt_token})
   end
 
   def sync_term_rosters(pid: pid, term_code: term_code, jwt_token: jwt_token) do
     GenServer.cast(__MODULE__, {:sync_term_rosters, pid, term_code, jwt_token})
+  end
+
+  def sync_section_students(pid: pid, term_code: term_code, crn: crn, jwt_token: jwt_token) do
+    GenServer.cast(__MODULE__, {:sync_section_students, pid, term_code, crn, jwt_token})
   end
 
   def delete_term(pid: pid, term_code: term_code) do
@@ -85,6 +104,47 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
     {:noreply, state}
   end
 
+  def handle_cast({:request_term_courses, pid, key, term_code}, state) do
+    result =
+      case SnowCourseCacheDb.list_course_data_for_term(term_code: term_code) do
+        {:ok, courses} ->
+          {:ok, %{term_code: term_code, courses: courses}}
+
+        {:error, reason} ->
+          Logger.error(
+            "Snow course cache term course load failed term_code=#{term_code} reason=#{inspect(reason)}"
+          )
+
+          {:error, %{term_code: term_code, reason: reason}}
+      end
+
+    send(pid, {:snow_course_cache, {:term_courses_loaded, key, result}})
+    {:noreply, state}
+  end
+
+  def handle_cast({:request_section_students, pid, key, term_code, crn}, state) do
+    result =
+      case SnowCourseCacheDb.get_section_students(term_code: term_code, crn: crn) do
+        {:ok, students} -> {:ok, %{term_code: term_code, crn: crn, students: students}}
+        {:error, reason} -> {:error, %{term_code: term_code, crn: crn, reason: reason}}
+      end
+
+    send(pid, {:snow_course_cache, {:section_students_loaded, key, result}})
+    {:noreply, state}
+  end
+
+  def handle_cast({:request_course, pid, key, term_code, crn}, state) do
+    result =
+      case SnowCourseCacheDb.get_course(term_code: term_code, crn: crn) do
+        {:error, reason} -> {:error, %{term_code: term_code, crn: crn, reason: reason}}
+        nil -> {:ok, %{term_code: term_code, crn: crn, course: nil}}
+        course -> {:ok, %{term_code: term_code, crn: crn, course: course}}
+      end
+
+    send(pid, {:snow_course_cache, {:course_loaded, key, result}})
+    {:noreply, state}
+  end
+
   def handle_cast({:sync_course_list, pid, term_code, jwt_token}, state) do
     Task.start(fn -> sync_course_list_async(pid, term_code, jwt_token) end)
     {:noreply, state}
@@ -92,6 +152,11 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
 
   def handle_cast({:sync_term_rosters, pid, term_code, jwt_token}, state) do
     Task.start(fn -> sync_term_rosters_async(pid, term_code, jwt_token) end)
+    {:noreply, state}
+  end
+
+  def handle_cast({:sync_section_students, pid, key, term_code, crn, jwt_token}, state) do
+    Task.start(fn -> sync_section_students_async(pid, key, term_code, crn, jwt_token) end)
     {:noreply, state}
   end
 
@@ -229,6 +294,29 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp sync_section_students_async(pid, key, term_code, crn, jwt_token) do
+    case sync_single_roster(term_code, crn, jwt_token) do
+      {:ok, count} ->
+        send(
+          pid,
+          {:snow_course_cache,
+           {:section_students_synced, key, {:ok, %{term_code: term_code, crn: crn, count: count}}}}
+        )
+
+      {:error, reason} ->
+        Logger.error(
+          "Snow course section roster sync failed term_code=#{term_code} crn=#{crn} reason=#{inspect(reason)}"
+        )
+
+        send(
+          pid,
+          {:snow_course_cache,
+           {:section_students_synced, key,
+            {:error, %{term_code: term_code, crn: crn, reason: reason}}}}
+        )
     end
   end
 

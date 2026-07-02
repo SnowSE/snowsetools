@@ -8,6 +8,19 @@ defmodule SnowSeTools.Discord.DiscordDb do
                          "synced_at" => Zoi.string()
                        })
 
+  @course_channel_assignment_schema Zoi.object(%{
+                                      "crn" => Zoi.string(),
+                                      "term_code" => Zoi.string(),
+                                      "discord_channel_id" => Zoi.string(),
+                                      "discord_role_id" => Zoi.string(),
+                                      "created_at" => Zoi.string()
+                                    })
+
+  @student_discord_mapping_schema Zoi.object(%{
+                                    "badger_id" => Zoi.string(),
+                                    "discord_user_id" => Zoi.string()
+                                  })
+
   @sync_summary_schema Zoi.object(%{
                          "resource" => Zoi.string(),
                          "record_count" => Zoi.integer(),
@@ -71,6 +84,24 @@ defmodule SnowSeTools.Discord.DiscordDb do
       )
       """,
       """
+      CREATE TABLE IF NOT EXISTS course_channel_assignments (
+        crn                 TEXT        PRIMARY KEY,
+        term_code           TEXT        NOT NULL,
+        discord_channel_id  TEXT        NOT NULL,
+        discord_role_id    TEXT        NOT NULL,
+        created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+      """,
+      """
+      CREATE TABLE IF NOT EXISTS student_discord_mapping (
+        badger_id        TEXT        PRIMARY KEY,
+        discord_user_id   TEXT        NOT NULL,
+        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+      """,
+      """
       CREATE INDEX IF NOT EXISTS discord_members_name_idx ON discord_members(name)
       """,
       """
@@ -78,6 +109,12 @@ defmodule SnowSeTools.Discord.DiscordDb do
       """,
       """
       CREATE INDEX IF NOT EXISTS discord_roles_name_idx ON discord_roles(name)
+      """,
+      """
+      CREATE INDEX IF NOT EXISTS course_channel_assignments_channel_idx ON course_channel_assignments(discord_channel_id)
+      """,
+      """
+      CREATE INDEX IF NOT EXISTS student_discord_mapping_discord_user_idx ON student_discord_mapping(discord_user_id)
       """
     ]
 
@@ -337,7 +374,14 @@ defmodule SnowSeTools.Discord.DiscordDb do
 
   def list_guilds do
     sql = """
-    SELECT id, COALESCE(name, '') AS name, data, synced_at::text
+    SELECT
+      id,
+      COALESCE(name, '') AS name,
+      CASE
+        WHEN jsonb_typeof(data) = 'string' THEN (data #>> '{}')::jsonb
+        ELSE data
+      END AS data,
+      synced_at::text
     FROM discord_guilds
     ORDER BY name NULLS LAST, id
     """
@@ -347,7 +391,14 @@ defmodule SnowSeTools.Discord.DiscordDb do
 
   def list_bot_users do
     sql = """
-    SELECT id, COALESCE(name, '') AS name, data, synced_at::text
+    SELECT
+      id,
+      COALESCE(name, '') AS name,
+      CASE
+        WHEN jsonb_typeof(data) = 'string' THEN (data #>> '{}')::jsonb
+        ELSE data
+      END AS data,
+      synced_at::text
     FROM discord_bot_users
     ORDER BY name NULLS LAST, id
     """
@@ -393,6 +444,137 @@ defmodule SnowSeTools.Discord.DiscordDb do
     """
 
     DbHelpers.run_sql(sql, %{}, @discord_item_schema)
+  end
+
+  def list_course_channel_assignments do
+    sql = """
+    SELECT crn, term_code, discord_channel_id, discord_role_id, created_at::text AS created_at
+    FROM course_channel_assignments
+    ORDER BY term_code DESC, crn
+    """
+
+    DbHelpers.run_sql(sql, %{}, @course_channel_assignment_schema)
+  end
+
+  def get_course_channel_assignment(channel_id: channel_id) do
+    sql = """
+    SELECT crn, term_code, discord_channel_id, discord_role_id, created_at::text AS created_at
+    FROM course_channel_assignments
+    WHERE discord_channel_id = $(channel_id)
+    LIMIT 1
+    """
+
+    case DbHelpers.run_sql(sql, %{"channel_id" => channel_id}, @course_channel_assignment_schema) do
+      [{assignment}] -> assignment
+      [] -> nil
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def get_course_channel_assignment_by_crn(crn: crn) do
+    sql = """
+    SELECT crn, term_code, discord_channel_id, discord_role_id, created_at::text AS created_at
+    FROM course_channel_assignments
+    WHERE crn = $(crn)
+    LIMIT 1
+    """
+
+    case DbHelpers.run_sql(sql, %{"crn" => crn}, @course_channel_assignment_schema) do
+      [{assignment}] -> assignment
+      [] -> nil
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def save_course_channel_assignment(
+        crn: crn,
+        term_code: term_code,
+        discord_channel_id: discord_channel_id,
+        discord_role_id: discord_role_id
+      ) do
+    sql = """
+    INSERT INTO course_channel_assignments (
+      crn,
+      term_code,
+      discord_channel_id,
+      discord_role_id,
+      created_at,
+      updated_at
+    )
+    VALUES ($(crn), $(term_code), $(discord_channel_id), $(discord_role_id), NOW(), NOW())
+    ON CONFLICT (crn) DO UPDATE SET
+      term_code = EXCLUDED.term_code,
+      discord_channel_id = EXCLUDED.discord_channel_id,
+      discord_role_id = EXCLUDED.discord_role_id,
+      updated_at = NOW()
+    """
+
+    DbHelpers.run_sql(sql, %{
+      "crn" => crn,
+      "term_code" => term_code,
+      "discord_channel_id" => discord_channel_id,
+      "discord_role_id" => discord_role_id
+    })
+  end
+
+  def delete_course_channel_assignment(crn: crn) do
+    sql = "DELETE FROM course_channel_assignments WHERE crn = $(crn)"
+    DbHelpers.run_sql(sql, %{"crn" => crn})
+  end
+
+  def delete_orphaned_course_channel_assignments do
+    sql = """
+    DELETE FROM course_channel_assignments
+    WHERE discord_channel_id NOT IN (SELECT id FROM discord_channels)
+       OR discord_role_id NOT IN (SELECT id FROM discord_roles)
+    """
+
+    DbHelpers.run_sql(sql, %{})
+  end
+
+  def list_student_discord_mappings do
+    sql = """
+    SELECT badger_id, discord_user_id
+    FROM student_discord_mapping
+    ORDER BY badger_id
+    """
+
+    DbHelpers.run_sql(sql, %{}, @student_discord_mapping_schema)
+  end
+
+  def save_student_discord_mapping(badger_id: badger_id, discord_user_id: discord_user_id) do
+    sql = """
+    INSERT INTO student_discord_mapping (badger_id, discord_user_id, created_at, updated_at)
+    VALUES ($(badger_id), $(discord_user_id), NOW(), NOW())
+    ON CONFLICT (badger_id) DO UPDATE SET
+      discord_user_id = EXCLUDED.discord_user_id,
+      updated_at = NOW()
+    """
+
+    DbHelpers.run_sql(sql, %{
+      "badger_id" => badger_id,
+      "discord_user_id" => discord_user_id
+    })
+  end
+
+  def delete_student_discord_mapping(badger_id: badger_id) do
+    sql = "DELETE FROM student_discord_mapping WHERE badger_id = $(badger_id)"
+    DbHelpers.run_sql(sql, %{"badger_id" => badger_id})
+  end
+
+  def get_mapped_badger_id(discord_user_id: discord_user_id) do
+    sql = """
+    SELECT badger_id
+    FROM student_discord_mapping
+    WHERE discord_user_id = $(discord_user_id)
+    LIMIT 1
+    """
+
+    case DbHelpers.run_sql(sql, %{"discord_user_id" => discord_user_id}) do
+      [row] -> row["badger_id"]
+      [] -> nil
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   def get_server_status do

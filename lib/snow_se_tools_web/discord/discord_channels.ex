@@ -4,6 +4,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
 
   alias Phoenix.LiveView
   alias SnowSeTools.Discord.DiscordDomainManager
+  alias SnowSeToolsWeb.Discord.DiscordChannelRow
 
   defstruct key: nil,
             channels: [],
@@ -18,6 +19,9 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
   end
 
   attr :state, __MODULE__, required: true
+  attr :members, :any, required: true
+  attr :roles, :any, required: true
+  attr :student_mappings, :any, required: true
 
   def render(assigns) do
     assigns = assign(assigns, :grouped_channels, grouped_channels(assigns.state.channels))
@@ -30,9 +34,11 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
       >
         {@state.error}
       </div>
+
       <div class="hidden rounded-md border border-slate-800 bg-slate-950/50 p-6 text-sm text-slate-400 only:block">
         No Discord channels have been synced yet.
       </div>
+
       <section
         :for={group <- @grouped_channels}
         id={"discord-channel-group-#{group.id}"}
@@ -57,30 +63,13 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
         </div>
 
         <div class="flex flex-col gap-2">
-          <article
+          <DiscordChannelRow.render
             :for={channel <- group.children}
-            id={"discord-channel-#{channel.id}"}
-            class="rounded-md border border-slate-800/80 bg-slate-900/45 px-3 py-2 transition-colors hover:border-slate-700"
-          >
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="text-sm font-medium text-slate-100">#{channel.name}</span>
-              <span class="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
-                {channel_type_name(channel.type)}
-              </span>
-              <span
-                :if={channel.private?}
-                class="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-200"
-              >
-                <.icon name="hero-lock-closed" class="size-3" /> private
-              </span>
-              <span
-                :if={!channel.private?}
-                class="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-200"
-              >
-                <.icon name="hero-globe-alt" class="size-3" /> public
-              </span>
-            </div>
-          </article>
+            state={channel_row_state(assigns, channel)}
+            mappings={@student_mappings.mappings}
+            members={@members.members}
+            roles={@roles.roles}
+          />
         </div>
       </section>
     </div>
@@ -105,8 +94,12 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
   end
 
   defp hooked_info({:discord, {:channels_loaded, key, {:ok, channels}}}, socket) do
-    {:cont,
-     assign(socket, key, %{socket.assigns[key] | channels: channels, loading?: false, error: nil})}
+    socket =
+      socket
+      |> assign(key, %{socket.assigns[key] | channels: channels, loading?: false, error: nil})
+      |> ensure_channel_rows(channels)
+
+    {:cont, socket}
   end
 
   defp hooked_info({:discord, {:channels_loaded, key, {:error, reason}}}, socket) do
@@ -184,17 +177,35 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
     }
   end
 
+  defp ensure_channel_rows(socket, channels) do
+    Enum.reduce(channels, socket, fn channel, acc ->
+      DiscordChannelRow.assign_component(acc, channel_row_key(channel), channel: channel)
+    end)
+  end
+
+  defp channel_row_state(assigns, channel) do
+    row_key = channel_row_key(channel)
+
+    DiscordChannelRow.fetch_state(assigns, row_key) ||
+      %DiscordChannelRow{key: row_key, channel: normalize_channel(channel)}
+  end
+
+  defp channel_row_key(channel) do
+    channel_id = Map.get(channel, "id") || Map.get(channel, :id)
+    "discord-channel-row:#{channel_id}"
+  end
+
   defp channel_private?(data) do
     data
     |> Map.get("permission_overwrites", [])
     |> Enum.any?(&(Map.get(&1, "type") == 0))
   end
 
-  defp channel_type_name(0), do: "text"
-  defp channel_type_name(2), do: "voice"
-  defp channel_type_name(4), do: "category"
-  defp channel_type_name(5), do: "announcement"
-  defp channel_type_name(13), do: "stage"
-  defp channel_type_name(15), do: "forum"
-  defp channel_type_name(_type), do: "channel"
+  defp normalize_channel(channel) do
+    case channel do
+      %{"id" => _id} = raw_channel -> raw_channel
+      %{id: id, name: name, data: data} -> %{"id" => id, "name" => name, "data" => data}
+      _other -> %{}
+    end
+  end
 end

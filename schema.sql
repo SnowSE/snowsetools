@@ -227,6 +227,28 @@ CREATE TABLE discord_invites (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE course_channel_assignments (
+  crn                TEXT        PRIMARY KEY,
+  term_code          TEXT        NOT NULL,
+  discord_channel_id TEXT        NOT NULL,
+  discord_role_id    TEXT        NOT NULL,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX course_channel_assignments_channel_idx
+ON course_channel_assignments(discord_channel_id);
+
+CREATE TABLE student_discord_mapping (
+  badger_id        TEXT        PRIMARY KEY,
+  discord_user_id   TEXT        NOT NULL,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX student_discord_mapping_discord_user_idx
+ON student_discord_mapping(discord_user_id);
+
 CREATE TABLE academic_programs (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   name        TEXT        NOT NULL UNIQUE,

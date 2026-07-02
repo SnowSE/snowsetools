@@ -3,6 +3,7 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
   require Logger
 
   alias SnowSeTools.Discord.{DiscordApi, DiscordDb, DiscordPubSub}
+  alias SnowSeTools.Snow.{MySnowApi, SnowCourseCacheDb}
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
@@ -32,8 +33,66 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
     GenServer.cast(__MODULE__, {:request_invites, pid, key})
   end
 
+  def request_course_channel_assignment(pid: pid, key: key, channel_id: channel_id)
+      when is_pid(pid) do
+    GenServer.cast(__MODULE__, {:request_course_channel_assignment, pid, key, channel_id})
+  end
+
+  def request_student_discord_mappings(pid: pid, key: key) when is_pid(pid) do
+    GenServer.cast(__MODULE__, {:request_student_discord_mappings, pid, key})
+  end
+
   def sync_all(pid: pid) when is_pid(pid) do
     GenServer.cast(__MODULE__, {:sync_all, pid})
+  end
+
+  def save_course_channel_assignment(
+        pid: pid,
+        key: key,
+        crn: crn,
+        term_code: term_code,
+        discord_channel_id: discord_channel_id,
+        discord_role_id: discord_role_id
+      ) do
+    GenServer.cast(
+      __MODULE__,
+      {:save_course_channel_assignment, pid, key, crn, term_code, discord_channel_id,
+       discord_role_id}
+    )
+  end
+
+  def delete_course_channel_assignment(pid: pid, key: key, crn: crn) do
+    GenServer.cast(__MODULE__, {:delete_course_channel_assignment, pid, key, crn})
+  end
+
+  def save_student_discord_mapping(
+        pid: pid,
+        key: key,
+        badger_id: badger_id,
+        discord_user_id: discord_user_id
+      ) do
+    GenServer.cast(
+      __MODULE__,
+      {:save_student_discord_mapping, pid, key, badger_id, discord_user_id}
+    )
+  end
+
+  def delete_student_discord_mapping(pid: pid, key: key, badger_id: badger_id) do
+    GenServer.cast(__MODULE__, {:delete_student_discord_mapping, pid, key, badger_id})
+  end
+
+  def add_role_to_member(pid: pid, key: key, member_id: member_id, role_id: role_id) do
+    GenServer.cast(__MODULE__, {:add_role_to_member, pid, key, member_id, role_id})
+  end
+
+  def sync_course_roster(
+        pid: pid,
+        key: key,
+        term_code: term_code,
+        crn: crn,
+        jwt_token: jwt_token
+      ) do
+    GenServer.cast(__MODULE__, {:sync_course_roster, pid, key, term_code, crn, jwt_token})
   end
 
   def init(:ok) do
@@ -113,6 +172,133 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
     {:noreply, state}
   end
 
+  def handle_cast({:request_course_channel_assignment, pid, key, channel_id}, state) do
+    send_db_result(
+      pid: pid,
+      message: {:course_channel_assignment_loaded, key},
+      fetch: fn -> DiscordDb.get_course_channel_assignment(channel_id: channel_id) end,
+      error_context: "Discord course channel assignment load failed"
+    )
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:request_student_discord_mappings, pid, key}, state) do
+    send_db_result(
+      pid: pid,
+      message: {:student_discord_mappings_loaded, key},
+      fetch: &DiscordDb.list_student_discord_mappings/0,
+      error_context: "Discord student discord mappings load failed"
+    )
+
+    {:noreply, state}
+  end
+
+  def handle_cast(
+        {:save_course_channel_assignment, pid, key, crn, term_code, discord_channel_id,
+         discord_role_id},
+        state
+      ) do
+    case DiscordDb.save_course_channel_assignment(
+           crn: crn,
+           term_code: term_code,
+           discord_channel_id: discord_channel_id,
+           discord_role_id: discord_role_id
+         ) do
+      {:error, reason} ->
+        Logger.error(
+          "Discord course channel assignment save failed crn=#{crn} channel_id=#{discord_channel_id} reason=#{inspect(reason)}"
+        )
+
+        send(pid, {:discord, {:course_channel_assignment_saved, key, {:error, reason}}})
+
+      _ ->
+        send(pid, {:discord, {:course_channel_assignment_saved, key, {:ok, %{crn: crn}}}})
+    end
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:delete_course_channel_assignment, pid, key, crn}, state) do
+    case DiscordDb.delete_course_channel_assignment(crn: crn) do
+      {:error, reason} ->
+        Logger.error(
+          "Discord course channel assignment delete failed crn=#{crn} reason=#{inspect(reason)}"
+        )
+
+        send(pid, {:discord, {:course_channel_assignment_deleted, key, {:error, reason}}})
+
+      _ ->
+        send(pid, {:discord, {:course_channel_assignment_deleted, key, {:ok, crn}}})
+    end
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:save_student_discord_mapping, pid, key, badger_id, discord_user_id}, state) do
+    case DiscordDb.save_student_discord_mapping(
+           badger_id: badger_id,
+           discord_user_id: discord_user_id
+         ) do
+      {:error, reason} ->
+        Logger.error(
+          "Discord student mapping save failed badger_id=#{badger_id} discord_user_id=#{discord_user_id} reason=#{inspect(reason)}"
+        )
+
+        send(pid, {:discord, {:student_discord_mapping_saved, key, {:error, reason}}})
+
+      _ ->
+        send(
+          pid,
+          {:discord,
+           {:student_discord_mapping_saved, key,
+            {:ok, %{badger_id: badger_id, discord_user_id: discord_user_id}}}}
+        )
+    end
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:delete_student_discord_mapping, pid, key, badger_id}, state) do
+    case DiscordDb.delete_student_discord_mapping(badger_id: badger_id) do
+      {:error, reason} ->
+        Logger.error(
+          "Discord student mapping delete failed badger_id=#{badger_id} reason=#{inspect(reason)}"
+        )
+
+        send(pid, {:discord, {:student_discord_mapping_deleted, key, {:error, reason}}})
+
+      _ ->
+        send(pid, {:discord, {:student_discord_mapping_deleted, key, {:ok, badger_id}}})
+    end
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:add_role_to_member, pid, key, member_id, role_id}, state) do
+    case DiscordApi.add_role_to_member(member_id: member_id, role_id: role_id) do
+      {:error, reason} ->
+        Logger.error(
+          "Discord add role failed member_id=#{member_id} role_id=#{role_id} reason=#{inspect(reason)}"
+        )
+
+        send(pid, {:discord, {:member_role_added, key, {:error, reason}}})
+
+      _ ->
+        send(
+          pid,
+          {:discord, {:member_role_added, key, {:ok, %{member_id: member_id, role_id: role_id}}}}
+        )
+    end
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:sync_course_roster, pid, key, term_code, crn, jwt_token}, state) do
+    Task.start(fn -> sync_course_roster_async(pid, key, term_code, crn, jwt_token) end)
+    {:noreply, state}
+  end
+
   def handle_cast({:sync_all, pid}, state) do
     Task.start(fn -> sync_all_async(pid) end)
     {:noreply, state}
@@ -150,9 +336,20 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
       end)
 
     if failed_results == [] do
-      summary = safe_sync_summary()
-      DiscordPubSub.broadcast_discord_data_synced(summary)
-      send(pid, {:discord, {:sync_finished, {:ok, summary}}})
+      case DiscordDb.delete_orphaned_course_channel_assignments() do
+        {:error, reason} ->
+          Logger.error("Discord orphan assignment cleanup failed reason=#{inspect(reason)}")
+
+          send(
+            pid,
+            {:discord, {:sync_finished, {:error, ["orphan_cleanup: #{inspect(reason)}"]}}}
+          )
+
+        _ ->
+          summary = safe_sync_summary()
+          DiscordPubSub.broadcast_discord_data_synced(summary)
+          send(pid, {:discord, {:sync_finished, {:ok, summary}}})
+      end
     else
       reasons =
         Enum.map(failed_results, fn {resource, {:error, reason}} ->
@@ -204,6 +401,138 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
          :ok <- DiscordDb.save_invites(invites: invites) do
       :ok
     end
+  end
+
+  defp sync_course_roster_async(pid, key, term_code, crn, jwt_token) do
+    with {:ok, students} <-
+           MySnowApi.fetch_section_students(term_code: term_code, crn: crn, jwt_token: jwt_token),
+         :ok <-
+           SnowCourseCacheDb.save_section_students(
+             term_code: term_code,
+             crn: crn,
+             students: students
+           ) do
+      assignment = DiscordDb.get_course_channel_assignment_by_crn(crn: crn)
+
+      case assignment do
+        {:error, reason} ->
+          Logger.error(
+            "Discord course roster sync assignment load failed term_code=#{term_code} crn=#{crn} reason=#{inspect(reason)}"
+          )
+
+          send(pid, {:discord, {:course_roster_synced, key, {:error, reason}}})
+
+        nil ->
+          send(
+            pid,
+            {:discord,
+             {:course_roster_synced, key,
+              {:error, "No course-channel assignment found for #{crn}."}}}
+          )
+
+        assignment ->
+          role_id = assignment["discord_role_id"]
+          mappings = safe_student_mappings()
+          members = safe_members()
+
+          role_assignment_results =
+            Enum.map(students, fn student ->
+              badger_id = Map.get(student, "badgerid") || Map.get(student, "badger_id")
+
+              discord_user_id =
+                badger_id
+                |> mapped_discord_user_id(mappings)
+
+              if is_binary(discord_user_id) do
+                if member_present?(members, discord_user_id) do
+                  DiscordApi.add_role_to_member(member_id: discord_user_id, role_id: role_id)
+                else
+                  {:ok, :member_missing}
+                end
+              else
+                {:ok, :unmapped}
+              end
+            end)
+
+          failed_role_assignments =
+            Enum.with_index(role_assignment_results)
+            |> Enum.filter(fn
+              {{:error, _reason}, _idx} -> true
+              _ -> false
+            end)
+
+          if failed_role_assignments == [] do
+            send(
+              pid,
+              {:discord,
+               {:course_roster_synced, key,
+                {:ok, %{term_code: term_code, crn: crn, student_count: length(students)}}}}
+            )
+          else
+            reasons =
+              Enum.map(failed_role_assignments, fn {{:error, reason}, idx} ->
+                "student_#{idx + 1}: #{inspect(reason)}"
+              end)
+
+            Logger.error(
+              "Discord course roster sync role assignment failed term_code=#{term_code} crn=#{crn} reasons=#{Enum.join(reasons, "; ")}"
+            )
+
+            send(
+              pid,
+              {:discord,
+               {:course_roster_synced, key,
+                {:error, %{term_code: term_code, crn: crn, reason: reasons}}}}
+            )
+          end
+      end
+    else
+      {:error, reason} ->
+        Logger.error(
+          "Discord course roster sync failed term_code=#{term_code} crn=#{crn} reason=#{inspect(reason)}"
+        )
+
+        send(pid, {:discord, {:course_roster_synced, key, {:error, reason}}})
+    end
+  end
+
+  defp safe_student_mappings do
+    case DiscordDb.list_student_discord_mappings() do
+      {:error, reason} ->
+        Logger.error("Discord student mappings load failed reason=#{inspect(reason)}")
+        []
+
+      mappings ->
+        mappings
+    end
+  end
+
+  defp safe_members do
+    case DiscordDb.list_members() do
+      {:error, reason} ->
+        Logger.error("Discord members load failed while syncing roster reason=#{inspect(reason)}")
+        []
+
+      members ->
+        members
+    end
+  end
+
+  defp mapped_discord_user_id(badger_id, mappings) when is_binary(badger_id) do
+    mappings
+    |> Enum.find_value(fn mapping ->
+      if mapping["badger_id"] == badger_id do
+        mapping["discord_user_id"]
+      end
+    end)
+  end
+
+  defp mapped_discord_user_id(_badger_id, _mappings), do: nil
+
+  defp member_present?(members, discord_user_id) do
+    Enum.any?(members, fn member ->
+      member["id"] == discord_user_id
+    end)
   end
 
   defp safe_sync_summary do

@@ -324,6 +324,43 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
     DbHelpers.run_sql(sql, %{"term_code" => term_code}, @course_schema)
   end
 
+  def get_course(term_code: term_code, crn: crn) do
+    sql = """
+    SELECT
+      c.term_code,
+      c.crn,
+      c.subject_code,
+      c.course_number,
+      c.section_number,
+      c.course_name,
+      c.primary_instructor_name,
+      to_char(c.cached_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS cached_at,
+      COUNT(s.id)::integer AS roster_count
+    FROM snow_courses c
+    LEFT JOIN snow_section_students s
+      ON s.term_code = c.term_code
+     AND s.crn = c.crn
+    WHERE c.term_code = $(term_code)
+      AND c.crn = $(crn)
+    GROUP BY
+      c.term_code,
+      c.crn,
+      c.subject_code,
+      c.course_number,
+      c.section_number,
+      c.course_name,
+      c.primary_instructor_name,
+      c.cached_at
+    LIMIT 1
+    """
+
+    case DbHelpers.run_sql(sql, %{"term_code" => term_code, "crn" => crn}, @course_schema) do
+      [course] -> course
+      [] -> nil
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   def list_course_data_for_term(term_code: term_code) do
     sql = """
     SELECT c.data::jsonb AS data
