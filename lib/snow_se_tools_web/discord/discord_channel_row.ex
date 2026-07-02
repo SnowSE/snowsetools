@@ -5,24 +5,21 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
   alias Phoenix.LiveView
   alias SnowSeTools.Discord.DiscordDomainManager
   alias SnowSeTools.Snow.SnowCourseCacheDomainManager
-  alias SnowSeToolsWeb.Discord.DiscordStudentMapping
+
+  alias SnowSeToolsWeb.Discord.{
+    DiscordChannelAssignModal,
+    DiscordChannelSyncModal,
+    DiscordStudentMapping
+  }
+
   import SnowSeToolsWeb.Components.Expandable
 
   defstruct key: nil,
             channel: nil,
             assignment: nil,
             course: nil,
-            course_options: [],
-            course_query: "",
-            selected_course: nil,
             loading_assignment?: true,
             loading_course?: true,
-            loading_course_options?: false,
-            assigning?: false,
-            syncing_roster?: false,
-            show_assign_modal?: false,
-            show_sync_modal?: false,
-            sync_token: "",
             error: nil
 
   @state_assign :discord_channel_row_states
@@ -35,6 +32,8 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
     |> put_state(key, state)
     |> maybe_attach_hooks()
     |> DiscordStudentMapping.assign_component(student_mapping_key(key), assignment: nil)
+    |> DiscordChannelAssignModal.assign_component(key, channel: channel)
+    |> DiscordChannelSyncModal.assign_component(key, channel: channel)
     |> maybe_request_assignment(key: key, channel: channel)
   end
 
@@ -50,6 +49,8 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
   attr :roles, :list, default: []
   attr :student_mapping_states, :map, default: %{}
   attr :student_row_states, :map, default: %{}
+  attr :assign_modal_states, :map, default: %{}
+  attr :sync_modal_states, :map, default: %{}
 
   def render(assigns) do
     assigns =
@@ -73,19 +74,27 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
           }
       )
 
-    assigns =
-      assign(
-        assigns,
-        :course_suggestions,
-        course_suggestions(assigns.state.course_options, assigns.state.course_query)
-      )
+    assign_modal_state =
+      DiscordChannelAssignModal.fetch_state(
+        assigns.assign_modal_states,
+        assigns.state.key
+      ) || %DiscordChannelAssignModal{key: assigns.state.key, channel: assigns.state.channel}
+
+    sync_modal_state =
+      DiscordChannelSyncModal.fetch_state(
+        assigns.sync_modal_states,
+        assigns.state.key
+      ) || %DiscordChannelSyncModal{key: assigns.state.key, channel: assigns.state.channel}
+
+    assigns = assign(assigns, :assign_modal_state, assign_modal_state)
+    assigns = assign(assigns, :sync_modal_state, sync_modal_state)
 
     ~H"""
     <.expandable id={"discord-channel-row-#{@state.key}"}>
       <:title_row>
         <div class="flex min-w-0 flex-wrap items-center gap-2">
           <span class="truncate text-sm font-semibold text-slate-100">
-            #{channel_name(@state.channel)}
+            {channel_name(@state.channel)}
           </span>
           <span class="rounded-full border border-slate-800 bg-slate-950/70 px-2 py-0.5 text-xs text-slate-400">
             {channel_type(@state.channel)}
@@ -127,25 +136,18 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
 
         <div class="space-y-4">
           <div class="flex flex-wrap items-center gap-2">
-            <button
-              :if={is_nil(@state.assignment)}
-              type="button"
-              phx-click="discord-channel-row:open_assign_modal"
-              phx-value-key={@state.key}
-              class="inline-flex items-center gap-2 rounded-md border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-sm font-medium text-indigo-100 transition hover:bg-indigo-500/20"
-            >
-              <.icon name="hero-plus" class="size-4" /> Assign to course
-            </button>
+            <DiscordChannelAssignModal.render
+              state={@assign_modal_state}
+              channel={@state.channel}
+              assignment={@state.assignment}
+              roles={@roles}
+            />
 
-            <button
-              :if={@state.assignment}
-              type="button"
-              phx-click="discord-channel-row:open_sync_modal"
-              phx-value-key={@state.key}
-              class="inline-flex items-center gap-2 rounded-md border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800"
-            >
-              <.icon name="hero-arrow-path" class="size-4" /> Sync roster
-            </button>
+            <DiscordChannelSyncModal.render
+              state={@sync_modal_state}
+              channel={@state.channel}
+              assignment={@state.assignment}
+            />
           </div>
 
           <div :if={@state.assignment} class="rounded-md border border-slate-800 bg-slate-950/35 p-3">
@@ -174,169 +176,18 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
             />
           </div>
         </div>
-
-        <%= if @state.show_assign_modal? do %>
-          <.modal
-            id={"discord-channel-assign-modal-#{@state.key}"}
-            on_close="discord-channel-row:close_assign_modal"
-          >
-            <div class="space-y-4">
-              <div class="flex items-start justify-between gap-3">
-                <div>
-                  <h3 class="text-lg font-semibold text-slate-100">Assign course</h3>
-                  <p class="text-sm text-slate-400">{channel_name(@state.channel)}</p>
-                </div>
-                <button
-                  type="button"
-                  class="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300"
-                  phx-click="discord-channel-row:close_assign_modal"
-                  phx-value-key={@state.key}
-                >
-                  Close
-                </button>
-              </div>
-
-              <div :if={@state.loading_course_options?} class="text-sm text-slate-500">
-                Loading course search...
-              </div>
-
-              <div :if={!@state.loading_course_options?}>
-                <label class="mb-2 block text-sm font-medium text-slate-300">Search courses</label>
-                <input
-                  type="text"
-                  name="course_query"
-                  value={@state.course_query}
-                  phx-input="discord-channel-row:course_query"
-                  phx-value-key={@state.key}
-                  placeholder="MATH 1010"
-                  class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                />
-
-                <div class="mt-3 max-h-64 overflow-y-auto space-y-2">
-                  <%= if @course_suggestions == [] do %>
-                    <div class="rounded-md border border-slate-800 bg-slate-950/35 p-3 text-sm text-slate-500">
-                      No matching courses found.
-                    </div>
-                  <% else %>
-                    <%= for course <- @course_suggestions do %>
-                      <button
-                        type="button"
-                        phx-click="discord-channel-row:select_course"
-                        phx-value-key={@state.key}
-                        phx-value-crn={course["crn"]}
-                        class={[
-                          "flex w-full flex-col gap-1 rounded-md border px-3 py-2 text-left transition",
-                          @state.selected_course && @state.selected_course["crn"] == course["crn"] &&
-                            "border-indigo-500/40 bg-indigo-500/10",
-                          !(@state.selected_course && @state.selected_course["crn"] == course["crn"]) &&
-                            "border-slate-800 bg-slate-950/45 hover:border-slate-700 hover:bg-slate-900/60"
-                        ]}
-                      >
-                        <span class="text-sm font-medium text-slate-100">
-                          {course_prefix(course)}
-                        </span>
-                        <span class="text-xs text-slate-500">
-                          {course["course_name"]}
-                        </span>
-                      </button>
-                    <% end %>
-                  <% end %>
-                </div>
-              </div>
-
-              <div class="flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  phx-click="discord-channel-row:close_assign_modal"
-                  phx-value-key={@state.key}
-                  class="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-900"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  phx-click="discord-channel-row:save_assignment"
-                  phx-value-key={@state.key}
-                  disabled={is_nil(@state.selected_course) || @state.assigning?}
-                  class="inline-flex items-center gap-2 rounded-md border border-indigo-500/30 bg-indigo-500/15 px-3 py-2 text-sm font-semibold text-indigo-100 transition hover:bg-indigo-500/25 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <.icon name="hero-check" class="size-4" />
-                  <%= if @state.assigning? do %>
-                    Assigning...
-                  <% else %>
-                    Assign course
-                  <% end %>
-                </button>
-              </div>
-            </div>
-          </.modal>
-        <% end %>
-
-        <%= if @state.show_sync_modal? do %>
-          <.modal
-            id={"discord-channel-sync-modal-#{@state.key}"}
-            on_close="discord-channel-row:close_sync_modal"
-          >
-            <div class="space-y-4">
-              <div class="flex items-start justify-between gap-3">
-                <div>
-                  <h3 class="text-lg font-semibold text-slate-100">Sync roster</h3>
-                  <p class="text-sm text-slate-400">{channel_name(@state.channel)}</p>
-                </div>
-                <button
-                  type="button"
-                  class="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300"
-                  phx-click="discord-channel-row:close_sync_modal"
-                  phx-value-key={@state.key}
-                >
-                  Close
-                </button>
-              </div>
-
-              <label class="block space-y-2">
-                <span class="text-sm font-medium text-slate-300">JWT token</span>
-                <input
-                  type="password"
-                  name="sync_token"
-                  value={@state.sync_token}
-                  phx-input="discord-channel-row:sync_token"
-                  phx-value-key={@state.key}
-                  class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                />
-              </label>
-
-              <div class="flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  phx-click="discord-channel-row:close_sync_modal"
-                  phx-value-key={@state.key}
-                  class="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-900"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  phx-click="discord-channel-row:sync_roster"
-                  phx-value-key={@state.key}
-                  disabled={@state.syncing_roster?}
-                  class="inline-flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <.icon
-                    name="hero-arrow-path"
-                    class={if(@state.syncing_roster?, do: "size-4 animate-spin", else: "size-4")}
-                  />
-                  <%= if @state.syncing_roster? do %>
-                    Syncing...
-                  <% else %>
-                    Sync roster
-                  <% end %>
-                </button>
-              </div>
-            </div>
-          </.modal>
-        <% end %>
       </:body>
     </.expandable>
+
+    <DiscordChannelAssignModal.modal_overlay
+      :if={@assign_modal_state.open?}
+      state={@assign_modal_state}
+    />
+
+    <DiscordChannelSyncModal.modal_overlay
+      :if={@sync_modal_state.open?}
+      state={@sync_modal_state}
+    />
     """
   end
 
@@ -345,7 +196,6 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
       socket
     else
       socket
-      |> LiveView.attach_hook("discord-channel-row:event", :handle_event, &hooked_event/3)
       |> LiveView.attach_hook("discord-channel-row:info", :handle_info, &hooked_info/2)
       |> put_in([Access.key(:private), :discord_channel_row_hooks_attached?], true)
     end
@@ -363,105 +213,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
     socket
   end
 
-  defp hooked_event("discord-channel-row:open_assign_modal", %{"key" => key}, socket) do
-    state = fetch_socket_state!(socket, key)
-    socket = put_state(socket, key, %{state | show_assign_modal?: true, error: nil})
-    socket = maybe_request_course_options(socket, key)
-    {:halt, socket}
-  end
-
-  defp hooked_event("discord-channel-row:close_assign_modal", %{"key" => key}, socket) do
-    state = fetch_socket_state!(socket, key)
-
-    {:halt,
-     put_state(socket, key, %{
-       state
-       | show_assign_modal?: false,
-         course_query: "",
-         selected_course: nil,
-         error: nil
-     })}
-  end
-
-  defp hooked_event("discord-channel-row:course_query", %{"key" => key} = params, socket) do
-    state = fetch_socket_state!(socket, key)
-    value = Map.get(params, "course_query") || Map.get(params, "value", "")
-    {:halt, put_state(socket, key, %{state | course_query: value, selected_course: nil})}
-  end
-
-  defp hooked_event("discord-channel-row:select_course", %{"key" => key, "crn" => crn}, socket) do
-    state = fetch_socket_state!(socket, key)
-    selected_course = Enum.find(state.course_options, &(&1["crn"] == crn))
-    {:halt, put_state(socket, key, %{state | selected_course: selected_course, error: nil})}
-  end
-
-  defp hooked_event("discord-channel-row:save_assignment", %{"key" => key}, socket) do
-    state = fetch_socket_state!(socket, key)
-
-    with %{selected_course: selected_course, channel: channel} <- state,
-         true <- is_map(selected_course),
-         role_id when is_binary(role_id) <- default_role_id(socket.assigns.roles) do
-      DiscordDomainManager.save_course_channel_assignment(
-        pid: self(),
-        key: key,
-        crn: selected_course["crn"],
-        term_code: selected_course["term_code"],
-        discord_channel_id: channel["id"],
-        discord_role_id: role_id
-      )
-
-      {:halt, put_state(socket, key, %{state | assigning?: true, error: nil})}
-    else
-      _ ->
-        {:halt, put_state(socket, key, %{state | error: "Select a course before saving."})}
-    end
-  end
-
-  defp hooked_event("discord-channel-row:open_sync_modal", %{"key" => key}, socket) do
-    state = fetch_socket_state!(socket, key)
-    {:halt, put_state(socket, key, %{state | show_sync_modal?: true, error: nil})}
-  end
-
-  defp hooked_event("discord-channel-row:close_sync_modal", %{"key" => key}, socket) do
-    state = fetch_socket_state!(socket, key)
-
-    {:halt,
-     put_state(socket, key, %{state | show_sync_modal?: false, sync_token: "", error: nil})}
-  end
-
-  defp hooked_event("discord-channel-row:sync_token", %{"key" => key} = params, socket) do
-    state = fetch_socket_state!(socket, key)
-    value = Map.get(params, "sync_token") || Map.get(params, "value", "")
-    {:halt, put_state(socket, key, %{state | sync_token: value})}
-  end
-
-  defp hooked_event("discord-channel-row:sync_roster", %{"key" => key}, socket) do
-    state = fetch_socket_state!(socket, key)
-
-    if is_map(state.assignment) and String.trim(state.sync_token) != "" do
-      DiscordDomainManager.sync_course_roster(
-        pid: self(),
-        key: key,
-        term_code: state.assignment["term_code"],
-        crn: state.assignment["crn"],
-        jwt_token: String.trim(state.sync_token)
-      )
-
-      {:halt, put_state(socket, key, %{state | syncing_roster?: true, error: nil})}
-    else
-      {:halt, put_state(socket, key, %{state | error: "Enter a JWT token before syncing."})}
-    end
-  end
-
-  defp hooked_event("discord-channel-row:" <> rest, params, socket) do
-    Logger.debug(
-      "Unhandled discord-channel-row event discord-channel-row:#{rest} params=#{inspect(params)}"
-    )
-
-    {:halt, socket}
-  end
-
-  defp hooked_event(_event, _params, socket), do: {:cont, socket}
+  # -- info hooks (assignment/course loading only) --
 
   defp hooked_info(
          {:discord, {:course_channel_assignment_loaded, key, {:ok, assignment}}},
@@ -480,6 +232,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
             socket
             |> maybe_request_course(key, assignment)
             |> ensure_student_mapping_component(key, assignment)
+            |> ensure_sync_modal_has_assignment(key, assignment)
           else
             ensure_student_mapping_component(socket, key, nil)
           end
@@ -512,14 +265,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
 
       state ->
         {:cont,
-         socket
-         |> put_state(key, %{
-           state
-           | assigning?: false,
-             show_assign_modal?: false,
-             course_query: "",
-             selected_course: nil
-         })
+         put_state(socket, key, %{state | loading_assignment?: true})
          |> maybe_request_assignment(key: key, channel: state.channel)}
     end
   end
@@ -532,39 +278,17 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
       state ->
         Logger.error("Discord course assignment save failed reason=#{inspect(reason)}")
 
-        {:cont,
-         put_state(socket, key, %{state | assigning?: false, error: "Could not save assignment."})}
+        {:cont, put_state(socket, key, %{state | error: "Could not save assignment."})}
     end
   end
 
-  defp hooked_info({:discord, {:course_roster_synced, key, {:ok, _result}}}, socket) do
+  defp hooked_info({:discord, {:course_roster_synced, key, _result}}, socket) do
     case fetch_state(socket.assigns, key) do
       nil ->
         {:cont, socket}
 
       state ->
-        {:cont,
-         socket
-         |> put_state(key, %{
-           state
-           | syncing_roster?: false,
-             show_sync_modal?: false,
-             sync_token: ""
-         })
-         |> ensure_student_mapping_component(key, state.assignment)}
-    end
-  end
-
-  defp hooked_info({:discord, {:course_roster_synced, key, {:error, reason}}}, socket) do
-    case fetch_state(socket.assigns, key) do
-      nil ->
-        {:cont, socket}
-
-      state ->
-        Logger.error("Discord course roster sync failed reason=#{inspect(reason)}")
-
-        {:cont,
-         put_state(socket, key, %{state | syncing_roster?: false, error: "Roster sync failed."})}
+        {:cont, ensure_student_mapping_component(socket, key, state.assignment)}
     end
   end
 
@@ -614,42 +338,9 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
     end
   end
 
-  defp hooked_info({:snow_course_cache, {:term_courses_loaded, key, {:ok, payload}}}, socket) do
-    case fetch_state(socket.assigns, key) do
-      nil ->
-        {:cont, socket}
-
-      state ->
-        courses = Map.get(payload, :courses, [])
-
-        {:cont,
-         put_state(socket, key, %{
-           state
-           | course_options: courses,
-             loading_course_options?: false,
-             error: nil
-         })}
-    end
-  end
-
-  defp hooked_info({:snow_course_cache, {:term_courses_loaded, key, {:error, reason}}}, socket) do
-    case fetch_state(socket.assigns, key) do
-      nil ->
-        {:cont, socket}
-
-      state ->
-        Logger.error("Discord term courses load failed reason=#{inspect(reason)}")
-
-        {:cont,
-         put_state(socket, key, %{
-           state
-           | loading_course_options?: false,
-             error: "Could not load course search."
-         })}
-    end
-  end
-
   defp hooked_info(_message, socket), do: {:cont, socket}
+
+  # -- helpers --
 
   defp maybe_request_course(socket, key, assignment) do
     if LiveView.connected?(socket) do
@@ -664,45 +355,28 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
     socket
   end
 
-  defp maybe_request_course_options(socket, key) do
-    state = fetch_socket_state!(socket, key)
-
-    term_code =
-      case state.assignment do
-        %{} = assignment -> assignment["term_code"]
-        _ -> infer_term_code(state.channel)
-      end
-
-    if LiveView.connected?(socket) and is_binary(term_code) and term_code != "" do
-      SnowCourseCacheDomainManager.request_term_courses(
-        pid: self(),
-        key: key,
-        term_code: term_code
-      )
-
-      put_state(socket, key, %{state | loading_course_options?: true})
-    else
-      put_state(socket, key, %{state | error: "Could not infer a term for this channel."})
-    end
-  end
-
   defp ensure_student_mapping_component(socket, key, assignment) do
     DiscordStudentMapping.assign_component(socket, student_mapping_key(key),
       assignment: assignment
     )
   end
 
-  defp fetch_socket_state!(socket, key) do
-    fetch_state(socket.assigns, key) ||
-      raise ArgumentError, "missing discord channel row state for key #{inspect(key)}"
+  defp ensure_sync_modal_has_assignment(socket, key, assignment) do
+    sync_state =
+      DiscordChannelSyncModal.fetch_state(socket.assigns, key) ||
+        %DiscordChannelSyncModal{key: key}
+
+    DiscordChannelSyncModal.put_state(socket, key, %{sync_state | assignment: assignment})
   end
+
+  defp student_mapping_key(key), do: "discord-student-mapping:#{key}"
 
   defp put_state(socket, key, state) do
     states = Map.get(socket.assigns, @state_assign, %{})
     assign(socket, @state_assign, Map.put(states, key, state))
   end
 
-  defp student_mapping_key(key), do: "discord-student-mapping:#{key}"
+  # -- display helpers --
 
   defp course_name(nil), do: nil
   defp course_name(course), do: Map.get(course, "course_name")
@@ -746,71 +420,4 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
     course_name = Map.get(course || %{}, "course_name") || assignment["crn"]
     "#{assignment["term_code"]} #{assignment["crn"]} #{course_name}"
   end
-
-  defp default_role_id(roles) do
-    roles
-    |> Enum.reject(&(&1["name"] == "@everyone"))
-    |> Enum.sort_by(fn role -> Map.get(role["data"], "position", 0) end, :desc)
-    |> List.first()
-    |> case do
-      nil -> nil
-      role -> role["id"]
-    end
-  end
-
-  defp infer_term_code(channel) do
-    parts = String.split(channel_name(channel), "-", trim: true)
-
-    Enum.find_value(Enum.with_index(parts), fn {part, index} ->
-      case Integer.parse(part) do
-        {year, ""} when year >= 2000 and year <= 2100 ->
-          semester_code =
-            case Enum.at(parts, index + 1) do
-              "spring" -> "10"
-              "summer" -> "30"
-              "fall" -> "40"
-              _ -> nil
-            end
-
-          if semester_code, do: "#{year}#{semester_code}", else: nil
-
-        _ ->
-          nil
-      end
-    end)
-  end
-
-  defp course_suggestions(courses, query) do
-    query = normalize(query)
-
-    courses
-    |> Enum.filter(fn course ->
-      search_fields = [
-        Map.get(course, "crn", ""),
-        Map.get(course, "subject_code", ""),
-        Map.get(course, "course_number", ""),
-        Map.get(course, "section_number", ""),
-        Map.get(course, "course_name", ""),
-        Map.get(course, "primary_instructor_name", "")
-      ]
-
-      query == "" or Enum.any?(search_fields, &String.contains?(normalize(&1), query))
-    end)
-    |> Enum.sort_by(fn course ->
-      {
-        Map.get(course, "subject_code", ""),
-        Map.get(course, "course_number", ""),
-        Map.get(course, "section_number", ""),
-        Map.get(course, "crn", "")
-      }
-    end)
-  end
-
-  defp normalize(value) when is_binary(value) do
-    value
-    |> String.downcase()
-    |> String.replace(~r/\s+/, "")
-  end
-
-  defp normalize(_value), do: ""
 end

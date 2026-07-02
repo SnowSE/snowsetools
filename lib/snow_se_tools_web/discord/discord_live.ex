@@ -95,6 +95,8 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
                     channel_row_states={Map.get(assigns, :discord_channel_row_states, %{})}
                     student_mapping_states={Map.get(assigns, :discord_student_mapping_states, %{})}
                     student_row_states={Map.get(assigns, :discord_student_row_states, %{})}
+                    assign_modal_states={Map.get(assigns, :discord_channel_assign_modal_states, %{})}
+                    sync_modal_states={Map.get(assigns, :discord_channel_sync_modal_states, %{})}
                   />
                 <% :members -> %>
                   <DiscordMembers.render state={@discord_members} />
