@@ -395,6 +395,19 @@ defmodule SnowSeTools.Discord.DiscordDb do
     DbHelpers.run_sql(sql, %{}, @discord_item_schema)
   end
 
+  def get_server_status do
+    with guilds when is_list(guilds) <- list_guilds(),
+         bot_users when is_list(bot_users) <- list_bot_users() do
+      %{
+        guild: List.first(guilds),
+        bot_user: List.first(bot_users)
+      }
+    else
+      {:error, reason} -> {:error, reason}
+      unexpected -> {:error, {:unexpected_server_status_result, unexpected}}
+    end
+  end
+
   def sync_summary do
     sql = """
     SELECT resource, record_count, last_synced_at

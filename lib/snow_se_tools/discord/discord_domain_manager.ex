@@ -8,8 +8,28 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
   end
 
-  def request_dashboard(pid: pid) when is_pid(pid) do
-    GenServer.cast(__MODULE__, {:request_dashboard, pid})
+  def request_sync_summary(pid: pid, key: key) when is_pid(pid) do
+    GenServer.cast(__MODULE__, {:request_sync_summary, pid, key})
+  end
+
+  def request_server_status(pid: pid, key: key) when is_pid(pid) do
+    GenServer.cast(__MODULE__, {:request_server_status, pid, key})
+  end
+
+  def request_channels(pid: pid, key: key) when is_pid(pid) do
+    GenServer.cast(__MODULE__, {:request_channels, pid, key})
+  end
+
+  def request_members(pid: pid, key: key) when is_pid(pid) do
+    GenServer.cast(__MODULE__, {:request_members, pid, key})
+  end
+
+  def request_roles(pid: pid, key: key) when is_pid(pid) do
+    GenServer.cast(__MODULE__, {:request_roles, pid, key})
+  end
+
+  def request_invites(pid: pid, key: key) when is_pid(pid) do
+    GenServer.cast(__MODULE__, {:request_invites, pid, key})
   end
 
   def sync_all(pid: pid) when is_pid(pid) do
@@ -27,8 +47,69 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
     end
   end
 
-  def handle_cast({:request_dashboard, pid}, state) do
-    send_dashboard(pid)
+  def handle_cast({:request_sync_summary, pid, key}, state) do
+    send_db_result(
+      pid: pid,
+      message: {:sync_summary_loaded, key},
+      fetch: &DiscordDb.sync_summary/0,
+      error_context: "Discord sync summary load failed"
+    )
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:request_server_status, pid, key}, state) do
+    send_db_result(
+      pid: pid,
+      message: {:server_status_loaded, key},
+      fetch: &DiscordDb.get_server_status/0,
+      error_context: "Discord server status load failed"
+    )
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:request_channels, pid, key}, state) do
+    send_db_result(
+      pid: pid,
+      message: {:channels_loaded, key},
+      fetch: &DiscordDb.list_channels/0,
+      error_context: "Discord channels load failed"
+    )
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:request_members, pid, key}, state) do
+    send_db_result(
+      pid: pid,
+      message: {:members_loaded, key},
+      fetch: &DiscordDb.list_members/0,
+      error_context: "Discord members load failed"
+    )
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:request_roles, pid, key}, state) do
+    send_db_result(
+      pid: pid,
+      message: {:roles_loaded, key},
+      fetch: &DiscordDb.list_roles/0,
+      error_context: "Discord roles load failed"
+    )
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:request_invites, pid, key}, state) do
+    send_db_result(
+      pid: pid,
+      message: {:invites_loaded, key},
+      fetch: &DiscordDb.list_invites/0,
+      error_context: "Discord invites load failed"
+    )
+
     {:noreply, state}
   end
 
@@ -69,7 +150,7 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
       end)
 
     if failed_results == [] do
-      summary = load_summary()
+      summary = safe_sync_summary()
       DiscordPubSub.broadcast_discord_data_synced(summary)
       send(pid, {:discord, {:sync_finished, {:ok, summary}}})
     else
@@ -81,8 +162,6 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
       Logger.error("Discord sync failed reasons=#{Enum.join(reasons, "; ")}")
       send(pid, {:discord, {:sync_finished, {:error, reasons}}})
     end
-
-    send_dashboard(pid)
   end
 
   defp sync_guild do
@@ -127,23 +206,7 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
     end
   end
 
-  defp send_dashboard(pid) do
-    send(pid, {:discord, {:dashboard_loaded, load_dashboard()}})
-  end
-
-  defp load_dashboard do
-    %{
-      summary: load_summary(),
-      guilds: load_collection(&DiscordDb.list_guilds/0, "Discord guilds load failed"),
-      bot_users: load_collection(&DiscordDb.list_bot_users/0, "Discord bot users load failed"),
-      members: load_collection(&DiscordDb.list_members/0, "Discord members load failed"),
-      channels: load_collection(&DiscordDb.list_channels/0, "Discord channels load failed"),
-      roles: load_collection(&DiscordDb.list_roles/0, "Discord roles load failed"),
-      invites: load_collection(&DiscordDb.list_invites/0, "Discord invites load failed")
-    }
-  end
-
-  defp load_summary do
+  defp safe_sync_summary do
     case DiscordDb.sync_summary() do
       {:error, reason} ->
         Logger.error("Discord summary load failed reason=#{inspect(reason)}")
@@ -154,14 +217,14 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
     end
   end
 
-  defp load_collection(fetch_function, message) do
-    case fetch_function.() do
+  defp send_db_result(pid: pid, message: {event, key}, fetch: fetch, error_context: error_context) do
+    case fetch.() do
       {:error, reason} ->
-        Logger.error("#{message} reason=#{inspect(reason)}")
-        []
+        Logger.error("#{error_context} reason=#{inspect(reason)}")
+        send(pid, {:discord, {event, key, {:error, reason}}})
 
-      rows ->
-        rows
+      data ->
+        send(pid, {:discord, {event, key, {:ok, data}}})
     end
   end
 end
