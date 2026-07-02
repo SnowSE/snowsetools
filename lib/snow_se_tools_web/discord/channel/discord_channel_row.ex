@@ -50,10 +50,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
   attr :student_mapping_state, :any, required: true
   attr :student_mapping_states, :map, default: %{}
   attr :student_row_states, :map, default: %{}
-  attr :assign_modal_state, :any, required: true
   attr :sync_modal_state, :any, required: true
-  attr :sync_modal_states, :map, default: %{}
-  attr :courses_by_term, :map, default: %{}
 
   def render(assigns) do
     ~H"""
@@ -103,12 +100,9 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
 
         <div class="space-y-4">
           <div class="flex flex-wrap items-center gap-2">
-            <DiscordChannelAssignModal.render
-              state={@assign_modal_state}
+            <DiscordChannelAssignModal.render_button
               channel={@state.channel}
               assignment={@state.assignment}
-              roles={@roles}
-              courses_by_term={@courses_by_term}
             />
 
             <DiscordChannelSyncModal.render

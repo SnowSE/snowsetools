@@ -11,7 +11,9 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
             course_query: "",
             selected_course: nil,
             assigning?: false,
-            error: nil
+            error: nil,
+            sorted_terms: [],
+            terms_loaded?: false
 
   @state_assign :discord_channel_assign_modal
 
@@ -25,15 +27,10 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
 
   def fetch_state(assigns), do: Map.get(assigns, @state_assign)
 
-  attr :state, __MODULE__, required: true
   attr :channel, :map, required: true
   attr :assignment, :any, default: nil
-  attr :roles, :list, default: []
-  attr :courses_by_term, :map, default: %{}
 
-  def render(assigns) do
-    assigns = assign(assigns, :terms, sorted_terms(assigns.courses_by_term))
-
+  def render_button(assigns) do
     ~H"""
     <div :if={!@assignment}>
       <button
@@ -45,7 +42,16 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
         <.icon name="hero-plus" class="size-4" /> Assign to course
       </button>
     </div>
+    """
+  end
 
+  attr :state, __MODULE__, required: true
+  attr :assignment, :any, default: nil
+  attr :roles, :list, default: []
+  attr :courses_by_term, :map, default: %{}
+
+  def render(assigns) do
+    ~H"""
     <%= if @state.open_channel_id do %>
       <.modal
         id={"discord-channel-assign-modal-#{@state.open_channel_id}"}
@@ -83,7 +89,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
               class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
             >
               <option value="">Select a term...</option>
-              <option :for={term <- @terms} value={term.code}>{term.display}</option>
+              <option :for={term <- @state.sorted_terms} value={term.code}>{term.display}</option>
             </select>
 
             <%= if @state.selected_term do %>
@@ -163,6 +169,11 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
         "discord-channel-assign-modal:event",
         :handle_event,
         &hooked_event/3
+      )
+      |> LiveView.attach_hook(
+        "discord-channel-assign-modal:info",
+        :handle_info,
+        &hooked_info/2
       )
       |> put_in([Access.key(:private), :discord_channel_assign_modal_hooks_attached?], true)
     end
@@ -261,6 +272,21 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
 
   defp hooked_event(_event, _params, socket), do: {:cont, socket}
 
+  # -- info hooks --
+
+  defp hooked_info({:snow_course_cache, {:all_courses_loaded, {:ok, courses_by_term}}}, socket) do
+    state = fetch_state(socket.assigns) || %__MODULE__{}
+
+    sorted =
+      courses_by_term
+      |> Enum.map(fn {code, _courses} -> %{code: code, display: term_display_name(code)} end)
+      |> Enum.sort_by(& &1.code, :desc)
+
+    {:cont, put_state(socket, %{state | sorted_terms: sorted, terms_loaded?: true})}
+  end
+
+  defp hooked_info(_message, socket), do: {:cont, socket}
+
   # -- helpers --
 
   defp put_state(socket, state), do: assign(socket, @state_assign, state)
@@ -291,12 +317,6 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
   end
 
   defp channel_id(channel), do: Map.get(channel, :id) || Map.get(channel, "id")
-
-  defp sorted_terms(courses_by_term) do
-    courses_by_term
-    |> Enum.map(fn {code, _courses} -> %{code: code, display: term_display_name(code)} end)
-    |> Enum.sort_by(& &1.code, :desc)
-  end
 
   defp filtered_courses(state, courses_by_term) do
     courses = Map.get(courses_by_term, state.selected_term, [])

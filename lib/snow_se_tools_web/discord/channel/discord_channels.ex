@@ -6,6 +6,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
   alias SnowSeTools.Discord.DiscordDomainManager
 
   alias SnowSeToolsWeb.Discord.{
+    DiscordChannelAssignModal,
     DiscordChannelRow,
     DiscordChannelSyncModal,
     DiscordStudentMapping
@@ -81,15 +82,18 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
               roles={@roles.roles}
               student_mapping_states={@student_mapping_states}
               student_row_states={@student_row_states}
-              assign_modal_state={@assign_modal_state}
-              sync_modal_states={@sync_modal_states}
-              courses_by_term={@courses_by_term}
               student_mapping_state={resolve_student_mapping_state(assigns, channel)}
               sync_modal_state={resolve_sync_modal_state(assigns, channel)}
             />
           <% end %>
         </div>
       </section>
+
+      <DiscordChannelAssignModal.render
+        state={@assign_modal_state}
+        roles={@roles.roles}
+        courses_by_term={@courses_by_term}
+      />
     </div>
     """
   end
