@@ -45,5 +45,15 @@ fi
 # Point the app at our temporary DB
 export DATABASE_URL="ecto://${DB_USER}:${DB_PASS}@localhost:${HOST_PORT}/${DB_NAME}"
 
+# Run requested task
 cd "$SCRIPT_DIR"
-exec mix precommit
+
+if [ $# -eq 0 ]; then
+  exec mix precommit
+elif [ "$1" = "test" ] && [ $# -ge 2 ]; then
+  shift
+  exec mix test "$@"
+else
+  echo "Usage: $0 [test <file> ...]" >&2
+  exit 1
+fi

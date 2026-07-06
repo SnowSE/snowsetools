@@ -118,6 +118,13 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
     GenServer.cast(__MODULE__, {:add_role_to_member, pid, key, member_id, role_id})
   end
 
+  def rename_member(pid: pid, key: key, member_id: member_id, nickname: nickname) do
+    GenServer.cast(
+      __MODULE__,
+      {:rename_member, pid, key, member_id, nickname}
+    )
+  end
+
   def sync_course_roster(
         pid: pid,
         key: key,
@@ -395,6 +402,23 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
           pid,
           {:discord, {:member_role_added, key, {:ok, %{member_id: member_id, role_id: role_id}}}}
         )
+    end
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:rename_member, pid, key, member_id, nickname}, state) do
+    case discord_api().set_nickname(member_id: member_id, nickname: nickname) do
+      {:error, reason} ->
+        Logger.error(
+          "Discord rename member failed member_id=#{member_id} reason=#{inspect(reason)}"
+        )
+
+        send(pid, {:discord, {:set_nickname_updated, key, {:error, reason}}})
+
+      _ ->
+        send(pid, {:discord, {:set_nickname_updated, key, {:ok, %{member_id: member_id}}}})
+        sync_all(pid: self())
     end
 
     {:noreply, state}

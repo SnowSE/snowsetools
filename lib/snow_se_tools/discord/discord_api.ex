@@ -62,6 +62,16 @@ defmodule SnowSeTools.Discord.DiscordApi do
     end
   end
 
+  def set_nickname(member_id: member_id, nickname: nickname) do
+    with {:ok, guild_id} <- discord_guild_id(),
+         {:ok, headers} <- auth_headers() do
+      request(:patch, "guilds/#{guild_id}/members/#{member_id}",
+        headers: headers,
+        json: %{"nick" => nickname}
+      )
+    end
+  end
+
   def delete_channel(channel_id: channel_id) do
     with {:ok, headers} <- auth_headers() do
       request(:delete, "channels/#{channel_id}", headers: headers)

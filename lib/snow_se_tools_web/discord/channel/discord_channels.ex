@@ -167,45 +167,69 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
   end
 
   defp hooked_info({:discord, {:channels_loaded, key, {:ok, channels}}}, socket) do
-    groups = build_groups(channels)
+    case Map.fetch(socket.assigns, key) do
+      {:ok, %__MODULE__{}} ->
+        groups = build_groups(channels)
 
-    socket =
-      socket
-      |> assign(key, %{
-        socket.assigns[key]
-        | channels: channels,
-          groups: groups,
-          loading?: false,
-          error: nil
-      })
-      |> ensure_channel_rows(channels)
+        socket =
+          socket
+          |> assign(key, %{
+            socket.assigns[key]
+            | channels: channels,
+              groups: groups,
+              loading?: false,
+              error: nil
+          })
+          |> ensure_channel_rows(channels)
 
-    {:cont, socket}
+        {:cont, socket}
+
+      _ ->
+        {:cont, socket}
+    end
   end
 
   defp hooked_info({:discord, {:channels_loaded, key, {:error, reason}}}, socket) do
-    Logger.error("Discord channels failed reason=#{inspect(reason)}")
+    case Map.fetch(socket.assigns, key) do
+      {:ok, %__MODULE__{}} ->
+        Logger.error("Discord channels failed reason=#{inspect(reason)}")
 
-    {:cont,
-     assign(socket, key, %{
-       socket.assigns[key]
-       | loading?: false,
-         error: "Could not load Discord channels."
-     })}
+        {:cont,
+         assign(socket, key, %{
+           socket.assigns[key]
+           | loading?: false,
+             error: "Could not load Discord channels."
+         })}
+
+      _ ->
+        {:cont, socket}
+    end
   end
 
   defp hooked_info({:discord, {:student_discord_mappings_loaded, key, {:ok, mappings}}}, socket) do
-    {:cont, assign(socket, key, %{socket.assigns[key] | mappings: mappings, error: nil})}
+    case Map.fetch(socket.assigns, key) do
+      {:ok, %__MODULE__{}} ->
+        {:cont, assign(socket, key, %{socket.assigns[key] | mappings: mappings, error: nil})}
+
+      _ ->
+        {:cont, socket}
+    end
   end
 
   defp hooked_info({:discord, {:student_discord_mappings_loaded, key, {:error, reason}}}, socket) do
-    Logger.error("Discord student mappings failed reason=#{inspect(reason)}")
+    case Map.fetch(socket.assigns, key) do
+      {:ok, %__MODULE__{}} ->
+        Logger.error("Discord student mappings failed reason=#{inspect(reason)}")
 
-    {:cont,
-     assign(socket, key, %{
-       socket.assigns[key]
-       | error: "Could not load Discord student mappings."
-     })}
+        {:cont,
+         assign(socket, key, %{
+           socket.assigns[key]
+           | error: "Could not load Discord student mappings."
+         })}
+
+      _ ->
+        {:cont, socket}
+    end
   end
 
   defp hooked_info({:discord, {:student_discord_mapping_saved, _key, _result}}, socket) do

@@ -297,11 +297,11 @@ The main constraint: all list items share one set of hooks, so event names must 
 
 you can read current logs with `docker logs simplesyllabusreporter-app-1` be sure to use bash to filter for only the logs you care about.
 
-when checking if changes compile use `mix precommit` on the terminal (not in container)
+when checking if changes compile use `./precommit-check.sh` on the terminal (not in container)
 
-when running tests they will not work in the docker environment. run `mix precommit` or `mix test <file>` on the host to run tests.
+when running tests they will not work in the docker environment. run `./precommit-check.sh` or `./precommit-check.sh test <file>` on the host to run tests.
 
-`mix precommit` will also format the documents
+`./precommit-check.sh` will also format the documents
 
 
 ## Data Flows
@@ -324,7 +324,7 @@ Use the asyncronous model to leverage Phoenix Streams when rendering and updatin
 
 ## Project guidelines
 
-- Use `mix precommit` alias when you are done with all changes and fix any pending issues
+- Use `./precommit-check.sh` alias when you are done with all changes and fix any pending issues
 - Use the already included and available `:req` (`Req`) library for HTTP requests, **avoid** `:httpoison`, `:tesla`, and `:httpc`. Req is included by default and is the preferred HTTP client for Phoenix apps
 - organize files and folders by feature name, not file type. for example liveviews about syllabus go in `snow_se_tools_web/syllabus/syllabus_live.ex` not in a `live` folder
 
