@@ -12,7 +12,6 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
     DiscordMembers,
     DiscordRoles,
     DiscordServerStatus,
-    DiscordStudentMappings,
     DiscordSync
   }
 
@@ -31,7 +30,6 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
      |> DiscordSync.assign_component(:discord_sync)
      |> DiscordServerStatus.assign_component(:discord_server_status)
      |> DiscordChannels.assign_component(:discord_channels)
-     |> DiscordStudentMappings.assign_component(:discord_student_mappings)
      |> DiscordMembers.assign_component(:discord_members)
      |> DiscordRoles.assign_component(:discord_roles)
      |> DiscordInvites.assign_component(:discord_invites)
@@ -103,7 +101,6 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
                     state={@discord_channels}
                     members={@discord_members}
                     roles={@discord_roles}
-                    student_mappings={@discord_student_mappings}
                     channel_row_states={Map.get(assigns, :discord_channel_row_states, %{})}
                     student_mapping_states={Map.get(assigns, :discord_student_mapping_states, %{})}
                     student_row_states={Map.get(assigns, :discord_student_row_states, %{})}

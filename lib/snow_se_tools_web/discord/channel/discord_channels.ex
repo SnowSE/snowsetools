@@ -15,6 +15,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
   defstruct key: nil,
             channels: [],
             groups: [],
+            mappings: [],
             loading?: true,
             error: nil
 
@@ -22,13 +23,12 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
     socket
     |> assign_new(key, fn -> %__MODULE__{key: key} end)
     |> maybe_attach_hooks()
-    |> request_channels(key: key)
+    |> request_data(key: key)
   end
 
   attr :state, __MODULE__, required: true
   attr :members, :any, required: true
   attr :roles, :any, required: true
-  attr :student_mappings, :any, required: true
   attr :channel_row_states, :map, default: %{}
   attr :student_mapping_states, :map, default: %{}
   attr :student_row_states, :map, default: %{}
@@ -77,7 +77,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
           <%= for channel <- group.children do %>
             <DiscordChannelRow.render
               state={resolve_channel_row_state(assigns, channel)}
-              mappings={@student_mappings.mappings}
+              mappings={@state.mappings}
               members={@members.members}
               roles={@roles.roles}
               student_mapping_states={@student_mapping_states}
@@ -143,9 +143,11 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
     end
   end
 
-  defp request_channels(socket, key: key) do
-    if LiveView.connected?(socket),
-      do: DiscordDomainManager.request_channels(pid: self(), key: key)
+  defp request_data(socket, key: key) do
+    if LiveView.connected?(socket) do
+      DiscordDomainManager.request_channels(pid: self(), key: key)
+      DiscordDomainManager.request_student_discord_mappings(pid: self(), key: key)
+    end
 
     socket
   end
@@ -178,16 +180,53 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
      })}
   end
 
+  defp hooked_info({:discord, {:student_discord_mappings_loaded, key, {:ok, mappings}}}, socket) do
+    {:cont, assign(socket, key, %{socket.assigns[key] | mappings: mappings, error: nil})}
+  end
+
+  defp hooked_info({:discord, {:student_discord_mappings_loaded, key, {:error, reason}}}, socket) do
+    Logger.error("Discord student mappings failed reason=#{inspect(reason)}")
+
+    {:cont,
+     assign(socket, key, %{
+       socket.assigns[key]
+       | error: "Could not load Discord student mappings."
+     })}
+  end
+
+  defp hooked_info({:discord, {:student_discord_mapping_saved, _key, _result}}, socket) do
+    refresh_student_mappings(socket)
+  end
+
+  defp hooked_info({:discord, {:student_discord_mapping_deleted, _key, _result}}, socket) do
+    refresh_student_mappings(socket)
+  end
+
   defp hooked_info({:discord, {:data_synced, _summary}}, socket) do
     Enum.each(socket.assigns, fn
-      {key, %__MODULE__{}} -> DiscordDomainManager.request_channels(pid: self(), key: key)
-      _assign -> :ok
+      {key, %__MODULE__{}} ->
+        DiscordDomainManager.request_channels(pid: self(), key: key)
+
+      _assign ->
+        :ok
+    end)
+
+    refresh_student_mappings(socket)
+  end
+
+  defp hooked_info(_message, socket), do: {:cont, socket}
+
+  defp refresh_student_mappings(socket) do
+    Enum.each(socket.assigns, fn
+      {key, %__MODULE__{}} ->
+        DiscordDomainManager.request_student_discord_mappings(pid: self(), key: key)
+
+      _assign ->
+        :ok
     end)
 
     {:cont, socket}
   end
-
-  defp hooked_info(_message, socket), do: {:cont, socket}
 
   defp build_groups(channels) do
     channel_models =
