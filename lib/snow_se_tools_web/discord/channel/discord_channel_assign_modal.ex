@@ -288,11 +288,18 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
   defp hooked_event("discord-channel-assign-modal:save", _params, socket) do
     state = fetch_state(socket.assigns) || %__MODULE__{}
     channel_id = Map.get(state.channel, :id) || Map.get(state.channel, "id")
-    role_id = find_default_role_id(discord_roles(socket.assigns))
+    role_id = find_channel_role_id(channel: state.channel, roles: discord_roles(socket.assigns))
 
     cond do
-      is_nil(state.selected_course) or is_nil(channel_id) or is_nil(role_id) ->
+      is_nil(state.selected_course) or is_nil(channel_id) ->
         {:halt, put_state(socket, %{state | error: "Select a course and term before saving."})}
+
+      is_nil(role_id) ->
+        {:halt,
+         put_state(socket, %{
+           state
+           | error: "Could not find a course role in this channel's permission overwrites."
+         })}
 
       true ->
         DiscordDomainManager.save_course_channel_assignment(
@@ -357,15 +364,46 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
     end) || %{}
   end
 
-  defp find_default_role_id(roles) do
+  defp find_channel_role_id(channel: channel, roles: roles) do
+    channel_role_ids =
+      channel
+      |> channel_permission_overwrites()
+      |> Enum.filter(&(Map.get(&1, "type") == 0))
+      |> Enum.map(&Map.get(&1, "id"))
+      |> Enum.reject(&is_nil/1)
+      |> MapSet.new()
+
     roles
-    |> Enum.reject(&(&1["name"] == "@everyone"))
+    |> Enum.filter(fn role -> MapSet.member?(channel_role_ids, role["id"]) end)
+    |> Enum.reject(&default_role?/1)
+    |> Enum.reject(&bot_managed_role?/1)
     |> Enum.sort_by(fn role -> Map.get(role["data"], "position", 0) end, :desc)
     |> List.first()
     |> case do
       nil -> nil
       role -> role["id"]
     end
+  end
+
+  defp channel_permission_overwrites(channel) do
+    channel
+    |> channel_data()
+    |> Map.get("permission_overwrites", [])
+  end
+
+  defp channel_data(channel) when is_map(channel) do
+    Map.get(channel, "data") || Map.get(channel, :data) || channel
+  end
+
+  defp channel_data(_channel), do: %{}
+
+  defp default_role?(role), do: role["name"] == "@everyone"
+
+  defp bot_managed_role?(role) do
+    data = Map.get(role, "data", %{})
+    tags = Map.get(data, "tags", %{})
+
+    Map.get(data, "managed") == true or Map.has_key?(tags, "bot_id")
   end
 
   defp discord_roles(assigns) do

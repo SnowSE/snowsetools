@@ -17,7 +17,12 @@ defmodule SnowSeTools.TestSupport.Fakes.DiscordApi do
   def fetch_invites, do: unexpected_call(:fetch_invites, %{})
 
   def add_role_to_member(member_id: member_id, role_id: role_id),
-    do: unexpected_call(:add_role_to_member, %{member_id: member_id, role_id: role_id})
+    do: expected_call(:add_role_to_member, %{member_id: member_id, role_id: role_id})
+
+  defp expected_call(function_name, metadata) do
+    Agent.update(__MODULE__, &[{function_name, metadata} | &1])
+    {:ok, metadata}
+  end
 
   defp unexpected_call(function_name, metadata) do
     Agent.update(__MODULE__, &[{function_name, metadata} | &1])

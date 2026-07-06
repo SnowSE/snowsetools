@@ -208,19 +208,36 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
         {:request_student_mappings_for_course, pid, key, term_code, crn},
         state
       ) do
-    case DiscordDb.list_student_discord_mappings() do
+    with all_mappings when is_list(all_mappings) <- DiscordDb.list_student_discord_mappings(),
+         {:ok, students} <- SnowCourseCacheDb.get_section_students(term_code: term_code, crn: crn) do
+      course_badger_ids =
+        students
+        |> Enum.map(&Map.get(&1, "badger_id"))
+        |> Enum.reject(&is_nil/1)
+        |> MapSet.new()
+
+      filtered =
+        Enum.filter(
+          all_mappings,
+          fn mapping -> MapSet.member?(course_badger_ids, mapping["badger_id"]) end
+        )
+
+      send(pid, {:discord, {:student_mappings_for_course_loaded, key, {:ok, filtered}}})
+    else
       {:error, reason} ->
         Logger.error("Discord student mappings for course load failed reason=#{inspect(reason)}")
         send(pid, {:discord, {:student_mappings_for_course_loaded, key, {:error, reason}}})
 
-      all_mappings ->
-        filtered =
-          Enum.filter(
-            all_mappings,
-            fn m -> m["term_code"] == term_code and m["crn"] == crn end
-          )
+      unexpected ->
+        Logger.error(
+          "Discord student mappings for course load returned unexpected result=#{inspect(unexpected)}"
+        )
 
-        send(pid, {:discord, {:student_mappings_for_course_loaded, key, {:ok, filtered}}})
+        send(
+          pid,
+          {:discord,
+           {:student_mappings_for_course_loaded, key, {:error, {:unexpected, unexpected}}}}
+        )
     end
 
     {:noreply, state}

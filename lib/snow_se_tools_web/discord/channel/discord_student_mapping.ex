@@ -86,7 +86,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentMapping do
 
         <DiscordStudentRow.render
           :for={item <- @state.student_items}
-          state={item.state}
+          state={Map.get(@student_row_states, item.key, item.state)}
           student={item.student}
           mapping={item.mapping}
           is_mapped={item.is_mapped}
@@ -300,7 +300,9 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentMapping do
   end
 
   defp hooked_info({:discord, {:data_synced, _summary}}, socket) do
-    Enum.each(socket.assigns, fn
+    socket.assigns
+    |> Map.get(@state_assign, %{})
+    |> Enum.each(fn
       {key, %__MODULE__{assignment: assignment}} when is_map(assignment) ->
         DiscordDomainManager.request_course_channel_assignment(
           pid: self(),
@@ -361,7 +363,9 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentMapping do
   end
 
   defp request_all_student_mappings(socket) do
-    Enum.each(socket.assigns, fn
+    socket.assigns
+    |> Map.get(@state_assign, %{})
+    |> Enum.each(fn
       {key, %__MODULE__{assignment: assignment}} when is_map(assignment) ->
         DiscordDomainManager.request_student_mappings_for_course(
           pid: self(),

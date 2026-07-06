@@ -162,24 +162,31 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentRow do
 
       <div
         :if={@state.showing_assign_panel?}
+        id={"discord-student-row-assign-panel-#{@state.key}"}
         class="mt-3 rounded-md border border-slate-800 bg-slate-900/50 p-3"
       >
         <label class="mb-2 block text-sm font-medium text-slate-300">Assign to Discord User</label>
-        <input
-          type="text"
-          name="search_text"
-          value={@state.search_text}
-          phx-input="discord-student-row:search"
+        <form
+          id={"discord-student-row-search-form-#{@state.key}"}
+          phx-change="discord-student-row:search"
           phx-value-key={@state.key}
-          placeholder="Search by name or id..."
-          class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-        />
+        >
+          <input
+            id={"discord-student-row-search-input-#{@state.key}"}
+            type="text"
+            name="search_text"
+            value={@state.search_text}
+            placeholder="Search by name or id..."
+            class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+          />
+        </form>
         <div class="mt-3 max-h-64 overflow-y-auto">
           <%= if @visible_members == [] do %>
             <div class="py-3 text-center text-sm text-slate-500">No unassigned users found.</div>
           <% else %>
             <%= for member <- @visible_members do %>
               <button
+                id={"discord-student-row-member-option-#{@state.key}-#{member["id"]}"}
                 type="button"
                 phx-click="discord-student-row:assign"
                 phx-value-key={@state.key}

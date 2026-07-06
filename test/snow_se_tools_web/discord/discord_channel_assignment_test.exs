@@ -8,6 +8,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
 
   setup do
     delete_course_channel_assignments()
+    delete_student_discord_mappings()
     seed_course_cache()
     seed_discord_cache()
 
@@ -200,6 +201,151 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
     assert DiscordApi.calls() == []
   end
 
+  test "match to Discord user opens inline search panel and assigns a member", %{conn: conn} do
+    :ok =
+      SnowCourseCacheDb.save_section_students(
+        term_code: "202640",
+        crn: "12345",
+        students: [
+          %{
+            "badgerid" => "b00000001",
+            "first_name" => "Grace",
+            "last_name" => "Hopper",
+            "email" => "grace@example.com"
+          }
+        ]
+      )
+
+    :ok =
+      DiscordDb.save_members(
+        members: [
+          %{
+            "nick" => "Grace H",
+            "roles" => [],
+            "user" => %{
+              "id" => "discord-user-1",
+              "username" => "gracehopper",
+              "global_name" => "Grace Hopper"
+            }
+          },
+          %{
+            "nick" => nil,
+            "roles" => [],
+            "user" => %{
+              "id" => "discord-user-2",
+              "username" => "alan",
+              "global_name" => "Alan Turing"
+            }
+          }
+        ]
+      )
+
+    conn = log_in_test_user(conn)
+
+    {:ok, view, _html} = live(conn, ~p"/discord")
+
+    _ = :sys.get_state(SnowCourseCacheDomainManager)
+    _ = :sys.get_state(DiscordDomainManager)
+    render(view)
+
+    view
+    |> element("button[phx-click='discord-channel-assign-modal:open']")
+    |> render_click()
+
+    view
+    |> element("#discord-assign-form")
+    |> render_change(%{"assign_form" => %{"selected_term" => "202640", "course_query" => ""}})
+
+    view
+    |> element("#discord-assign-course-option-12345")
+    |> render_click()
+
+    view
+    |> element("#discord-assign-save")
+    |> render_click()
+
+    flush_assignment_flow(view)
+    render(view)
+
+    row_key =
+      "discord-student-row:discord-student-mapping:discord-channel-row:channel-100:b00000001"
+
+    view
+    |> element("button[phx-click='discord-student-row:toggle_assign_panel']")
+    |> render_click()
+
+    assert has_element?(view, "[id='discord-student-row-assign-panel-#{row_key}']")
+
+    assert has_element?(
+             view,
+             "[id='discord-student-row-member-option-#{row_key}-discord-user-1']"
+           )
+
+    assert has_element?(
+             view,
+             "[id='discord-student-row-member-option-#{row_key}-discord-user-2']"
+           )
+
+    view
+    |> element("[id='discord-student-row-search-form-#{row_key}']")
+    |> render_change(%{"search_text" => "grace"})
+
+    assert has_element?(
+             view,
+             "[id='discord-student-row-member-option-#{row_key}-discord-user-1']"
+           )
+
+    refute has_element?(
+             view,
+             "[id='discord-student-row-member-option-#{row_key}-discord-user-2']"
+           )
+
+    view
+    |> element("[id='discord-student-row-member-option-#{row_key}-discord-user-1']")
+    |> render_click()
+
+    flush_student_mapping_flow(view)
+
+    assert Enum.any?(DiscordDb.list_student_discord_mappings(), fn mapping ->
+             mapping["badger_id"] == "b00000001" and
+               mapping["discord_user_id"] == "discord-user-1"
+           end)
+
+    assert has_element?(
+             view,
+             "[id='discord-student-row-b00000001-#{row_key}']",
+             "Grace H"
+           )
+
+    assert has_element?(
+             view,
+             "[id='discord-student-row-b00000001-#{row_key}']",
+             "discord user"
+           )
+
+    assert has_element?(
+             view,
+             "button[phx-click='discord-student-row:add_role'][phx-value-role-id='role-course']",
+             "Add ENGR 1010"
+           )
+
+    refute has_element?(
+             view,
+             "button[phx-click='discord-student-row:add_role'][phx-value-role-id='role-bot']"
+           )
+
+    view
+    |> element(
+      "button[phx-click='discord-student-row:add_role'][phx-value-role-id='role-course']"
+    )
+    |> render_click()
+
+    _ = :sys.get_state(DiscordDomainManager)
+    _ = :sys.get_state(view.pid)
+
+    assert {:add_role_to_member, %{member_id: "discord-user-1", role_id: "role-course"}} in DiscordApi.calls()
+  end
+
   test "cached roster students are returned as normalized maps" do
     :ok =
       SnowCourseCacheDb.save_section_students(
@@ -237,6 +383,13 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
   defp delete_course_channel_assignments do
     case DbHelpers.run_sql("DELETE FROM course_channel_assignments", %{}) do
       {:error, reason} -> raise "Failed to clean course channel assignments: #{inspect(reason)}"
+      _result -> :ok
+    end
+  end
+
+  defp delete_student_discord_mappings do
+    case DbHelpers.run_sql("DELETE FROM student_discord_mapping", %{}) do
+      {:error, reason} -> raise "Failed to clean student Discord mappings: #{inspect(reason)}"
       _result -> :ok
     end
   end
@@ -284,7 +437,9 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
             "type" => 0,
             "parent_id" => "category-10",
             "position" => 1,
-            "permission_overwrites" => []
+            "permission_overwrites" => [
+              %{"id" => "role-course", "type" => 0, "allow" => "1024", "deny" => "0"}
+            ]
           }
         ]
       )
@@ -293,7 +448,14 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
       DiscordDb.save_roles(
         roles: [
           %{"id" => "guild-id", "name" => "@everyone", "position" => 0},
-          %{"id" => "role-course", "name" => "ENGR 1010", "position" => 10}
+          %{"id" => "role-course", "name" => "ENGR 1010", "position" => 10},
+          %{
+            "id" => "role-bot",
+            "name" => "Syllabus Bot",
+            "position" => 99,
+            "managed" => true,
+            "tags" => %{"bot_id" => "bot-user-1"}
+          }
         ]
       )
   end
@@ -304,6 +466,13 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
     _ = :sys.get_state(DiscordDomainManager)
     _ = :sys.get_state(view.pid)
     _ = :sys.get_state(SnowCourseCacheDomainManager)
+    _ = :sys.get_state(view.pid)
+  end
+
+  defp flush_student_mapping_flow(view) do
+    _ = :sys.get_state(DiscordDomainManager)
+    _ = :sys.get_state(view.pid)
+    _ = :sys.get_state(DiscordDomainManager)
     _ = :sys.get_state(view.pid)
   end
 end
