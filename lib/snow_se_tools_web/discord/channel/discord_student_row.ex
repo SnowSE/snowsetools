@@ -65,6 +65,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentRow do
             type="button"
             phx-click="discord-student-row:toggle_assign_panel"
             phx-value-key={@state.key}
+            phx-value-first-name={@student["first_name"] || ""}
             class="rounded-md border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-xs font-medium text-indigo-100 transition hover:bg-indigo-500/20"
           >
             {if @state.showing_assign_panel?, do: "Hide Search Panel", else: "Match to Discord User"}
@@ -218,13 +219,18 @@ defmodule SnowSeToolsWeb.Discord.DiscordStudentRow do
     end
   end
 
-  defp hooked_event("discord-student-row:toggle_assign_panel", %{"key" => key}, socket) do
+  defp hooked_event(
+         "discord-student-row:toggle_assign_panel",
+         %{"key" => key, "first-name" => first_name},
+         socket
+       ) do
     state = fetch_socket_state!(socket, key)
 
     {:halt,
      put_state(socket, key, %{
        state
        | showing_assign_panel?: !state.showing_assign_panel?,
+         search_text: if(state.showing_assign_panel?, do: state.search_text, else: first_name),
          error: nil
      })}
   end

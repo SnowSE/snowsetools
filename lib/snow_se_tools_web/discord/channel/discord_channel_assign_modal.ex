@@ -217,13 +217,15 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
   defp hooked_event("discord-channel-assign-modal:open", %{"channel_id" => channel_id}, socket) do
     state = fetch_state(socket.assigns) || %__MODULE__{}
     channel = find_channel_by_id(socket.assigns, channel_id)
+    courses_by_term = Map.get(socket.assigns, :courses_by_term, %{})
+    form = initial_form_for_channel(channel: channel, courses_by_term: courses_by_term)
 
     {:halt,
      put_state(socket, %{
        state
        | open_channel_id: channel_id,
          channel: channel,
-         form: %{"selected_term" => nil, "course_query" => ""},
+         form: form,
          selected_course: nil,
          assigning?: false,
          error: nil
@@ -335,6 +337,124 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
   defp form_target?(%{"_target" => ["assign_form", field_name]}, field_name), do: true
   defp form_target?(_params, _field_name), do: false
 
+  defp initial_form_for_channel(channel: channel, courses_by_term: courses_by_term) do
+    term_codes = Map.keys(courses_by_term || %{})
+    channel_name = channel_name(channel)
+
+    %{
+      "selected_term" => initial_term_code(channel_name: channel_name, term_codes: term_codes),
+      "course_query" => initial_course_query(channel_name)
+    }
+  end
+
+  defp initial_term_code(channel_name: channel_name, term_codes: term_codes) do
+    case channel_term_parts(channel_name) do
+      {_query_words, [first_term_word, second_term_word]} ->
+        mapped_term_code =
+          term_code_from_words(
+            first_term_word: first_term_word,
+            second_term_word: second_term_word,
+            term_codes: term_codes
+          )
+
+        mapped_term_code || closest_term_code(term_codes: term_codes, date: Date.utc_today())
+
+      _no_term_parts ->
+        closest_term_code(term_codes: term_codes, date: Date.utc_today())
+    end
+  end
+
+  defp initial_course_query(channel_name) do
+    case channel_term_parts(channel_name) do
+      {query_words, [_first_term_word, _second_term_word]} -> Enum.join(query_words, " ")
+      _no_term_parts -> channel_name
+    end
+  end
+
+  defp channel_term_parts(channel_name) do
+    words = channel_name_words(channel_name)
+
+    if length(words) >= 3 do
+      {Enum.drop(words, -2), Enum.take(words, -2)}
+    else
+      nil
+    end
+  end
+
+  defp channel_name_words(channel_name) do
+    channel_name
+    |> String.downcase()
+    |> String.split(~r/[^a-z0-9]+/, trim: true)
+  end
+
+  defp term_code_from_words(
+         first_term_word: first_term_word,
+         second_term_word: second_term_word,
+         term_codes: term_codes
+       ) do
+    term_codes = MapSet.new(term_codes)
+
+    [
+      {first_term_word, second_term_word},
+      {second_term_word, first_term_word}
+    ]
+    |> Enum.find_value(fn {year, semester} ->
+      with true <- year?(year),
+           semester_code when is_binary(semester_code) <- semester_code(semester),
+           term_code = "#{year}#{semester_code}",
+           true <- MapSet.member?(term_codes, term_code) do
+        term_code
+      else
+        _not_mappable -> nil
+      end
+    end)
+  end
+
+  defp year?(value) when is_binary(value), do: String.match?(value, ~r/^\d{4}$/)
+  defp year?(_value), do: false
+
+  defp semester_code("spring"), do: "10"
+  defp semester_code("summer"), do: "30"
+  defp semester_code("fall"), do: "40"
+  defp semester_code("autumn"), do: "40"
+  defp semester_code(_semester), do: nil
+
+  defp closest_term_code(term_codes: term_codes, date: date) do
+    term_codes
+    |> Enum.map(fn term_code -> {term_code, term_start_date(term_code)} end)
+    |> Enum.reject(fn {_term_code, start_date} -> is_nil(start_date) end)
+    |> Enum.min_by(
+      fn {_term_code, start_date} -> abs(Date.diff(start_date, date)) end,
+      fn -> nil end
+    )
+    |> case do
+      {term_code, _start_date} -> term_code
+      nil -> nil
+    end
+  end
+
+  defp term_start_date(term_code) when is_binary(term_code) and byte_size(term_code) >= 6 do
+    year = String.slice(term_code, 0, 4)
+
+    month_day =
+      case String.slice(term_code, 4, 2) do
+        "10" -> {1, 1}
+        "30" -> {5, 1}
+        "40" -> {8, 1}
+        _other -> nil
+      end
+
+    with {year, ""} <- Integer.parse(year),
+         {month, day} <- month_day,
+         {:ok, date} <- Date.new(year, month, day) do
+      date
+    else
+      _invalid -> nil
+    end
+  end
+
+  defp term_start_date(_term_code), do: nil
+
   defp hooked_info({:snow_course_cache, {:all_courses_loaded, {:ok, courses_by_term}}}, socket) do
     state = fetch_state(socket.assigns) || %__MODULE__{}
 
@@ -346,9 +466,54 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
     {:cont, put_state(socket, %{state | sorted_terms: sorted, terms_loaded?: true})}
   end
 
+  defp hooked_info({:discord, {:course_channel_assignment_saved, key, {:ok, _result}}}, socket) do
+    state = fetch_state(socket.assigns) || %__MODULE__{}
+
+    if key == assignment_key_for_channel_id(state.open_channel_id) do
+      {:cont, put_state(socket, closed_state(state))}
+    else
+      {:cont, socket}
+    end
+  end
+
+  defp hooked_info({:discord, {:course_channel_assignment_saved, key, {:error, reason}}}, socket) do
+    state = fetch_state(socket.assigns) || %__MODULE__{}
+
+    if key == assignment_key_for_channel_id(state.open_channel_id) do
+      Logger.error("Discord course assignment save failed reason=#{inspect(reason)}")
+
+      {:cont,
+       put_state(socket, %{
+         state
+         | assigning?: false,
+           error: "Could not save assignment."
+       })}
+    else
+      {:cont, socket}
+    end
+  end
+
   defp hooked_info(_message, socket), do: {:cont, socket}
 
   defp put_state(socket, state), do: assign(socket, @state_assign, state)
+
+  defp closed_state(state) do
+    %{
+      state
+      | open_channel_id: nil,
+        channel: nil,
+        form: %{},
+        selected_course: nil,
+        assigning?: false,
+        error: nil
+    }
+  end
+
+  defp assignment_key_for_channel_id(channel_id) when is_binary(channel_id) do
+    "discord-channel-row:#{channel_id}"
+  end
+
+  defp assignment_key_for_channel_id(_channel_id), do: nil
 
   defp find_channel_by_id(assigns, channel_id) do
     row_states = Map.get(assigns, :discord_channel_row_states, %{})
@@ -365,24 +530,33 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
   end
 
   defp find_channel_role_id(channel: channel, roles: roles) do
-    channel_role_ids =
-      channel
-      |> channel_permission_overwrites()
-      |> Enum.filter(&(Map.get(&1, "type") == 0))
-      |> Enum.map(&Map.get(&1, "id"))
-      |> Enum.reject(&is_nil/1)
-      |> MapSet.new()
+    roles_by_id = Map.new(roles, &{&1["id"], &1})
+    permission_overwrites = channel_permission_overwrites(channel)
 
-    roles
-    |> Enum.filter(fn role -> MapSet.member?(channel_role_ids, role["id"]) end)
-    |> Enum.reject(&default_role?/1)
-    |> Enum.reject(&bot_managed_role?/1)
-    |> Enum.sort_by(fn role -> Map.get(role["data"], "position", 0) end, :desc)
-    |> List.first()
-    |> case do
-      nil -> nil
-      role -> role["id"]
-    end
+    find_role_id_for_overwrite(
+      permission_overwrites: permission_overwrites,
+      roles_by_id: roles_by_id,
+      matcher: &student_visibility_overwrite?/1
+    ) ||
+      find_role_id_for_overwrite(
+        permission_overwrites: permission_overwrites,
+        roles_by_id: roles_by_id,
+        matcher: &view_channel_allowed_overwrite?/1
+      )
+  end
+
+  defp find_role_id_for_overwrite(
+         permission_overwrites: permission_overwrites,
+         roles_by_id: roles_by_id,
+         matcher: matcher
+       ) do
+    permission_overwrites
+    |> Enum.filter(matcher)
+    |> Enum.map(&Map.get(&1, "id"))
+    |> Enum.find(fn role_id ->
+      role = Map.get(roles_by_id, role_id)
+      role && !default_role?(role) && !bot_managed_role?(role)
+    end)
   end
 
   defp channel_permission_overwrites(channel) do
@@ -396,6 +570,48 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
   end
 
   defp channel_data(_channel), do: %{}
+
+  defp student_visibility_overwrite?(permission_overwrite) do
+    role_permission_overwrite?(permission_overwrite) &&
+      parse_permission_integer(Map.get(permission_overwrite, "allow")) == 1024 &&
+      !permission_includes?(
+        permission_value: Map.get(permission_overwrite, "deny"),
+        permission_bit: 1024
+      )
+  end
+
+  defp view_channel_allowed_overwrite?(permission_overwrite) do
+    role_permission_overwrite?(permission_overwrite) &&
+      permission_includes?(
+        permission_value: Map.get(permission_overwrite, "allow"),
+        permission_bit: 1024
+      ) &&
+      !permission_includes?(
+        permission_value: Map.get(permission_overwrite, "deny"),
+        permission_bit: 1024
+      )
+  end
+
+  defp role_permission_overwrite?(permission_overwrite) do
+    Map.get(permission_overwrite, "type") in [0, "0"]
+  end
+
+  defp permission_includes?(permission_value: permission_value, permission_bit: permission_bit) do
+    permission_value
+    |> parse_permission_integer()
+    |> Bitwise.band(permission_bit) == permission_bit
+  end
+
+  defp parse_permission_integer(value) when is_integer(value), do: value
+
+  defp parse_permission_integer(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {permission_integer, ""} -> permission_integer
+      _invalid -> 0
+    end
+  end
+
+  defp parse_permission_integer(_value), do: 0
 
   defp default_role?(role), do: role["name"] == "@everyone"
 

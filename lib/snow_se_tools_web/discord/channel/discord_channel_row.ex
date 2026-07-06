@@ -20,6 +20,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
             course: nil,
             loading_assignment?: true,
             loading_course?: true,
+            removing_assignment?: false,
             error: nil,
             assignment_label: nil
 
@@ -110,6 +111,23 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
               channel={@state.channel}
               assignment={@state.assignment}
             />
+
+            <button
+              :if={@state.assignment}
+              id={"discord-channel-remove-assignment-#{@state.key}"}
+              type="button"
+              phx-click="discord-channel-row:remove_assignment"
+              phx-value-key={@state.key}
+              disabled={@state.removing_assignment?}
+              class="inline-flex items-center gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm font-medium text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <.icon name="hero-x-mark" class="size-4" />
+              <%= if @state.removing_assignment? do %>
+                Removing...
+              <% else %>
+                Remove course assignment
+              <% end %>
+            </button>
           </div>
 
           <div :if={@state.assignment} class="rounded-md border border-slate-800 bg-slate-950/35 p-3">
@@ -147,10 +165,42 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
       socket
     else
       socket
+      |> LiveView.attach_hook("discord-channel-row:event", :handle_event, &hooked_event/3)
       |> LiveView.attach_hook("discord-channel-row:info", :handle_info, &hooked_info/2)
       |> put_in([Access.key(:private), :discord_channel_row_hooks_attached?], true)
     end
   end
+
+  defp hooked_event("discord-channel-row:remove_assignment", %{"key" => key}, socket) do
+    case fetch_state(socket.assigns, key) do
+      %{assignment: %{"crn" => crn}} = state ->
+        DiscordDomainManager.delete_course_channel_assignment(pid: self(), key: key, crn: crn)
+
+        {:halt,
+         put_state(socket, key, %{
+           state
+           | removing_assignment?: true,
+             error: nil
+         })}
+
+      nil ->
+        Logger.error("Discord course assignment remove failed missing row state key=#{key}")
+        {:halt, socket}
+
+      state ->
+        Logger.error(
+          "Discord course assignment remove failed missing assignment key=#{key} state=#{inspect(state)}"
+        )
+
+        {:halt,
+         put_state(socket, key, %{
+           state
+           | error: "Could not remove assignment."
+         })}
+    end
+  end
+
+  defp hooked_event(_event, _params, socket), do: {:cont, socket}
 
   defp maybe_request_assignment(socket, key: key, channel: channel) do
     if LiveView.connected?(socket) do
@@ -230,6 +280,51 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
         Logger.error("Discord course assignment save failed reason=#{inspect(reason)}")
 
         {:cont, put_state(socket, key, %{state | error: "Could not save assignment."})}
+    end
+  end
+
+  defp hooked_info({:discord, {:course_channel_assignment_deleted, key, {:ok, _crn}}}, socket) do
+    case fetch_state(socket.assigns, key) do
+      nil ->
+        {:cont, socket}
+
+      state ->
+        socket =
+          socket
+          |> put_state(key, %{
+            state
+            | assignment: nil,
+              course: nil,
+              loading_assignment?: false,
+              loading_course?: false,
+              removing_assignment?: false,
+              error: nil,
+              assignment_label: nil
+          })
+          |> ensure_student_mapping_component(key, nil)
+          |> clear_sync_modal_assignment(key)
+
+        {:cont, compute_assignment_label(socket)}
+    end
+  end
+
+  defp hooked_info(
+         {:discord, {:course_channel_assignment_deleted, key, {:error, reason}}},
+         socket
+       ) do
+    case fetch_state(socket.assigns, key) do
+      nil ->
+        {:cont, socket}
+
+      state ->
+        Logger.error("Discord course assignment delete failed reason=#{inspect(reason)}")
+
+        {:cont,
+         put_state(socket, key, %{
+           state
+           | removing_assignment?: false,
+             error: "Could not remove assignment."
+         })}
     end
   end
 
@@ -319,6 +414,19 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
         %DiscordChannelSyncModal{key: key}
 
     DiscordChannelSyncModal.put_state(socket, key, %{sync_state | assignment: assignment})
+  end
+
+  defp clear_sync_modal_assignment(socket, key) do
+    sync_state =
+      DiscordChannelSyncModal.fetch_state(socket.assigns, key) ||
+        %DiscordChannelSyncModal{key: key}
+
+    DiscordChannelSyncModal.put_state(socket, key, %{
+      sync_state
+      | assignment: nil,
+        open?: false,
+        error: nil
+    })
   end
 
   defp compute_assignment_label(socket) do

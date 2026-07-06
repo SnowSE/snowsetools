@@ -53,6 +53,8 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
     flush_assignment_flow(view)
     render(view)
 
+    refute has_element?(view, "#discord-channel-assign-modal-channel-100")
+
     assignment = DiscordDb.get_course_channel_assignment(channel_id: "channel-100")
 
     assert %{
@@ -141,6 +143,93 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
     refute has_element?(view, "#discord-assign-course-option-12345")
 
     assert has_element?(view, "#discord-assign-course-query[phx-debounce='200']")
+    assert DiscordApi.calls() == []
+  end
+
+  test "assign modal pre-populates term and search from the Discord channel name", %{conn: conn} do
+    conn = log_in_test_user(conn)
+
+    {:ok, view, _html} = live(conn, ~p"/discord")
+
+    _ = :sys.get_state(SnowCourseCacheDomainManager)
+    _ = :sys.get_state(DiscordDomainManager)
+    render(view)
+
+    view
+    |> element("button[phx-click='discord-channel-assign-modal:open']")
+    |> render_click()
+
+    assert has_element?(view, "#discord-assign-term-select option[value='202640'][selected]")
+    assert has_element?(view, "#discord-assign-course-query[value='distributed']")
+    assert has_element?(view, "#discord-assign-course-option-55555")
+    refute has_element?(view, "#discord-assign-course-option-12345")
+  end
+
+  test "user removes a Discord channel course assignment from course details", %{conn: conn} do
+    conn = log_in_test_user(conn)
+
+    {:ok, view, _html} = live(conn, ~p"/discord")
+
+    _ = :sys.get_state(SnowCourseCacheDomainManager)
+    _ = :sys.get_state(DiscordDomainManager)
+    render(view)
+
+    view
+    |> element("button[phx-click='discord-channel-assign-modal:open']")
+    |> render_click()
+
+    view
+    |> element("#discord-assign-form")
+    |> render_change(%{"assign_form" => %{"selected_term" => "202640", "course_query" => ""}})
+
+    view
+    |> element("#discord-assign-course-option-12345")
+    |> render_click()
+
+    view
+    |> element("#discord-assign-save")
+    |> render_click()
+
+    flush_assignment_flow(view)
+    render(view)
+
+    assert DiscordDb.get_course_channel_assignment(channel_id: "channel-100")
+
+    assert has_element?(
+             view,
+             "button[phx-click='discord-channel-sync-modal:open']",
+             "Sync roster"
+           )
+
+    assert has_element?(
+             view,
+             "[id='discord-channel-remove-assignment-discord-channel-row:channel-100']",
+             "Remove course assignment"
+           )
+
+    view
+    |> element("[id='discord-channel-remove-assignment-discord-channel-row:channel-100']")
+    |> render_click()
+
+    _ = :sys.get_state(DiscordDomainManager)
+    _ = :sys.get_state(view.pid)
+    render(view)
+
+    refute DiscordDb.get_course_channel_assignment(channel_id: "channel-100")
+
+    assert has_element?(view, "button[phx-click='discord-channel-assign-modal:open']")
+
+    refute has_element?(
+             view,
+             "button[phx-click='discord-channel-sync-modal:open']",
+             "Sync roster"
+           )
+
+    refute has_element?(
+             view,
+             "[id='discord-channel-remove-assignment-discord-channel-row:channel-100']"
+           )
+
     assert DiscordApi.calls() == []
   end
 
@@ -275,13 +364,14 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
     |> render_click()
 
     assert has_element?(view, "[id='discord-student-row-assign-panel-#{row_key}']")
+    assert has_element?(view, "[id='discord-student-row-search-input-#{row_key}'][value='Grace']")
 
     assert has_element?(
              view,
              "[id='discord-student-row-member-option-#{row_key}-discord-user-1']"
            )
 
-    assert has_element?(
+    refute has_element?(
              view,
              "[id='discord-student-row-member-option-#{row_key}-discord-user-2']"
            )
@@ -415,6 +505,14 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
             "section_number" => "01",
             "name" => "College Algebra",
             "instructors" => []
+          },
+          %{
+            "crn" => "55555",
+            "subject_code" => "CS",
+            "course_number" => "4500",
+            "section_number" => "01",
+            "name" => "Distributed Systems",
+            "instructors" => []
           }
         ]
       )
@@ -433,11 +531,12 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
           },
           %{
             "id" => "channel-100",
-            "name" => "engr-1010",
+            "name" => "distributed-2026-fall",
             "type" => 0,
             "parent_id" => "category-10",
             "position" => 1,
             "permission_overwrites" => [
+              %{"id" => "role-bot", "type" => 0, "allow" => "2048", "deny" => "0"},
               %{"id" => "role-course", "type" => 0, "allow" => "1024", "deny" => "0"}
             ]
           }
@@ -452,9 +551,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
           %{
             "id" => "role-bot",
             "name" => "Syllabus Bot",
-            "position" => 99,
-            "managed" => true,
-            "tags" => %{"bot_id" => "bot-user-1"}
+            "position" => 99
           }
         ]
       )
