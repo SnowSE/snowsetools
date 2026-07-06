@@ -6,6 +6,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
   alias SnowSeTools.Discord.DiscordDomainManager
 
   alias SnowSeToolsWeb.Discord.{
+    DiscordAddMyCourses,
     DiscordChannelAssignModal,
     DiscordChannelRow,
     DiscordChannelSyncModal,
@@ -32,6 +33,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
   attr :channel_row_states, :map, default: %{}
   attr :student_mapping_states, :map, default: %{}
   attr :student_row_states, :map, default: %{}
+  attr :add_my_courses_state, :any, required: true
   attr :assign_modal_state, :any, required: true
   attr :sync_modal_states, :map, default: %{}
   attr :courses_by_term, :map, default: %{}
@@ -39,6 +41,18 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
   def render(assigns) do
     ~H"""
     <div id="discord-channel-groups" class="flex flex-col gap-4">
+      <div class="flex items-center justify-between gap-3">
+        <div class="min-w-0">
+          <h2 class="text-base font-semibold text-slate-100">Course channels</h2>
+        </div>
+        <DiscordAddMyCourses.render
+          state={@add_my_courses_state}
+          courses_by_term={@courses_by_term}
+          channels={@state.channels}
+          roles={@roles.roles}
+        />
+      </div>
+
       <div
         :if={@state.error}
         class="rounded-md border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200"

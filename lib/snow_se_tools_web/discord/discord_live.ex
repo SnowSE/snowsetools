@@ -6,6 +6,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
   alias SnowSeTools.Snow.SnowCourseCacheDomainManager
 
   alias SnowSeToolsWeb.Discord.{
+    DiscordAddMyCourses,
     DiscordChannelAssignModal,
     DiscordChannels,
     DiscordInvites,
@@ -29,6 +30,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
      |> assign(:courses_by_term, %{})
      |> DiscordSync.assign_component(:discord_sync)
      |> DiscordServerStatus.assign_component(:discord_server_status)
+     |> DiscordAddMyCourses.assign_component(:discord_add_my_courses)
      |> DiscordChannels.assign_component(:discord_channels)
      |> DiscordMembers.assign_component(:discord_members)
      |> DiscordRoles.assign_component(:discord_roles)
@@ -104,6 +106,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
                     channel_row_states={Map.get(assigns, :discord_channel_row_states, %{})}
                     student_mapping_states={Map.get(assigns, :discord_student_mapping_states, %{})}
                     student_row_states={Map.get(assigns, :discord_student_row_states, %{})}
+                    add_my_courses_state={Map.get(assigns, :discord_add_my_courses)}
                     assign_modal_state={Map.get(assigns, :discord_channel_assign_modal)}
                     sync_modal_states={Map.get(assigns, :discord_channel_sync_modal_states, %{})}
                     courses_by_term={@courses_by_term}

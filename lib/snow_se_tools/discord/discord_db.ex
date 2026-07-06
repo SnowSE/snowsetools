@@ -272,6 +272,29 @@ defmodule SnowSeTools.Discord.DiscordDb do
     end)
   end
 
+  def save_channel(channel: channel) when is_map(channel) do
+    sql = """
+    INSERT INTO discord_channels (id, name, data, synced_at, updated_at)
+    VALUES ($(id), $(name), $(data)::jsonb, NOW(), NOW())
+    ON CONFLICT (id) DO UPDATE SET
+      name = EXCLUDED.name,
+      data = EXCLUDED.data,
+      synced_at = NOW(),
+      updated_at = NOW()
+    """
+
+    params = %{
+      "id" => Map.fetch!(channel, "id"),
+      "name" => Map.get(channel, "name"),
+      "data" => channel
+    }
+
+    case DbHelpers.run_sql(sql, params) do
+      {:error, reason} -> {:error, reason}
+      _ -> :ok
+    end
+  end
+
   def save_roles(roles: roles) when is_list(roles) do
     rows =
       Enum.map(roles, fn role ->

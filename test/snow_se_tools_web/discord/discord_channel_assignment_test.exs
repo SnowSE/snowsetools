@@ -92,6 +92,67 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
     assert DiscordApi.calls() == []
   end
 
+  test "professor adds a course by creating a Discord channel in a selected group", %{conn: conn} do
+    conn = log_in_test_user(conn)
+
+    {:ok, view, _html} = live(conn, ~p"/discord")
+
+    _ = :sys.get_state(SnowCourseCacheDomainManager)
+    _ = :sys.get_state(DiscordDomainManager)
+    render(view)
+
+    view
+    |> element("#discord-add-my-courses-open")
+    |> render_click()
+
+    assert has_element?(view, "#discord-add-my-courses-modal")
+    assert has_element?(view, "#discord-add-my-courses-term option[value='202640'][selected]")
+
+    view
+    |> element("#discord-add-my-courses-form")
+    |> render_change(%{
+      "_target" => ["add_my_courses", "course_query"],
+      "add_my_courses" => %{"course_query" => "engr1010"}
+    })
+
+    assert has_element?(view, "#discord-add-my-courses-option-12345")
+    refute has_element?(view, "#discord-add-my-courses-option-99999")
+
+    view
+    |> element("#discord-add-my-courses-option-12345")
+    |> render_click()
+
+    assert has_element?(
+             view,
+             "#discord-add-my-courses-channel-name[value='engr-1010-2026-fall-section-01']"
+           )
+
+    view
+    |> element("#discord-add-my-courses-create")
+    |> render_click()
+
+    flush_created_channel_flow(view)
+    render(view)
+
+    refute has_element?(view, "#discord-add-my-courses-modal")
+
+    assert {:create_text_channel,
+            %{name: "engr-1010-2026-fall-section-01", parent_id: "category-10"}} in DiscordApi.calls()
+
+    assignment = DiscordDb.get_course_channel_assignment_by_crn(crn: "12345")
+
+    assert %{
+             "crn" => "12345",
+             "term_code" => "202640",
+             "discord_role_id" => "role-course",
+             "discord_channel_id" => created_channel_id
+           } = assignment
+
+    assert is_binary(created_channel_id)
+
+    assert has_element?(view, "[id^='discord-channel-row-discord-channel-row:created-channel-']")
+  end
+
   test "course search preserves the selected term and matches name code or subject", %{conn: conn} do
     conn = log_in_test_user(conn)
 
@@ -527,7 +588,9 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
             "name" => "Courses",
             "type" => 4,
             "position" => 1,
-            "permission_overwrites" => []
+            "permission_overwrites" => [
+              %{"id" => "role-course", "type" => 0, "allow" => "1024", "deny" => "0"}
+            ]
           },
           %{
             "id" => "channel-100",
@@ -570,6 +633,15 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
     _ = :sys.get_state(DiscordDomainManager)
     _ = :sys.get_state(view.pid)
     _ = :sys.get_state(DiscordDomainManager)
+    _ = :sys.get_state(view.pid)
+  end
+
+  defp flush_created_channel_flow(view) do
+    _ = :sys.get_state(DiscordDomainManager)
+    _ = :sys.get_state(view.pid)
+    _ = :sys.get_state(DiscordDomainManager)
+    _ = :sys.get_state(view.pid)
+    _ = :sys.get_state(SnowCourseCacheDomainManager)
     _ = :sys.get_state(view.pid)
   end
 end

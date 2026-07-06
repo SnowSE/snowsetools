@@ -42,6 +42,20 @@ defmodule SnowSeTools.Discord.DiscordApi do
     end
   end
 
+  def create_text_channel(name: name, parent_id: parent_id) do
+    with {:ok, guild_id} <- discord_guild_id(),
+         {:ok, headers} <- auth_headers() do
+      request(:post, "guilds/#{guild_id}/channels",
+        headers: headers,
+        json: %{
+          "name" => name,
+          "type" => 0,
+          "parent_id" => parent_id
+        }
+      )
+    end
+  end
+
   def rename_channel(channel_id: channel_id, new_name: new_name) do
     with {:ok, headers} <- auth_headers() do
       request(:patch, "channels/#{channel_id}", headers: headers, json: %{"name" => new_name})

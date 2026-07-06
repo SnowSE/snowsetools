@@ -71,6 +71,21 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
     )
   end
 
+  def create_course_channel(
+        pid: pid,
+        key: key,
+        crn: crn,
+        term_code: term_code,
+        channel_name: channel_name,
+        parent_id: parent_id,
+        discord_role_id: discord_role_id
+      ) do
+    GenServer.cast(
+      __MODULE__,
+      {:create_course_channel, pid, key, crn, term_code, channel_name, parent_id, discord_role_id}
+    )
+  end
+
   def delete_course_channel_assignment(pid: pid, key: key, crn: crn) do
     GenServer.cast(__MODULE__, {:delete_course_channel_assignment, pid, key, crn})
   end
@@ -268,6 +283,24 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
     {:noreply, state}
   end
 
+  def handle_cast(
+        {:create_course_channel, pid, key, crn, term_code, channel_name, parent_id,
+         discord_role_id},
+        state
+      ) do
+    create_course_channel_async(
+      pid: pid,
+      key: key,
+      crn: crn,
+      term_code: term_code,
+      channel_name: channel_name,
+      parent_id: parent_id,
+      discord_role_id: discord_role_id
+    )
+
+    {:noreply, state}
+  end
+
   def handle_cast({:delete_course_channel_assignment, pid, key, crn}, state) do
     case DiscordDb.delete_course_channel_assignment(crn: crn) do
       {:error, reason} ->
@@ -409,6 +442,55 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
       send(pid, {:discord, {:sync_finished, {:error, reasons}}})
     end
   end
+
+  defp create_course_channel_async(
+         pid: pid,
+         key: key,
+         crn: crn,
+         term_code: term_code,
+         channel_name: channel_name,
+         parent_id: parent_id,
+         discord_role_id: discord_role_id
+       ) do
+    with {:ok, channel} <-
+           discord_api().create_text_channel(name: channel_name, parent_id: parent_id),
+         :ok <- DiscordDb.save_channel(channel: channel),
+         save_result <-
+           DiscordDb.save_course_channel_assignment(
+             crn: crn,
+             term_code: term_code,
+             discord_channel_id: Map.fetch!(channel, "id"),
+             discord_role_id: discord_role_id
+           ),
+         :ok <- normalize_db_result(save_result) do
+      summary = safe_sync_summary()
+      DiscordPubSub.broadcast_discord_data_synced(summary)
+
+      send(
+        pid,
+        {:discord,
+         {:course_channel_created, key,
+          {:ok, %{channel_id: Map.fetch!(channel, "id"), crn: crn, term_code: term_code}}}}
+      )
+    else
+      {:error, reason} ->
+        Logger.error(
+          "Discord course channel create failed crn=#{crn} term_code=#{term_code} parent_id=#{parent_id} role_id=#{discord_role_id} reason=#{inspect(reason)}"
+        )
+
+        send(pid, {:discord, {:course_channel_created, key, {:error, reason}}})
+
+      unexpected ->
+        Logger.error(
+          "Discord course channel create returned unexpected result=#{inspect(unexpected)}"
+        )
+
+        send(pid, {:discord, {:course_channel_created, key, {:error, unexpected}}})
+    end
+  end
+
+  defp normalize_db_result({:error, reason}), do: {:error, reason}
+  defp normalize_db_result(_result), do: :ok
 
   defp sync_guild do
     with {:ok, guild} <- discord_api().fetch_guild(),

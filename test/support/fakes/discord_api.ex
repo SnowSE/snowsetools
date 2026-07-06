@@ -19,6 +19,20 @@ defmodule SnowSeTools.TestSupport.Fakes.DiscordApi do
   def add_role_to_member(member_id: member_id, role_id: role_id),
     do: expected_call(:add_role_to_member, %{member_id: member_id, role_id: role_id})
 
+  def create_text_channel(name: name, parent_id: parent_id) do
+    expected_call(:create_text_channel, %{name: name, parent_id: parent_id})
+
+    {:ok,
+     %{
+       "id" => "created-channel-#{System.unique_integer([:positive])}",
+       "name" => name,
+       "type" => 0,
+       "parent_id" => parent_id,
+       "position" => 50,
+       "permission_overwrites" => []
+     }}
+  end
+
   defp expected_call(function_name, metadata) do
     Agent.update(__MODULE__, &[{function_name, metadata} | &1])
     {:ok, metadata}
