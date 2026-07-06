@@ -98,6 +98,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
                 <label class="mb-2 block text-sm font-medium text-slate-300">Search courses</label>
                 <input
                   id="discord-add-my-courses-query"
+                  phx-hook=".FocusOnMount"
                   type="text"
                   name="add_my_courses[course_query]"
                   value={Map.get(@state.form, "course_query", "")}
@@ -106,6 +107,14 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
                   class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                 />
               </div>
+
+              <script :type={Phoenix.LiveView.ColocatedHook} name=".FocusOnMount">
+                export default {
+                  mounted() {
+                    this.el.focus();
+                  }
+                }
+              </script>
 
               <div class="max-h-72 space-y-2 overflow-y-auto">
                 <%= cond do %>
@@ -132,8 +141,8 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
                             "border-slate-800 bg-slate-950/45 hover:border-slate-700 hover:bg-slate-900/60"
                         ]}
                       >
-                        <span class="text-sm font-medium text-slate-100">{course_prefix(course)}</span>
-                        <span class="text-xs text-slate-500">{course_name(course)}</span>
+                        <span class="text-sm font-medium text-slate-100">{course_name(course)}</span>
+                        <span class="text-xs text-slate-500">{course_prefix(course)}</span>
                         <span class="text-xs text-slate-600">{primary_instructor(course)}</span>
                       </button>
                     <% end %>
