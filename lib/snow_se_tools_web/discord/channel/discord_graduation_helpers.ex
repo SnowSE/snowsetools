@@ -26,7 +26,32 @@ defmodule SnowSeToolsWeb.Discord.DiscordGraduationHelpers do
     {"SE", "4620"} => 0
   }
 
-  def graduation_target(subject: subject, course_number: course_number, term_code: term_code) do
+  def recommended_channel_group_id(
+        subject: subject,
+        course_number: course_number,
+        term_code: term_code,
+        channel_groups: channel_groups
+      ) do
+    normalized_group_names =
+      Map.new(channel_groups, fn group ->
+        {normalize_channel_group_name(group.name), group.id}
+      end)
+
+    with {:ok, target} <-
+           graduation_target(subject: subject, course_number: course_number, term_code: term_code),
+         group_id when is_binary(group_id) <-
+           Map.get(
+             normalized_group_names,
+             normalize_channel_group_name(target.channel_group_name)
+           ) do
+      {:ok, group_id}
+    else
+      {:error, reason} -> {:error, reason}
+      nil -> {:error, :channel_group_not_found}
+    end
+  end
+
+  defp graduation_target(subject: subject, course_number: course_number, term_code: term_code) do
     normalized_subject = normalize_subject(subject)
     normalized_course_number = normalize_course_number(course_number)
 
@@ -51,60 +76,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordGraduationHelpers do
     end
   end
 
-  def recommended_role_id(
-        subject: subject,
-        course_number: course_number,
-        term_code: term_code,
-        roles: roles
-      ) do
-    with {:ok, target} <-
-           graduation_target(subject: subject, course_number: course_number, term_code: term_code),
-         %{"id" => role_id} <- Enum.find(roles, &(role_name(&1) == target.role_name)) do
-      {:ok, role_id}
-    else
-      {:error, reason} -> {:error, reason}
-      nil -> {:error, :role_not_found}
-    end
-  end
-
-  def recommended_channel_group_id(
-        subject: subject,
-        course_number: course_number,
-        term_code: term_code,
-        channel_groups: channel_groups
-      ) do
-    with {:ok, target} <-
-           graduation_target(subject: subject, course_number: course_number, term_code: term_code),
-         %{id: group_id} <- Enum.find(channel_groups, &(&1.name == target.channel_group_name)) do
-      {:ok, group_id}
-    else
-      {:error, reason} -> {:error, reason}
-      nil -> {:error, :channel_group_not_found}
-    end
-  end
-
-  def auto_selection(
-        subject: subject,
-        course_number: course_number,
-        term_code: term_code,
-        roles: roles,
-        channel_groups: channel_groups
-      ) do
-    with {:ok, target} <-
-           graduation_target(subject: subject, course_number: course_number, term_code: term_code) do
-      {:ok,
-       Map.merge(target, %{
-         role_id: find_role_id(roles: roles, role_name: target.role_name),
-         channel_group_id:
-           find_channel_group_id(
-             channel_groups: channel_groups,
-             channel_group_name: target.channel_group_name
-           )
-       })}
-    end
-  end
-
-  def terms_away_from_graduation(subject: subject, course_number: course_number) do
+  defp terms_away_from_graduation(subject: subject, course_number: course_number) do
     case Map.fetch(
            @course_terms_away_from_graduation,
            {normalize_subject(subject), normalize_course_number(course_number)}
@@ -178,26 +150,6 @@ defmodule SnowSeToolsWeb.Discord.DiscordGraduationHelpers do
   defp next_academic_term(year: year, season_code: "30"), do: {year, "40"}
   defp next_academic_term(year: year, season_code: "40"), do: {year + 1, "10"}
 
-  defp find_role_id(roles: roles, role_name: role_name) do
-    case Enum.find(roles, &(role_name(&1) == role_name)) do
-      %{"id" => role_id} -> role_id
-      _missing -> nil
-    end
-  end
-
-  defp find_channel_group_id(
-         channel_groups: channel_groups,
-         channel_group_name: channel_group_name
-       ) do
-    case Enum.find(channel_groups, &(&1.name == channel_group_name)) do
-      %{id: group_id} -> group_id
-      _missing -> nil
-    end
-  end
-
-  defp role_name(role) when is_map(role), do: Map.get(role, "name")
-  defp role_name(_role), do: nil
-
   defp normalize_subject(subject) when is_binary(subject),
     do: subject |> String.trim() |> String.upcase()
 
@@ -211,4 +163,13 @@ defmodule SnowSeToolsWeb.Discord.DiscordGraduationHelpers do
   end
 
   defp normalize_course_number(_course_number), do: ""
+
+  defp normalize_channel_group_name(name) when is_binary(name) do
+    name
+    |> String.trim()
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "")
+  end
+
+  defp normalize_channel_group_name(_name), do: ""
 end

@@ -302,7 +302,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
     with {:ok, course} <- selected_course(state),
          {:ok, selected_term} <- required_form_value(state, "selected_term", "Select a term."),
          {:ok, group_id} <- required_form_value(state, "group_id", "Select a channel group."),
-         {:ok, role_id} <- required_group_role(state),
+         {:ok, role_id} <- required_group_role(state, socket.assigns),
          {:ok, channel_name} <-
            required_form_value(state, "channel_name", "Enter a channel name.") do
       DiscordDomainManager.create_course_channel(
@@ -390,58 +390,62 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
          term_code: term_code,
          assigns: assigns
        ) do
-    channels = discord_channels(assigns)
-    roles = discord_roles(assigns)
-
-    case graduation_auto_selection(
+    case recommended_channel_group_id(
            selected_course: selected_course,
            term_code: term_code,
-           channels: channels,
-           roles: roles
+           channel_groups: channel_groups(discord_channels(assigns))
          ) do
-      {:ok, auto_selection} ->
+      {:ok, channel_group_id} ->
         form
-        |> maybe_put_group_id(auto_selection.channel_group_id)
-        |> maybe_set_inferred_role(assigns)
+        |> Map.put("group_id", channel_group_id)
 
       {:error, :course_not_configured} ->
+        Logger.error(
+          "Discord add my courses: course not configured for #{inspect(selected_course)}"
+        )
+
         form
         |> maybe_put_default_group_id(assigns)
-        |> maybe_set_inferred_role(assigns)
 
       {:error, :invalid_term_code} ->
+        Logger.error(
+          "Discord add my courses: invalid term code #{inspect(term_code)} for #{inspect(selected_course)}"
+        )
+
         form
         |> maybe_put_default_group_id(assigns)
-        |> maybe_set_inferred_role(assigns)
+
+      {:error, :channel_group_not_found} ->
+        Logger.error(
+          "Discord add my courses: channel group not found for #{inspect(selected_course)} in term #{inspect(term_code)}"
+        )
+
+        form
+        |> maybe_put_default_group_id(assigns)
     end
   end
 
-  defp graduation_auto_selection(
+  defp recommended_channel_group_id(
          selected_course: selected_course,
          term_code: term_code,
-         channels: channels,
-         roles: roles
+         channel_groups: channel_groups
        )
        when is_map(selected_course) and is_binary(term_code) do
-    DiscordGraduationHelpers.auto_selection(
+    DiscordGraduationHelpers.recommended_channel_group_id(
       subject: Map.get(selected_course, "subject_code"),
       course_number: Map.get(selected_course, "course_number"),
       term_code: term_code,
-      roles: roles,
-      channel_groups: channel_groups(channels)
+      channel_groups: channel_groups
     )
   end
 
-  defp graduation_auto_selection(
+  defp recommended_channel_group_id(
          selected_course: _selected_course,
          term_code: _term_code,
-         channels: _channels,
-         roles: _roles
+         channel_groups: _channel_groups
        ),
        do: {:error, :course_not_configured}
 
-  defp maybe_put_group_id(form, nil), do: form
-  defp maybe_put_group_id(form, group_id), do: Map.put(form, "group_id", group_id)
 
   defp maybe_put_default_group_id(%{"group_id" => group_id} = form, _assigns)
        when is_binary(group_id) and group_id != "" do
@@ -458,8 +462,16 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
   defp selected_course(%{selected_course: course}) when is_map(course), do: {:ok, course}
   defp selected_course(_state), do: {:error, "Select a course."}
 
-  defp required_group_role(state) do
-    case state.form |> Map.get("role_id") |> blank_to_nil() do
+  defp required_group_role(state, assigns) do
+    group_id = state.form |> Map.get("group_id") |> blank_to_nil()
+
+    role_id =
+      assigns
+      |> discord_channels()
+      |> Enum.find(&(Map.get(&1, "id") == group_id))
+      |> role_id_from_channel_group(discord_roles(assigns))
+
+    case role_id do
       role_id when is_binary(role_id) -> {:ok, role_id}
       _missing -> {:error, "Selected channel group must have a student role requirement."}
     end
