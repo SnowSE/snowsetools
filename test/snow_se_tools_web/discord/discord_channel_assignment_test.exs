@@ -107,6 +107,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
 
     assert has_element?(view, "#discord-add-my-courses-modal")
     assert has_element?(view, "#discord-add-my-courses-term option[value='202640'][selected]")
+    refute has_element?(view, "#discord-add-my-courses-channel-group")
 
     view
     |> element("#discord-add-my-courses-form")
@@ -126,6 +127,11 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
              view,
              "#discord-add-my-courses-channel-name[value='engr-1010-2026-fall']"
            )
+
+    assert has_element?(view, "#discord-add-my-courses-channel-group")
+    assert has_element?(view, "#discord-add-my-courses-channel-group option[value='category-10']")
+
+    refute has_element?(view, "#discord-add-my-courses-role")
 
     view
     |> element("#discord-add-my-courses-create")
@@ -150,6 +156,66 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
     assert is_binary(created_channel_id)
 
     assert has_element?(view, "[id^='discord-channel-row-discord-channel-row:created-channel-']")
+  end
+
+  test "selecting a different course re-auto-selects the matching channel group", %{conn: conn} do
+    conn = log_in_test_user(conn)
+
+    {:ok, view, _html} = live(conn, ~p"/discord")
+
+    _ = :sys.get_state(SnowCourseCacheDomainManager)
+    _ = :sys.get_state(DiscordDomainManager)
+    render(view)
+
+    view
+    |> element("#discord-add-my-courses-open")
+    |> render_click()
+
+    view
+    |> element("#discord-add-my-courses-form")
+    |> render_change(%{
+      "_target" => ["add_my_courses", "course_query"],
+      "add_my_courses" => %{"course_query" => "engr1010"}
+    })
+
+    view
+    |> element("#discord-add-my-courses-option-12345")
+    |> render_click()
+
+    assert has_element?(view, "#discord-add-my-courses-channel-group option[value='category-10']")
+
+    view
+    |> element("#discord-add-my-courses-form")
+    |> render_change(%{
+      "_target" => ["add_my_courses", "course_query"],
+      "add_my_courses" => %{"course_query" => "cs1410"}
+    })
+
+    view
+    |> element("#discord-add-my-courses-option-14100")
+    |> render_click()
+
+    assert has_element?(view, "#discord-add-my-courses-selection-14100")
+
+    assert has_element?(
+             view,
+             "#discord-add-my-courses-channel-group option[value='category-2030'][selected]"
+           )
+
+    assert has_element?(view, "#discord-add-my-courses-channel-name[value='cs-1410-2026-fall']")
+
+    view
+    |> element("#discord-add-my-courses-create")
+    |> render_click()
+
+    flush_created_channel_flow(view)
+
+    assert {:create_text_channel, %{name: "cs-1410-2026-fall", parent_id: "category-2030"}} in DiscordApi.calls()
+
+    assert %{
+             "crn" => "14100",
+             "discord_role_id" => "role-may-30"
+           } = DiscordDb.get_course_channel_assignment_by_crn(crn: "14100")
   end
 
   test "course search preserves the selected term and matches name code or subject", %{conn: conn} do
@@ -638,6 +704,14 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
             "section_number" => "01",
             "name" => "Distributed Systems",
             "instructors" => []
+          },
+          %{
+            "crn" => "14100",
+            "subject_code" => "CS",
+            "course_number" => "1410",
+            "section_number" => "01",
+            "name" => "Introduction to Programming",
+            "instructors" => []
           }
         ]
       )
@@ -654,6 +728,15 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
             "position" => 1,
             "permission_overwrites" => [
               %{"id" => "role-course", "type" => 0, "allow" => "1024", "deny" => "0"}
+            ]
+          },
+          %{
+            "id" => "category-2030",
+            "name" => "class of 2030(MAY)",
+            "type" => 4,
+            "position" => 2,
+            "permission_overwrites" => [
+              %{"id" => "role-may-30", "type" => 0, "allow" => "1024", "deny" => "0"}
             ]
           },
           %{
@@ -675,6 +758,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
         roles: [
           %{"id" => "guild-id", "name" => "@everyone", "position" => 0},
           %{"id" => "role-course", "name" => "ENGR 1010", "position" => 10},
+          %{"id" => "role-may-30", "name" => "may_30", "position" => 11},
           %{
             "id" => "role-bot",
             "name" => "Syllabus Bot",

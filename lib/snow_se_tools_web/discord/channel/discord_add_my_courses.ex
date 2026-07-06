@@ -35,7 +35,6 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
       assigns
       |> assign(:sorted_terms, sorted_terms(assigns.courses_by_term))
       |> assign(:channel_groups, channel_groups(assigns.channels))
-      |> assign(:student_roles, student_roles(assigns.roles))
       |> assign(:filtered_courses, filtered_courses(assigns.state, assigns.courses_by_term))
 
     ~H"""
@@ -77,42 +76,22 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
             </div>
 
             <form id="discord-add-my-courses-form" phx-change="discord-add-my-courses:form:change">
-              <div class="grid gap-3 md:grid-cols-2">
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-slate-300">Term</label>
-                  <select
-                    id="discord-add-my-courses-term"
-                    name="add_my_courses[selected_term]"
-                    class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-300">Term</label>
+                <select
+                  id="discord-add-my-courses-term"
+                  name="add_my_courses[selected_term]"
+                  class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                >
+                  <option value="">Select a term...</option>
+                  <option
+                    :for={term <- @sorted_terms}
+                    value={term.code}
+                    selected={Map.get(@state.form, "selected_term") == term.code}
                   >
-                    <option value="">Select a term...</option>
-                    <option
-                      :for={term <- @sorted_terms}
-                      value={term.code}
-                      selected={Map.get(@state.form, "selected_term") == term.code}
-                    >
-                      {term.display}
-                    </option>
-                  </select>
-                </div>
-
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-slate-300">Channel group</label>
-                  <select
-                    id="discord-add-my-courses-channel-group"
-                    name="add_my_courses[group_id]"
-                    class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                  >
-                    <option value="">Select a group...</option>
-                    <option
-                      :for={group <- @channel_groups}
-                      value={group.id}
-                      selected={Map.get(@state.form, "group_id") == group.id}
-                    >
-                      {group.name}
-                    </option>
-                  </select>
-                </div>
+                    {term.display}
+                  </option>
+                </select>
               </div>
 
               <div class="mt-3">
@@ -161,7 +140,29 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
                 <% end %>
               </div>
 
-              <div :if={@state.selected_course} class="mt-3 grid gap-3 md:grid-cols-2">
+              <div
+                :if={@state.selected_course}
+                id={"discord-add-my-courses-selection-#{@state.selected_course["crn"]}"}
+                class="mt-3 flex flex-col gap-3"
+              >
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-slate-300">Channel group</label>
+                  <select
+                    id="discord-add-my-courses-channel-group"
+                    name="add_my_courses[group_id]"
+                    class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                  >
+                    <option value="">Select a group...</option>
+                    <option
+                      :for={group <- @channel_groups}
+                      value={group.id}
+                      selected={Map.get(@state.form, "group_id") == group.id}
+                    >
+                      {group.name}
+                    </option>
+                  </select>
+                </div>
+
                 <div>
                   <label class="mb-2 block text-sm font-medium text-slate-300">Channel name</label>
                   <input
@@ -171,24 +172,6 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
                     value={Map.get(@state.form, "channel_name", "")}
                     class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 font-mono text-sm text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                   />
-                </div>
-
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-slate-300">Student role</label>
-                  <select
-                    id="discord-add-my-courses-role"
-                    name="add_my_courses[role_id]"
-                    class="w-full rounded-md border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                  >
-                    <option value="">Select a role...</option>
-                    <option
-                      :for={role <- @student_roles}
-                      value={role["id"]}
-                      selected={Map.get(@state.form, "role_id") == role["id"]}
-                    >
-                      {role["name"]}
-                    </option>
-                  </select>
                 </div>
               </div>
             </form>
@@ -267,28 +250,25 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
       |> Map.get("group_id", Map.get(state.form, "group_id"))
       |> blank_to_nil()
 
-    role_id =
-      form_params
-      |> Map.get("role_id", Map.get(state.form, "role_id"))
-      |> blank_to_nil()
-
     course_query = Map.get(form_params, "course_query", Map.get(state.form, "course_query", ""))
     channel_name = Map.get(form_params, "channel_name", Map.get(state.form, "channel_name", ""))
 
+    term_changed? = selected_term != Map.get(state.form, "selected_term")
+
     selected_course =
-      if selected_term == Map.get(state.form, "selected_term") do
-        state.selected_course
-      else
+      if term_changed? do
         nil
+      else
+        state.selected_course
       end
 
     form =
       %{
         "selected_term" => selected_term,
-        "group_id" => group_id,
-        "role_id" => role_id,
+        "group_id" => if(term_changed?, do: nil, else: group_id),
+        "role_id" => if(term_changed?, do: nil, else: Map.get(state.form, "role_id")),
         "course_query" => course_query,
-        "channel_name" => channel_name
+        "channel_name" => if(term_changed?, do: "", else: channel_name)
       }
       |> maybe_set_inferred_role(socket.assigns)
 
@@ -303,6 +283,8 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
 
     form =
       state.form
+      |> Map.put("group_id", nil)
+      |> Map.put("role_id", nil)
       |> Map.put("channel_name", default_channel_name(selected_course, selected_term))
       |> maybe_apply_course_defaults(
         selected_course: selected_course,
@@ -320,7 +302,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
     with {:ok, course} <- selected_course(state),
          {:ok, selected_term} <- required_form_value(state, "selected_term", "Select a term."),
          {:ok, group_id} <- required_form_value(state, "group_id", "Select a channel group."),
-         {:ok, role_id} <- required_form_value(state, "role_id", "Select a student role."),
+         {:ok, role_id} <- required_group_role(state),
          {:ok, channel_name} <-
            required_form_value(state, "channel_name", "Enter a channel name.") do
       DiscordDomainManager.create_course_channel(
@@ -380,30 +362,17 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
 
   defp initial_form(assigns) do
     courses_by_term = Map.get(assigns, :courses_by_term, %{})
-    channels = discord_channels(assigns)
-    roles = discord_roles(assigns)
 
     selected_term =
       closest_term_code(term_codes: Map.keys(courses_by_term), date: Date.utc_today())
 
-    group_id = channels |> channel_groups() |> List.first() |> then(&(&1 && &1.id))
-
     %{
       "selected_term" => selected_term,
-      "group_id" => group_id,
+      "group_id" => nil,
       "role_id" => nil,
       "course_query" => "",
       "channel_name" => ""
     }
-    |> maybe_set_inferred_role(%{
-      discord_channels: %{channels: channels},
-      discord_roles: %{roles: roles}
-    })
-  end
-
-  defp maybe_set_inferred_role(%{"role_id" => role_id} = form, _assigns)
-       when is_binary(role_id) and role_id != "" do
-    form
   end
 
   defp maybe_set_inferred_role(form, assigns) do
@@ -433,14 +402,17 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
       {:ok, auto_selection} ->
         form
         |> maybe_put_group_id(auto_selection.channel_group_id)
-        |> maybe_put_role_id(auto_selection.role_id)
         |> maybe_set_inferred_role(assigns)
 
       {:error, :course_not_configured} ->
-        maybe_set_inferred_role(form, assigns)
+        form
+        |> maybe_put_default_group_id(assigns)
+        |> maybe_set_inferred_role(assigns)
 
       {:error, :invalid_term_code} ->
-        maybe_set_inferred_role(form, assigns)
+        form
+        |> maybe_put_default_group_id(assigns)
+        |> maybe_set_inferred_role(assigns)
     end
   end
 
@@ -471,11 +443,27 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
   defp maybe_put_group_id(form, nil), do: form
   defp maybe_put_group_id(form, group_id), do: Map.put(form, "group_id", group_id)
 
-  defp maybe_put_role_id(form, nil), do: form
-  defp maybe_put_role_id(form, role_id), do: Map.put(form, "role_id", role_id)
+  defp maybe_put_default_group_id(%{"group_id" => group_id} = form, _assigns)
+       when is_binary(group_id) and group_id != "" do
+    form
+  end
+
+  defp maybe_put_default_group_id(form, assigns) do
+    case assigns |> discord_channels() |> channel_groups() |> List.first() do
+      %{id: group_id} -> Map.put(form, "group_id", group_id)
+      _missing -> form
+    end
+  end
 
   defp selected_course(%{selected_course: course}) when is_map(course), do: {:ok, course}
   defp selected_course(_state), do: {:error, "Select a course."}
+
+  defp required_group_role(state) do
+    case state.form |> Map.get("role_id") |> blank_to_nil() do
+      role_id when is_binary(role_id) -> {:ok, role_id}
+      _missing -> {:error, "Selected channel group must have a student role requirement."}
+    end
+  end
 
   defp required_form_value(state, field, message) do
     value = state.form |> Map.get(field) |> blank_to_nil()
@@ -532,13 +520,6 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
         data: channel_data(channel)
       }
     end)
-  end
-
-  defp student_roles(roles) do
-    roles
-    |> Enum.reject(&default_role?/1)
-    |> Enum.reject(&bot_managed_role?/1)
-    |> Enum.sort_by(fn role -> -Map.get(role["data"] || %{}, "position", 0) end)
   end
 
   defp role_id_from_channel_group(nil, _roles), do: nil
