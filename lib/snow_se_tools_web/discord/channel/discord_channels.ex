@@ -216,6 +216,14 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
     refresh_student_mappings(socket)
   end
 
+  defp hooked_info({:discord, {:course_channel_created, _key, {:ok, _payload}}}, socket) do
+    {:cont, refresh_channels(socket)}
+  end
+
+  defp hooked_info({:discord, {:channel_deleted, _key, {:ok, _channel_id}}}, socket) do
+    {:cont, refresh_channels(socket)}
+  end
+
   defp hooked_info({:discord, {:data_synced, _summary}}, socket) do
     Enum.each(socket.assigns, fn
       {key, %__MODULE__{}} ->
@@ -240,6 +248,18 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
     end)
 
     {:cont, socket}
+  end
+
+  defp refresh_channels(socket) do
+    Enum.each(socket.assigns, fn
+      {key, %__MODULE__{}} ->
+        DiscordDomainManager.request_channels(pid: self(), key: key)
+
+      _assign ->
+        :ok
+    end)
+
+    socket
   end
 
   defp build_groups(channels) do

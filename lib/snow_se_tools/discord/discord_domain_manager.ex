@@ -90,6 +90,10 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
     GenServer.cast(__MODULE__, {:delete_course_channel_assignment, pid, key, crn})
   end
 
+  def delete_channel(pid: pid, key: key, channel_id: channel_id) do
+    GenServer.cast(__MODULE__, {:delete_channel, pid, key, channel_id})
+  end
+
   def save_student_discord_mapping(
         pid: pid,
         key: key,
@@ -317,6 +321,11 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
     {:noreply, state}
   end
 
+  def handle_cast({:delete_channel, pid, key, channel_id}, state) do
+    Task.start(fn -> delete_channel_async(pid: pid, key: key, channel_id: channel_id) end)
+    {:noreply, state}
+  end
+
   def handle_cast({:save_student_discord_mapping, pid, key, badger_id, discord_user_id}, state) do
     case DiscordDb.save_student_discord_mapping(
            badger_id: badger_id,
@@ -486,6 +495,30 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
         )
 
         send(pid, {:discord, {:course_channel_created, key, {:error, unexpected}}})
+    end
+  end
+
+  defp delete_channel_async(pid: pid, key: key, channel_id: channel_id) do
+    with {:ok, _channel} <- discord_api().delete_channel(channel_id: channel_id),
+         :ok <- DiscordDb.delete_course_channel_assignment(channel_id: channel_id),
+         :ok <- DiscordDb.delete_channel(channel_id: channel_id) do
+      summary = safe_sync_summary()
+      DiscordPubSub.broadcast_discord_data_synced(summary)
+      send(pid, {:discord, {:channel_deleted, key, {:ok, channel_id}}})
+    else
+      {:error, reason} ->
+        Logger.error(
+          "Discord channel delete failed channel_id=#{channel_id} reason=#{inspect(reason)}"
+        )
+
+        send(pid, {:discord, {:channel_deleted, key, {:error, reason}}})
+
+      unexpected ->
+        Logger.error(
+          "Discord channel delete returned unexpected result=#{inspect(unexpected)} channel_id=#{channel_id}"
+        )
+
+        send(pid, {:discord, {:channel_deleted, key, {:error, unexpected}}})
     end
   end
 

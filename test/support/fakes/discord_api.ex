@@ -33,6 +33,10 @@ defmodule SnowSeTools.TestSupport.Fakes.DiscordApi do
      }}
   end
 
+  def delete_channel(channel_id: channel_id) do
+    expected_call(:delete_channel, %{channel_id: channel_id})
+  end
+
   defp expected_call(function_name, metadata) do
     Agent.update(__MODULE__, &[{function_name, metadata} | &1])
     {:ok, metadata}

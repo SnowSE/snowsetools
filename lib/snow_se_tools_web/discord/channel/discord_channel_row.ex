@@ -21,6 +21,8 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
             loading_assignment?: true,
             loading_course?: true,
             removing_assignment?: false,
+            confirming_delete?: false,
+            deleting_channel?: false,
             error: nil,
             assignment_label: nil
 
@@ -128,7 +130,62 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
                 Remove course assignment
               <% end %>
             </button>
+
+            <button
+              id={"discord-channel-delete-#{@state.key}"}
+              type="button"
+              phx-click="discord-channel-row:request_delete"
+              phx-value-key={@state.key}
+              disabled={@state.deleting_channel?}
+              class="inline-flex items-center gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm font-medium text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <.icon name="hero-trash" class="size-4" />
+              <%= if @state.deleting_channel? do %>
+                Deleting...
+              <% else %>
+                Delete channel
+              <% end %>
+            </button>
           </div>
+
+          <.modal
+            :if={@state.confirming_delete?}
+            id={"discord-channel-delete-modal-#{@state.key}"}
+            on_close="discord-channel-row:cancel_delete"
+          >
+            <div class="space-y-5">
+              <div class="space-y-2">
+                <h2 class="text-xl font-semibold text-slate-100">Delete channel</h2>
+                <p class="text-sm leading-6 text-slate-300">
+                  Delete Discord channel {channel_name(@state.channel)}?
+                </p>
+                <p class="text-sm leading-6 text-slate-500">
+                  This removes the cached channel record and any course assignment linked to it.
+                </p>
+              </div>
+
+              <div class="flex justify-end gap-3">
+                <button
+                  id={"discord-channel-delete-cancel-#{@state.key}"}
+                  type="button"
+                  phx-click="discord-channel-row:cancel_delete"
+                  phx-value-key={@state.key}
+                  class="rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  id={"discord-channel-delete-confirm-#{@state.key}"}
+                  type="button"
+                  phx-click="discord-channel-row:confirm_delete"
+                  phx-value-key={@state.key}
+                  class="rounded-xl bg-rose-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-400"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </.modal>
 
           <div :if={@state.assignment} class="rounded-md border border-slate-800 bg-slate-950/35 p-3">
             <div class="mb-2 flex flex-wrap items-center gap-2">
@@ -196,6 +253,70 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
          put_state(socket, key, %{
            state
            | error: "Could not remove assignment."
+         })}
+    end
+  end
+
+  defp hooked_event("discord-channel-row:request_delete", %{"key" => key}, socket) do
+    case fetch_state(socket.assigns, key) do
+      nil ->
+        Logger.error("Discord channel delete request failed missing row state key=#{key}")
+        {:halt, socket}
+
+      state ->
+        {:halt,
+         put_state(socket, key, %{
+           state
+           | confirming_delete?: true,
+             error: nil
+         })}
+    end
+  end
+
+  defp hooked_event("discord-channel-row:cancel_delete", params, socket) do
+    key = Map.get(params, "key")
+
+    case key && fetch_state(socket.assigns, key) do
+      nil ->
+        {:halt, clear_confirming_delete(socket)}
+
+      state ->
+        {:halt,
+         put_state(socket, key, %{
+           state
+           | confirming_delete?: false
+         })}
+    end
+  end
+
+  defp hooked_event("discord-channel-row:confirm_delete", %{"key" => key}, socket) do
+    case fetch_state(socket.assigns, key) do
+      %{channel: %{"id" => channel_id}} = state ->
+        DiscordDomainManager.delete_channel(pid: self(), key: key, channel_id: channel_id)
+
+        {:halt,
+         put_state(socket, key, %{
+           state
+           | confirming_delete?: false,
+             deleting_channel?: true,
+             error: nil
+         })}
+
+      nil ->
+        Logger.error("Discord channel delete confirm failed missing row state key=#{key}")
+        {:halt, socket}
+
+      state ->
+        Logger.error(
+          "Discord channel delete confirm failed missing channel id key=#{key} state=#{inspect(state)}"
+        )
+
+        {:halt,
+         put_state(socket, key, %{
+           state
+           | confirming_delete?: false,
+             deleting_channel?: false,
+             error: "Could not delete channel."
          })}
     end
   end
@@ -338,6 +459,40 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
     end
   end
 
+  defp hooked_info({:discord, {:channel_deleted, key, {:ok, _channel_id}}}, socket) do
+    case fetch_state(socket.assigns, key) do
+      nil ->
+        {:cont, socket}
+
+      state ->
+        {:cont,
+         put_state(socket, key, %{
+           state
+           | confirming_delete?: false,
+             deleting_channel?: false,
+             error: nil
+         })}
+    end
+  end
+
+  defp hooked_info({:discord, {:channel_deleted, key, {:error, reason}}}, socket) do
+    case fetch_state(socket.assigns, key) do
+      nil ->
+        {:cont, socket}
+
+      state ->
+        Logger.error("Discord channel delete failed reason=#{inspect(reason)}")
+
+        {:cont,
+         put_state(socket, key, %{
+           state
+           | confirming_delete?: false,
+             deleting_channel?: false,
+             error: "Could not delete channel."
+         })}
+    end
+  end
+
   defp hooked_info({:discord, {:data_synced, _summary}}, socket) do
     Enum.each(socket.assigns, fn
       {key, %__MODULE__{channel: channel}} when is_map(channel) ->
@@ -451,6 +606,18 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
   defp put_state(socket, key, state) do
     states = Map.get(socket.assigns, @state_assign, %{})
     assign(socket, @state_assign, Map.put(states, key, state))
+  end
+
+  defp clear_confirming_delete(socket) do
+    states = Map.get(socket.assigns, @state_assign, %{})
+
+    updated_states =
+      Enum.map(states, fn {key, state} ->
+        {key, %{state | confirming_delete?: false}}
+      end)
+      |> Map.new()
+
+    assign(socket, @state_assign, updated_states)
   end
 
   # -- display helpers --

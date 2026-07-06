@@ -124,7 +124,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
 
     assert has_element?(
              view,
-             "#discord-add-my-courses-channel-name[value='engr-1010-2026-fall-section-01']"
+             "#discord-add-my-courses-channel-name[value='engr-1010-2026-fall']"
            )
 
     view
@@ -136,8 +136,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
 
     refute has_element?(view, "#discord-add-my-courses-modal")
 
-    assert {:create_text_channel,
-            %{name: "engr-1010-2026-fall-section-01", parent_id: "category-10"}} in DiscordApi.calls()
+    assert {:create_text_channel, %{name: "engr-1010-2026-fall", parent_id: "category-10"}} in DiscordApi.calls()
 
     assignment = DiscordDb.get_course_channel_assignment_by_crn(crn: "12345")
 
@@ -292,6 +291,71 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
            )
 
     assert DiscordApi.calls() == []
+  end
+
+  test "user confirms Discord channel deletion from course details", %{conn: conn} do
+    conn = log_in_test_user(conn)
+
+    {:ok, view, _html} = live(conn, ~p"/discord")
+
+    _ = :sys.get_state(SnowCourseCacheDomainManager)
+    _ = :sys.get_state(DiscordDomainManager)
+    render(view)
+
+    view
+    |> element("button[phx-click='discord-channel-assign-modal:open']")
+    |> render_click()
+
+    view
+    |> element("#discord-assign-form")
+    |> render_change(%{"assign_form" => %{"selected_term" => "202640", "course_query" => ""}})
+
+    view
+    |> element("#discord-assign-course-option-12345")
+    |> render_click()
+
+    view
+    |> element("#discord-assign-save")
+    |> render_click()
+
+    flush_assignment_flow(view)
+    render(view)
+
+    assert DiscordDb.get_course_channel_assignment(channel_id: "channel-100")
+    assert has_element?(view, "[id='discord-channel-delete-discord-channel-row:channel-100']")
+
+    view
+    |> element("[id='discord-channel-delete-discord-channel-row:channel-100']")
+    |> render_click()
+
+    assert has_element?(view, "#discord-channel-delete-modal-discord-channel-row\\:channel-100")
+
+    view
+    |> element("[id='discord-channel-delete-cancel-discord-channel-row:channel-100']")
+    |> render_click()
+
+    refute has_element?(view, "#discord-channel-delete-modal-discord-channel-row\\:channel-100")
+
+    view
+    |> element("[id='discord-channel-delete-discord-channel-row:channel-100']")
+    |> render_click()
+
+    view
+    |> element("[id='discord-channel-delete-confirm-discord-channel-row:channel-100']")
+    |> render_click()
+
+    flush_deleted_channel_flow(view)
+    render(view)
+
+    refute DiscordDb.get_course_channel_assignment(channel_id: "channel-100")
+
+    refute Enum.any?(DiscordDb.list_channels(), fn channel ->
+             channel["id"] == "channel-100"
+           end)
+
+    refute has_element?(view, "#discord-channel-delete-modal-discord-channel-row\\:channel-100")
+
+    assert {:delete_channel, %{channel_id: "channel-100"}} in DiscordApi.calls()
   end
 
   test "synced student rosters render from cached database rows", %{conn: conn} do
@@ -642,6 +706,17 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
     _ = :sys.get_state(DiscordDomainManager)
     _ = :sys.get_state(view.pid)
     _ = :sys.get_state(SnowCourseCacheDomainManager)
+    _ = :sys.get_state(view.pid)
+  end
+
+  defp flush_deleted_channel_flow(view) do
+    _ = :sys.get_state(DiscordDomainManager)
+    _ = :sys.get_state(view.pid)
+    _ = :sys.get_state(DiscordDomainManager)
+    _ = :sys.get_state(view.pid)
+    _ = :sys.get_state(DiscordDomainManager)
+    _ = :sys.get_state(view.pid)
+    _ = :sys.get_state(DiscordDomainManager)
     _ = :sys.get_state(view.pid)
   end
 end

@@ -542,7 +542,17 @@ defmodule SnowSeTools.Discord.DiscordDb do
 
   def delete_course_channel_assignment(crn: crn) do
     sql = "DELETE FROM course_channel_assignments WHERE crn = $(crn)"
-    DbHelpers.run_sql(sql, %{"crn" => crn})
+    normalize_delete_result(DbHelpers.run_sql(sql, %{"crn" => crn}))
+  end
+
+  def delete_course_channel_assignment(channel_id: channel_id) do
+    sql = "DELETE FROM course_channel_assignments WHERE discord_channel_id = $(channel_id)"
+    normalize_delete_result(DbHelpers.run_sql(sql, %{"channel_id" => channel_id}))
+  end
+
+  def delete_channel(channel_id: channel_id) do
+    sql = "DELETE FROM discord_channels WHERE id = $(channel_id)"
+    normalize_delete_result(DbHelpers.run_sql(sql, %{"channel_id" => channel_id}))
   end
 
   def delete_orphaned_course_channel_assignments do
@@ -584,6 +594,9 @@ defmodule SnowSeTools.Discord.DiscordDb do
     sql = "DELETE FROM student_discord_mapping WHERE badger_id = $(badger_id)"
     DbHelpers.run_sql(sql, %{"badger_id" => badger_id})
   end
+
+  defp normalize_delete_result({:error, reason}), do: {:error, reason}
+  defp normalize_delete_result(_result), do: :ok
 
   def get_mapped_badger_id(discord_user_id: discord_user_id) do
     sql = """

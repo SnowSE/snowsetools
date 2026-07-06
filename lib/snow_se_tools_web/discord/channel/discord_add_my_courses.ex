@@ -4,6 +4,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
 
   alias Phoenix.LiveView
   alias SnowSeTools.Discord.DiscordDomainManager
+  alias SnowSeToolsWeb.Discord.DiscordGraduationHelpers
 
   defstruct key: nil,
             open?: false,
@@ -303,7 +304,11 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
     form =
       state.form
       |> Map.put("channel_name", default_channel_name(selected_course, selected_term))
-      |> maybe_set_inferred_role(socket.assigns)
+      |> maybe_apply_course_defaults(
+        selected_course: selected_course,
+        term_code: selected_term,
+        assigns: socket.assigns
+      )
 
     {:halt,
      put_state(socket, %{state | selected_course: selected_course, form: form, error: nil})}
@@ -410,6 +415,64 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
 
     Map.put(form, "role_id", role_id)
   end
+
+  defp maybe_apply_course_defaults(form,
+         selected_course: selected_course,
+         term_code: term_code,
+         assigns: assigns
+       ) do
+    channels = discord_channels(assigns)
+    roles = discord_roles(assigns)
+
+    case graduation_auto_selection(
+           selected_course: selected_course,
+           term_code: term_code,
+           channels: channels,
+           roles: roles
+         ) do
+      {:ok, auto_selection} ->
+        form
+        |> maybe_put_group_id(auto_selection.channel_group_id)
+        |> maybe_put_role_id(auto_selection.role_id)
+        |> maybe_set_inferred_role(assigns)
+
+      {:error, :course_not_configured} ->
+        maybe_set_inferred_role(form, assigns)
+
+      {:error, :invalid_term_code} ->
+        maybe_set_inferred_role(form, assigns)
+    end
+  end
+
+  defp graduation_auto_selection(
+         selected_course: selected_course,
+         term_code: term_code,
+         channels: channels,
+         roles: roles
+       )
+       when is_map(selected_course) and is_binary(term_code) do
+    DiscordGraduationHelpers.auto_selection(
+      subject: Map.get(selected_course, "subject_code"),
+      course_number: Map.get(selected_course, "course_number"),
+      term_code: term_code,
+      roles: roles,
+      channel_groups: channel_groups(channels)
+    )
+  end
+
+  defp graduation_auto_selection(
+         selected_course: _selected_course,
+         term_code: _term_code,
+         channels: _channels,
+         roles: _roles
+       ),
+       do: {:error, :course_not_configured}
+
+  defp maybe_put_group_id(form, nil), do: form
+  defp maybe_put_group_id(form, group_id), do: Map.put(form, "group_id", group_id)
+
+  defp maybe_put_role_id(form, nil), do: form
+  defp maybe_put_role_id(form, role_id), do: Map.put(form, "role_id", role_id)
 
   defp selected_course(%{selected_course: course}) when is_map(course), do: {:ok, course}
   defp selected_course(_state), do: {:error, "Select a course."}
@@ -630,9 +693,6 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
   end
 
   defp term_slug(_term_code), do: nil
-
-  defp section_slug(section) when is_binary(section) and section != "", do: "section-#{section}"
-  defp section_slug(_section), do: nil
 
   defp normalize_channel_name(value) when is_binary(value) do
     value
