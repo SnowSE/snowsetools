@@ -11,7 +11,8 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
             selected_course: nil,
             creating?: false,
             error: nil,
-            form: %{}
+            form: %{},
+            assigned_crns: MapSet.new()
 
   @state_assign :discord_add_my_courses
 
@@ -35,7 +36,10 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
       assigns
       |> assign(:sorted_terms, sorted_terms(assigns.courses_by_term))
       |> assign(:channel_groups, channel_groups(assigns.channels))
-      |> assign(:filtered_courses, filtered_courses(assigns.state, assigns.courses_by_term))
+      |> assign(
+        :filtered_courses,
+        filtered_courses(assigns.state, assigns.courses_by_term)
+      )
 
     ~H"""
     <div id="discord-add-my-courses">
@@ -228,6 +232,8 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
   defp hooked_event("discord-add-my-courses:open", _params, socket) do
     state = fetch_state(socket.assigns) || %__MODULE__{key: :discord_add_my_courses}
 
+    DiscordDomainManager.request_all_course_channel_assignments(pid: self(), key: state.key)
+
     {:halt,
      put_state(socket, %{
        state
@@ -235,7 +241,8 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
          selected_course: nil,
          creating?: false,
          error: nil,
-         form: initial_form(socket.assigns)
+         form: initial_form(socket.assigns),
+         assigned_crns: MapSet.new()
      })}
   end
 
@@ -337,6 +344,35 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
   end
 
   defp hooked_event(_event, _params, socket), do: {:cont, socket}
+
+  defp hooked_info(
+         {:discord, {:all_course_channel_assignments_loaded, key, {:ok, assignments}}},
+         socket
+       ) do
+    state = fetch_state(socket.assigns)
+
+    if state && key == state.key && state.open? do
+      assigned_crns = Enum.map(assignments, & &1["crn"]) |> MapSet.new()
+      {:cont, put_state(socket, %{state | assigned_crns: assigned_crns})}
+    else
+      {:cont, socket}
+    end
+  end
+
+  defp hooked_info(
+         {:discord, {:all_course_channel_assignments_loaded, key, {:error, reason}}},
+         socket
+       ) do
+    state = fetch_state(socket.assigns)
+
+    if state && key == state.key && state.open? do
+      Logger.error("Discord all course channel assignments load failed reason=#{inspect(reason)}")
+
+      {:cont, socket}
+    else
+      {:cont, socket}
+    end
+  end
 
   defp hooked_info({:discord, {:course_channel_created, key, {:ok, _payload}}}, socket) do
     state = fetch_state(socket.assigns) || %__MODULE__{}
@@ -455,7 +491,6 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
        ),
        do: {:error, :course_not_configured}
 
-
   defp maybe_put_default_group_id(%{"group_id" => group_id} = form, _assigns)
        when is_binary(group_id) and group_id != "" do
     form
@@ -511,11 +546,15 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
   defp filtered_courses(state, courses_by_term) do
     selected_term = Map.get(state.form || %{}, "selected_term")
     course_query = Map.get(state.form || %{}, "course_query", "")
+    assigned_crns = state.assigned_crns || MapSet.new()
 
     courses = Map.get(courses_by_term || %{}, selected_term) || []
     query = normalize_search(course_query)
 
     courses
+    |> Enum.filter(fn course ->
+      !MapSet.member?(assigned_crns, Map.get(course, "crn"))
+    end)
     |> Enum.filter(fn course ->
       query == "" or String.contains?(course_search_text(course), query)
     end)

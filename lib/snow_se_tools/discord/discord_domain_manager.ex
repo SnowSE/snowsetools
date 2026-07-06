@@ -52,6 +52,10 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
     GenServer.cast(__MODULE__, {:request_student_mappings_for_course, pid, key, term_code, crn})
   end
 
+  def request_all_course_channel_assignments(pid: pid, key: key) when is_pid(pid) do
+    GenServer.cast(__MODULE__, {:request_all_course_channel_assignments, pid, key})
+  end
+
   def sync_all(pid: pid) when is_pid(pid) do
     GenServer.cast(__MODULE__, {:sync_all, pid})
   end
@@ -207,6 +211,17 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
       message: {:course_channel_assignment_loaded, key},
       fetch: fn -> DiscordDb.get_course_channel_assignment(channel_id: channel_id) end,
       error_context: "Discord course channel assignment load failed"
+    )
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:request_all_course_channel_assignments, pid, key}, state) do
+    send_db_result(
+      pid: pid,
+      message: {:all_course_channel_assignments_loaded, key},
+      fetch: &DiscordDb.list_course_channel_assignments/0,
+      error_context: "Discord all course channel assignments load failed"
     )
 
     {:noreply, state}
