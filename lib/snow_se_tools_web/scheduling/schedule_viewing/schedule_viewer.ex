@@ -59,11 +59,19 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
 
   def render(assigns) do
     ~H"""
-    <div id="scheduling-page" class="mx-auto flex h-full min-h-0 w-full max-w-full gap-4 p-4">
+    <div
+      id="scheduling-page"
+      class="mx-auto flex h-full min-h-0 w-full max-w-full gap-4 p-4"
+    >
       <aside class="flex shrink-0 flex-col gap-3 pr-2 w-80">
         <.search
           state={@state}
           selected_schedule_order={@schedule_details_order.selected_schedule_order}
+        />
+        <ScheduleChangeGroups.render
+          state={@schedule_change_groups_state}
+          courses={@courses}
+          academic_programs={@academic_programs}
         />
       </aside>
 
@@ -74,14 +82,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
         active_change_group={ScheduleChangeGroups.active_change_group(@schedule_change_groups_state)}
         schedule_owners_metadata={selected_term_schedule_owners(@state)}
       />
-
-      <aside class="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-slate-800/70 pl-4">
-        <ScheduleChangeGroups.render
-          state={@schedule_change_groups_state}
-          courses={@courses}
-          academic_programs={@academic_programs}
-        />
-      </aside>
     </div>
     """
   end

@@ -2,13 +2,23 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONTAINER_NAME="snow_se_tools_precommit_db"
+CONTAINER_NAME="snow_se_tools_precommit_db_$$_${RANDOM}"
 
 # DB config matching config/test.exs defaults
 DB_USER="syllabus_test_user"
 DB_PASS="syllabus_test_pass"
 DB_NAME="snow_se_tools_test"
-HOST_PORT=15433
+
+# Find an available port starting at 5433
+find_available_port() {
+    local port=$1
+    while ss -tlnH sport = :"$port" | grep -q .; do
+        port=$((port + 1))
+    done
+    echo "$port"
+}
+
+HOST_PORT=$(find_available_port 5433)
 
 cleanup() {
     podman rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true

@@ -68,6 +68,8 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
      )}
   end
 
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
+
   def handle_info({:schedule_change_groups, groups}, socket) do
     {:noreply, ScheduleChangeGroups.sync_groups(socket, groups)}
   end
