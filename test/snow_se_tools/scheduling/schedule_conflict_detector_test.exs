@@ -150,6 +150,52 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
     assert result.conflicts_by_change_id == %{}
   end
 
+  test "three courses sharing a professor produce one consolidated conflict, not three" do
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists:
+          owner_course_lists([
+            course(crn: "10001", professor: "Professor A"),
+            course(crn: "10002", professor: "Professor A"),
+            course(crn: "10003", professor: "Professor A")
+          ]),
+        active_changes: []
+      )
+
+    # All 3 courses are in the same room (Main 101 default) and share a professor.
+    # We expect exactly 2 conflicts: 1 room + 1 professor (not C(3,2)*2 = 6).
+    prof_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :professor))
+    room_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :room))
+
+    assert length(prof_conflicts) == 1,
+           "expected 1 professor conflict, got #{length(prof_conflicts)}"
+
+    assert length(room_conflicts) == 1, "expected 1 room conflict, got #{length(room_conflicts)}"
+
+    # The single professor conflict references all three courses
+    [%{course_crns: crns}] = prof_conflicts
+    assert Enum.sort(crns) == ["10001", "10002", "10003"]
+  end
+
+  test "three courses in same room produce one consolidated room conflict" do
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists:
+          owner_course_lists([
+            course(crn: "10001", professor: "Professor A", room: "Lab 201"),
+            course(crn: "10002", professor: "Professor B", room: "Lab 201"),
+            course(crn: "10003", professor: "Professor C", room: "Lab 201")
+          ]),
+        active_changes: []
+      )
+
+    room_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :room))
+    assert length(room_conflicts) == 1, "expected 1 room conflict, got #{length(room_conflicts)}"
+
+    [%{course_crns: crns}] = room_conflicts
+    assert Enum.sort(crns) == ["10001", "10002", "10003"]
+  end
+
   defp owner_course_lists(courses) do
     courses
     |> Enum.flat_map(fn course ->

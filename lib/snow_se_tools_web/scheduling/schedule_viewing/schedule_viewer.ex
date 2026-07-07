@@ -55,7 +55,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
   attr :week_schedules, :list, default: []
   attr :week_schedule_edit_course_modal, :map, default: nil
   attr :schedule_change_groups_state, :any, required: true
-  attr :schedule_term_conflicts_state, :any, required: false
+  attr :schedule_term_conflicts_state, :any, required: true
   attr :academic_programs, :list, default: []
   attr :courses, :list, default: []
 
@@ -75,9 +75,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
           courses={@courses}
           academic_programs={@academic_programs}
         />
-        <%= if @schedule_term_conflicts_state do %>
-          <ScheduleTermConflicts.render state={@schedule_term_conflicts_state} />
-        <% end %>
+        <ScheduleTermConflicts.render state={@schedule_term_conflicts_state} />
       </aside>
 
       <ScheduleDetailsOrder.render

@@ -15,11 +15,8 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
 
     all_conflicts =
       entries
-      |> conflict_pairs()
-      |> Enum.flat_map(fn {left, right} ->
-        room_conflicts(left: left, right: right) ++
-          professor_conflicts(left: left, right: right)
-      end)
+      |> conflict_groups()
+      |> Enum.flat_map(&group_resource_conflicts/1)
       |> Enum.map(&attach_schedule_targets(&1, owner_targets_by_key))
       |> Enum.map(&attach_change_ids(&1, change_ids_by_crn))
       |> Enum.uniq_by(&conflict_key/1)
@@ -31,6 +28,8 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
       conflicts_by_crn: conflicts_by_crn(all_conflicts)
     }
   end
+
+  # -- Course extraction & owner mapping --
 
   defp unique_courses(owner_course_lists) do
     owner_course_lists
@@ -92,6 +91,8 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
 
   defp owner_target(_owner_key, _type, _owner), do: nil
 
+  # -- Change application --
+
   defp apply_changes(courses: courses, changes: changes) do
     changes_by_crn = Map.new(changes, &{&1["crn"], &1})
     existing_crns = MapSet.new(courses, & &1["crn"])
@@ -137,7 +138,7 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
     [%{"name" => professor, "primary_instructor" => true}]
   end
 
-  defp changed_instructors(_change, course), do: course["instructors"] || []
+  defp changed_instructors(_change, course), do: Map.get(course, "instructors", [])
 
   defp change_to_course(change) do
     %{
@@ -159,6 +160,8 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
     |> Map.new(&{&1["crn"], &1["id"]})
   end
 
+  # -- Meeting entry construction --
+
   defp meeting_entries(courses: courses, owner_keys_by_crn: owner_keys_by_crn) do
     Enum.flat_map(courses, fn course ->
       course_owner_keys =
@@ -179,8 +182,10 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
           instructors: instructors,
           meeting: meeting,
           owner_keys:
-            course_owner_keys
-            |> MapSet.union(derived_owner_keys(room: room, instructors: instructors))
+            MapSet.union(
+              course_owner_keys,
+              derived_owner_keys(room: room, instructors: instructors)
+            )
         }
       end)
     end)
@@ -191,14 +196,8 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
   end
 
   defp derived_owner_keys(room: room, instructors: instructors) do
-    room_keys =
-      if blank?(room), do: [], else: ["room:#{room}"]
-
-    professor_keys =
-      instructors
-      |> Enum.reject(&blank?/1)
-      |> Enum.map(&"professor:#{&1}")
-
+    room_keys = if blank?(room), do: [], else: ["room:#{room}"]
+    professor_keys = instructors |> Enum.reject(&blank?/1) |> Enum.map(&"professor:#{&1}")
     MapSet.new(room_keys ++ professor_keys)
   end
 
@@ -213,59 +212,139 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
     |> Enum.reject(&blank?/1)
   end
 
-  defp conflict_pairs(entries) do
+  # -- Group-based conflict detection --
+
+  defp conflict_groups(entries) do
     entries
-    |> Enum.with_index()
-    |> Enum.flat_map(fn {left, index} ->
-      entries
-      |> Enum.drop(index + 1)
-      |> Enum.reject(&(&1.crn == left.crn))
-      |> Enum.filter(&meetings_overlap?(left.meeting, &1.meeting))
-      |> Enum.map(&{left, &1})
+    |> group_overlapping_entries()
+    |> Enum.filter(&(length(&1) >= 2))
+  end
+
+  defp group_overlapping_entries(entries) when length(entries) <= 1, do: [entries]
+
+  defp group_overlapping_entries(entries) do
+    # Use union-find to build disjoint sets of temporally-overlapping entries
+    indexed = Enum.with_index(entries)
+    n = length(indexed)
+    parent = Map.new(0..(n - 1), &{&1, &1})
+
+    parent_final =
+      for i <- 0..(n - 2), reduce: parent do
+        p_acc ->
+          {left_entry, _} = Enum.at(indexed, i)
+          union_range(p_acc, indexed, i, i + 1, n, left_entry)
+      end
+
+    roots = Map.new(0..(n - 1), fn i -> {i, find_root(parent_final, i)} end)
+    build_groups_from_roots(indexed, roots)
+  end
+
+  defp union_range(parent, _indexed, _i, j, n, _left_entry) when j >= n, do: parent
+
+  defp union_range(parent, indexed, i, j, n, left_entry) do
+    {right_entry, _} = Enum.at(indexed, j)
+
+    parent_next =
+      if left_entry.crn != right_entry.crn and
+           meetings_overlap?(left_entry.meeting, right_entry.meeting) do
+        root_i = find_root(parent, i)
+        root_j = find_root(parent, j)
+        if root_i == root_j, do: parent, else: Map.put(parent, root_i, root_j)
+      else
+        parent
+      end
+
+    union_range(parent_next, indexed, i, j + 1, n, left_entry)
+  end
+
+  defp find_root(parent, node) do
+    root = Map.fetch!(parent, node)
+    if root == node, do: node, else: find_root(parent, root)
+  end
+
+  defp build_groups_from_roots(indexed, roots) do
+    roots
+    |> Enum.group_by(&elem(&1, 1), &elem(&1, 0))
+    |> Enum.map(fn {_root, indices} ->
+      Enum.sort(indices)
+      |> Enum.map(&(Enum.at(indexed, &1) |> elem(0)))
     end)
   end
 
-  defp room_conflicts(left: %{room: room} = left, right: %{room: room} = right)
-       when is_binary(room) and room != "" do
-    [
+  # -- Generate consolidated conflicts from a group of overlapping entries --
+
+  defp group_resource_conflicts(group) do
+    room_conflicts_for_group(group) ++ professor_conflicts_for_group(group)
+  end
+
+  defp room_conflicts_for_group(group) do
+    group
+    |> Enum.group_by(& &1.room)
+    |> Enum.filter(fn {room, entries} ->
+      is_binary(room) and room != "" and length(entries) >= 2
+    end)
+    |> Enum.map(fn {room, room_entries} ->
+      all_owner_keys =
+        room_entries
+        |> Enum.reduce(MapSet.new(), fn entry, acc -> MapSet.union(acc, entry.owner_keys) end)
+        |> MapSet.put("room:#{room}")
+
       base_conflict(
         type: :room,
-        owner_keys: MapSet.union(left.owner_keys, right.owner_keys) |> MapSet.put("room:#{room}"),
-        left: left,
-        right: right,
+        owner_keys: all_owner_keys,
+        course_crns: extract_sorted_crns(room_entries),
         title: "Room conflict",
         description:
-          "#{room} is shared by #{course_label(left)} and #{course_label(right)} #{format_time_range(right.meeting)}"
-      )
-    ]
-  end
-
-  defp room_conflicts(left: _left, right: _right), do: []
-
-  defp professor_conflicts(left: left, right: right) do
-    left.instructors
-    |> MapSet.new()
-    |> MapSet.intersection(MapSet.new(right.instructors))
-    |> Enum.map(fn professor ->
-      base_conflict(
-        type: :professor,
-        owner_keys:
-          MapSet.union(left.owner_keys, right.owner_keys)
-          |> MapSet.put("professor:#{professor}"),
-        left: left,
-        right: right,
-        title: "Professor conflict",
-        description:
-          "#{professor} teaches #{course_label(left)} and #{course_label(right)} #{format_time_range(right.meeting)}"
+          "#{room} is shared by #{course_labels_list(room_entries)} at #{format_time_range(List.first(room_entries).meeting)}"
       )
     end)
   end
+
+  defp professor_conflicts_for_group(group) do
+    # Build professor -> list of entries map, only keep professors with 2+ courses in the group
+    prof_to_entries =
+      group
+      |> Enum.flat_map(fn entry ->
+        Enum.map(entry.instructors, &{&1, entry})
+      end)
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+
+    prof_to_entries
+    |> Enum.filter(fn {_professor, entries} -> length(Enum.uniq_by(entries, & &1.crn)) >= 2 end)
+    |> Enum.map(fn {professor, prof_entries} ->
+      all_owner_keys =
+        prof_entries
+        |> Enum.reduce(MapSet.new(), fn entry, acc -> MapSet.union(acc, entry.owner_keys) end)
+        |> MapSet.put("professor:#{professor}")
+
+      base_conflict(
+        type: :professor,
+        owner_keys: all_owner_keys,
+        course_crns: extract_sorted_crns(prof_entries),
+        title: "Professor conflict",
+        description:
+          "#{professor} teaches #{course_labels_list(prof_entries)} at #{format_time_range(List.first(prof_entries).meeting)}"
+      )
+    end)
+  end
+
+  defp extract_sorted_crns(entries) do
+    entries |> Enum.map(& &1.crn) |> Enum.sort() |> Enum.uniq()
+  end
+
+  defp course_labels_list(entries) do
+    entries
+    |> Enum.uniq_by(& &1.crn)
+    |> Enum.map(&course_label/1)
+    |> Enum.join(", ")
+  end
+
+  # -- Conflict struct construction --
 
   defp base_conflict(
          type: type,
          owner_keys: owner_keys,
-         left: left,
-         right: right,
+         course_crns: course_crns,
          title: title,
          description: description
        ) do
@@ -274,22 +353,13 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
       title: title,
       description: description,
       owner_keys: MapSet.to_list(owner_keys),
-      course_crns: [left.crn, right.crn],
-      courses: [course_summary(left), course_summary(right)],
-      meeting: right.meeting,
-      schedule_targets: [],
-      introduced_by_change_ids: []
+      course_crns: course_crns,
+      introduced_by_change_ids: [],
+      schedule_targets: []
     }
   end
 
-  defp course_summary(entry) do
-    %{
-      crn: entry.crn,
-      name: entry.course_name,
-      subject_code: entry.subject_code,
-      course_number: entry.course_number
-    }
-  end
+  # -- Post-processing attachments --
 
   defp attach_change_ids(conflict, change_ids_by_crn) do
     change_ids =
@@ -330,6 +400,8 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
   defp owner_name(%{"name" => name}), do: name
   defp owner_name(_owner), do: nil
 
+  # -- Indexing helpers --
+
   defp conflicts_by_change_id(conflicts) do
     conflicts
     |> Enum.flat_map(fn conflict ->
@@ -361,9 +433,10 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
   end
 
   defp conflict_key(conflict) do
-    crns = Enum.sort(conflict.course_crns)
-    [conflict.type, crns, conflict.description]
+    [conflict.type, Enum.sort(conflict.owner_keys)]
   end
+
+  # -- Time overlap helpers --
 
   defp meetings_overlap?(left, right) do
     shares_day?(left["days"] || [], right["days"] || []) and
@@ -374,6 +447,8 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
   defp shares_day?(left_days, right_days) do
     !MapSet.disjoint?(MapSet.new(left_days), MapSet.new(right_days))
   end
+
+  # -- Formatting helpers --
 
   defp course_label(entry) do
     [entry.subject_code, entry.course_number, entry.course_name]
@@ -388,9 +463,7 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
   end
 
   defp normalize_time(time) when is_binary(time) do
-    time
-    |> String.split(":")
-    |> case do
+    case String.split(time, ":") do
       [hour, minute | _] -> "#{hour}:#{minute}"
       _other -> time
     end
