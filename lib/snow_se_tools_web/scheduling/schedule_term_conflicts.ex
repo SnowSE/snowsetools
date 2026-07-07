@@ -214,8 +214,11 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
 
   def render(assigns) do
     ~H"""
-    <div id="schedule-term-conflicts" class="min-h-0 border-t border-slate-800/80 pt-3">
-      <div class="mb-2 flex items-center justify-between gap-2">
+    <div
+      id="schedule-term-conflicts"
+      class="flex-1 min-h-0  border-t border-slate-800/80 pt-3 flex flex-col"
+    >
+      <div class="flex items-center justify-between gap-2">
         <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">
           Schedule Conflicts
         </h3>
@@ -233,7 +236,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
       />
 
       <%= unless Enum.empty?(@state.resolved_conflicts) do %>
-        <div class="flex min-h-0 flex-col gap-2 overflow-y-auto pr-1">
+        <div class="flex-1 flex flex-col gap-2 pr-1 overflow-auto">
           <.owner_conflict_card :for={owner <- @state.resolved_conflicts} owner={owner} />
         </div>
       <% end %>
@@ -291,7 +294,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
           Conflict detection failed: {@error}
         </div>
       <% true -> %>
-        nil
+        <div></div>
     <% end %>
     """
   end

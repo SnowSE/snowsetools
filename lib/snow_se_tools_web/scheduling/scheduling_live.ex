@@ -113,7 +113,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
           </div>
         </div>
 
-        <div class="min-h-0 flex-1">
+        <div class="min-h-0 flex-1 ">
           <%= case @mode do %>
             <% :viewer -> %>
               <ScheduleViewer.render
