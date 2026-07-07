@@ -151,7 +151,7 @@ defmodule SnowSeToolsWeb.Scheduling.CourseListForTerm do
         SnowCourseCacheDomainManager.request_term_courses(pid: self(), term_code: term_code)
         socket
       else
-        Logger.error(
+        Logger.info(
           "CourseListForTerm could not request term courses because SnowCourseCacheDomainManager is not running"
         )
 

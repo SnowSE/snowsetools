@@ -8,6 +8,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   alias SnowSeToolsWeb.Scheduling.CourseListForTerm
   alias SnowSeToolsWeb.Scheduling.ScheduleChangeGroups
   alias SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder
+  alias SnowSeToolsWeb.Scheduling.ScheduleTermConflicts
   alias SnowSeToolsWeb.Scheduling.ScheduleViewer
   alias SnowSeToolsWeb.Scheduling.WeekSchedule
 
@@ -38,6 +39,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
        picker_key: :academic_program_course_picker
      )
      |> ScheduleChangeGroups.assign_component()
+     |> ScheduleTermConflicts.assign_component()
      |> WeekSchedule.assign_component()
      |> assign(:mode, :viewer)
      |> assign(:modes, viewer: "Schedule Viewer", programs: "Academic Programs")}
@@ -121,6 +123,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
                 week_schedule_edit_course_modal={@week_schedule_edit_course_modal}
                 courses={CourseListForTerm.courses(@scheduling_course_data)}
                 schedule_change_groups_state={@schedule_change_groups_state}
+                schedule_term_conflicts_state={@schedule_term_conflicts_state}
                 academic_programs={@academic_programs}
               />
             <% :programs -> %>
@@ -155,10 +158,12 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
         |> ScheduleViewer.sync_selected_term(term_code: selected_term_code)
         |> CourseListForTerm.sync_selected_term(term_code: selected_term_code)
         |> ScheduleDetailsOrder.sync_selected_term(term_code: selected_term_code)
+        |> ScheduleTermConflicts.sync_selected_term(term_code: selected_term_code)
       else
         socket
         |> CourseListForTerm.sync_selected_term(term_code: nil)
         |> ScheduleDetailsOrder.sync_selected_term(term_code: nil)
+        |> ScheduleTermConflicts.sync_selected_term(term_code: nil)
       end
 
     socket

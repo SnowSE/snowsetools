@@ -7,6 +7,7 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
       )
       when is_list(owner_course_lists) and is_list(active_changes) do
     owner_keys_by_crn = owner_keys_by_crn(owner_course_lists)
+    owner_targets_by_key = owner_targets_by_key(owner_course_lists)
     base_courses = unique_courses(owner_course_lists)
     effective_courses = apply_changes(courses: base_courses, changes: active_changes)
     change_ids_by_crn = change_ids_by_crn(active_changes)
@@ -19,6 +20,7 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
         room_conflicts(left: left, right: right) ++
           professor_conflicts(left: left, right: right)
       end)
+      |> Enum.map(&attach_schedule_targets(&1, owner_targets_by_key))
       |> Enum.map(&attach_change_ids(&1, change_ids_by_crn))
       |> Enum.uniq_by(&conflict_key/1)
 
@@ -54,6 +56,41 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
 
   defp owner_key(%{owner_key: owner_key}), do: owner_key
   defp owner_key(%{"owner_key" => owner_key}), do: owner_key
+
+  defp owner_targets_by_key(owner_course_lists) do
+    Enum.reduce(owner_course_lists, %{}, fn owner, acc ->
+      case owner_target(owner) do
+        nil -> acc
+        target -> Map.put(acc, target.key, target)
+      end
+    end)
+  end
+
+  defp owner_target(%{owner_key: owner_key, type: type} = owner) when is_binary(owner_key) do
+    owner_target(owner_key, type, owner)
+  end
+
+  defp owner_target(%{"owner_key" => owner_key, "type" => type} = owner)
+       when is_binary(owner_key) do
+    owner_target(owner_key, type, owner)
+  end
+
+  defp owner_target(_owner), do: nil
+
+  defp owner_target(owner_key, :room, _owner), do: room_target(owner_key)
+  defp owner_target(owner_key, :professor, _owner), do: professor_target(owner_key)
+
+  defp owner_target(owner_key, :academic_program_semester, owner) do
+    case {owner_name(owner), owner_key} do
+      {name, key} when is_binary(name) and name != "" ->
+        %{kind: :academic_program_semester, key: key, label: name}
+
+      _other ->
+        nil
+    end
+  end
+
+  defp owner_target(_owner_key, _type, _owner), do: nil
 
   defp apply_changes(courses: courses, changes: changes) do
     changes_by_crn = Map.new(changes, &{&1["crn"], &1})
@@ -240,6 +277,7 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
       course_crns: [left.crn, right.crn],
       courses: [course_summary(left), course_summary(right)],
       meeting: right.meeting,
+      schedule_targets: [],
       introduced_by_change_ids: []
     }
   end
@@ -261,6 +299,36 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
 
     %{conflict | introduced_by_change_ids: change_ids}
   end
+
+  defp attach_schedule_targets(conflict, owner_targets_by_key) do
+    schedule_targets =
+      conflict.owner_keys
+      |> Enum.map(&Map.get(owner_targets_by_key, &1, fallback_target(&1)))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq_by(& &1.key)
+
+    Map.put(conflict, :schedule_targets, schedule_targets)
+  end
+
+  defp fallback_target("room:" <> _room = owner_key), do: room_target(owner_key)
+  defp fallback_target("professor:" <> _professor = owner_key), do: professor_target(owner_key)
+  defp fallback_target(_owner_key), do: nil
+
+  defp room_target("room:" <> room) when room != "" do
+    %{kind: :room, key: "room:#{room}", label: "Room: #{room}"}
+  end
+
+  defp room_target(_owner_key), do: nil
+
+  defp professor_target("professor:" <> professor) when professor != "" do
+    %{kind: :professor, key: "professor:#{professor}", label: "Professor: #{professor}"}
+  end
+
+  defp professor_target(_owner_key), do: nil
+
+  defp owner_name(%{name: name}), do: name
+  defp owner_name(%{"name" => name}), do: name
+  defp owner_name(_owner), do: nil
 
   defp conflicts_by_change_id(conflicts) do
     conflicts

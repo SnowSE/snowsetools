@@ -15,6 +15,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
     ScheduleChangeGroups,
     ScheduleDetailsOrder,
     ScheduleOrder,
+    ScheduleTermConflicts,
     WeekSchedule
   }
 
@@ -54,6 +55,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
   attr :week_schedules, :list, default: []
   attr :week_schedule_edit_course_modal, :map, default: nil
   attr :schedule_change_groups_state, :any, required: true
+  attr :schedule_term_conflicts_state, :any, required: false
   attr :academic_programs, :list, default: []
   attr :courses, :list, default: []
 
@@ -63,7 +65,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
       id="scheduling-page"
       class="mx-auto flex h-full min-h-0 w-full max-w-full gap-4 p-4"
     >
-      <aside class="flex shrink-0 flex-col gap-3 pr-2 w-80">
+      <aside class="flex shrink-0 flex-col gap-3 pr-2 w-80 min-h-0">
         <.search
           state={@state}
           selected_schedule_order={@schedule_details_order.selected_schedule_order}
@@ -73,6 +75,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
           courses={@courses}
           academic_programs={@academic_programs}
         />
+        <%= if @schedule_term_conflicts_state do %>
+          <ScheduleTermConflicts.render state={@schedule_term_conflicts_state} />
+        <% end %>
       </aside>
 
       <ScheduleDetailsOrder.render
@@ -176,7 +181,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
          selected_term_code: selected_term_code
      })
      |> CourseListForTerm.sync_selected_term(term_code: selected_term_code)
-     |> ScheduleDetailsOrder.sync_selected_term(term_code: selected_term_code)}
+     |> ScheduleDetailsOrder.sync_selected_term(term_code: selected_term_code)
+     |> ScheduleTermConflicts.sync_selected_term(term_code: selected_term_code)}
   end
 
   def hooked_info(
@@ -214,6 +220,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
            )
      })
      |> ScheduleDetailsOrder.sync_selected_term(
+       term_code: socket.assigns[@key].selected_term_code
+     )
+     |> ScheduleTermConflicts.sync_selected_term(
        term_code: socket.assigns[@key].selected_term_code
      )}
   end
@@ -285,7 +294,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
          selected_term_code: selected_term_code
      })
      |> CourseListForTerm.sync_selected_term(term_code: selected_term_code)
-     |> ScheduleDetailsOrder.sync_selected_term(term_code: selected_term_code)}
+     |> ScheduleDetailsOrder.sync_selected_term(term_code: selected_term_code)
+     |> ScheduleTermConflicts.sync_selected_term(term_code: selected_term_code)}
   end
 
   def hooked_info({:schedule_owners, {:term_deleted, %{term_code: term_code}}}, socket) do
@@ -319,7 +329,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
            Map.delete(socket.assigns[@key].schedule_owners_metadata_by_term, term_code)
      })
      |> CourseListForTerm.sync_selected_term(term_code: selected_term_code)
-     |> ScheduleDetailsOrder.sync_selected_term(term_code: selected_term_code)}
+     |> ScheduleDetailsOrder.sync_selected_term(term_code: selected_term_code)
+     |> ScheduleTermConflicts.sync_selected_term(term_code: selected_term_code)}
   end
 
   def hooked_info(
@@ -334,7 +345,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
         socket
       ) do
     Logger.warning("Received unexpected schedule_owners message: #{inspect(unexpected_message)}")
-    {:halt, socket}
+    {:cont, socket}
   end
 
   def hooked_info(_message, socket), do: {:cont, socket}

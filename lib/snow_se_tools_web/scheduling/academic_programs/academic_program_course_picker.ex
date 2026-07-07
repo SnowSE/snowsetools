@@ -423,7 +423,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker do
       if Process.whereis(SnowCourseCacheDomainManager) do
         SnowCourseCacheDomainManager.request_course_catalog(pid: self())
       else
-        Logger.error(
+        Logger.info(
           "AcademicProgramCoursePicker could not request catalog because SnowCourseCacheDomainManager is not running"
         )
       end

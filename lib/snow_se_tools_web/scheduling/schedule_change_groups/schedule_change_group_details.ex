@@ -3,6 +3,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
 
   require Logger
   alias SnowSeTools.Scheduling.ScheduleUtils
+  alias SnowSeToolsWeb.Scheduling.ScheduleConflictDetail
   alias SnowSeToolsWeb.Scheduling.ScheduleChangeGroups
 
   attr :state, :map, required: true
@@ -63,8 +64,14 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
           <% original_meeting = first_matching_meeting(original_course, changed_meeting) %>
           <% affected_semesters =
             affected_semesters_for_change(change, original_course, @academic_programs) %>
+          <% conflict_target_keys = conflict_target_keys(conflicts) %>
           <% related_schedule_targets =
-            related_schedule_targets(change, original_course, affected_semesters) %>
+            related_schedule_targets(
+              change,
+              original_course,
+              affected_semesters,
+              conflict_target_keys
+            ) %>
           <% professor_change = List.first(changed_professor(change, original_course)) %>
           <% days_change = changed_days(changed_meeting, original_meeting) %>
           <% time_change = changed_time(changed_meeting, original_meeting) %>
@@ -144,13 +151,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
             </div>
 
             <div :if={conflicts != []} class="mt-2 space-y-1">
-              <div
+              <ScheduleConflictDetail.render
                 :for={conflict <- conflicts}
-                class="rounded-md border border-red-500/30 bg-red-950/45 px-2 py-1 text-[11px] text-red-100"
-              >
-                <span class="font-semibold">{conflict.title}</span>
-                <span class="text-red-200/85">: {conflict.description}</span>
-              </div>
+                conflict={conflict}
+              />
             </div>
 
             <div :if={related_schedule_targets != []} class="mt-2 border-t border-slate-800/70 pt-2">
@@ -361,7 +365,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
     end)
   end
 
-  defp related_schedule_targets(change, original_course, affected_semesters) do
+  defp related_schedule_targets(change, original_course, affected_semesters, conflict_target_keys) do
     [
       professor_schedule_target(change, original_course),
       room_schedule_target(change)
@@ -369,6 +373,13 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
     ]
     |> Enum.reject(&is_nil/1)
     |> Enum.uniq_by(& &1.key)
+    |> Enum.reject(&MapSet.member?(conflict_target_keys, &1.key))
+  end
+
+  defp conflict_target_keys(conflicts) do
+    conflicts
+    |> Enum.flat_map(&ScheduleConflictDetail.schedule_targets/1)
+    |> MapSet.new(& &1.key)
   end
 
   defp room_schedule_target(change) do

@@ -446,7 +446,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
         |> Map.put("group_id", channel_group_id)
 
       {:error, :course_not_configured} ->
-        Logger.error(
+        Logger.info(
           "Discord add my courses: course not configured for #{inspect(selected_course)}"
         )
 
@@ -454,7 +454,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
         |> maybe_put_default_group_id(assigns)
 
       {:error, :invalid_term_code} ->
-        Logger.error(
+        Logger.info(
           "Discord add my courses: invalid term code #{inspect(term_code)} for #{inspect(selected_course)}"
         )
 
@@ -462,7 +462,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
         |> maybe_put_default_group_id(assigns)
 
       {:error, :channel_group_not_found} ->
-        Logger.error(
+        Logger.info(
           "Discord add my courses: channel group not found for #{inspect(selected_course)} in term #{inspect(term_code)}"
         )
 
