@@ -11,7 +11,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerSearch do
     assigns = assign(assigns, :matched_owners, matched_schedule_owners(assigns))
 
     ~H"""
-    <div class="flex shrink-0 flex-col gap-3">
+    <div class="flex shrink-0 flex-col">
       <!-- Term selector -->
       <.form
         for={to_form(%{})}
@@ -34,7 +34,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerSearch do
         </select>
       </.form>
 
-      <!-- Search input + dropdown -->
       <div
         id="schedule-owner-search-container"
         phx-click-away="schedule-viewer:search_blurred"
