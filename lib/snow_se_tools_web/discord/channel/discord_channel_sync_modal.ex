@@ -4,6 +4,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelSyncModal do
 
   alias Phoenix.LiveView
   alias SnowSeTools.Discord.DiscordDomainManager
+  alias SnowSeToolsWeb.Discord.DiscordFormatting
   alias SnowSeToolsWeb.Snow.SnowJwtCopy
 
   defstruct key: nil,
@@ -236,7 +237,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelSyncModal do
     assign(socket, @state_assign, Map.put(states, key, state))
   end
 
-  defp channel_name(channel), do: Map.get(channel || %{}, "name", "unnamed")
+  defp channel_name(channel), do: DiscordFormatting.channel_name(channel)
 
   defp sync_form(state) do
     to_form(%{"jwt_token" => state.sync_token || ""}, as: :snow_sync)

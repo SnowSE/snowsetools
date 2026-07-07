@@ -8,6 +8,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
 
   alias SnowSeToolsWeb.Discord.{
     DiscordChannelAssignModal,
+    DiscordFormatting,
     DiscordChannelSyncModal,
     DiscordStudentMapping
   }
@@ -23,6 +24,9 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
             removing_assignment?: false,
             confirming_delete?: false,
             deleting_channel?: false,
+            renaming_channel?: false,
+            editing_channel_name?: false,
+            rename_channel_value: "",
             error: nil,
             assignment_label: nil
 
@@ -115,6 +119,17 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
             />
 
             <button
+              id={"discord-channel-rename-#{@state.key}"}
+              type="button"
+              phx-click="discord-channel-row:start_rename"
+              phx-value-key={@state.key}
+              disabled={@state.renaming_channel?}
+              class="inline-flex items-center gap-2 rounded-md border border-slate-700 bg-slate-900/70 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-600 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <.icon name="hero-pencil-square" class="size-4" /> Rename channel
+            </button>
+
+            <button
               :if={@state.assignment}
               id={"discord-channel-remove-assignment-#{@state.key}"}
               type="button"
@@ -147,6 +162,70 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
               <% end %>
             </button>
           </div>
+
+          <form
+            :if={@state.editing_channel_name?}
+            id={"discord-channel-rename-form-#{@state.key}"}
+            phx-submit="discord-channel-row:save_rename"
+            phx-change="discord-channel-row:rename_change"
+            class="rounded-md border border-slate-800 bg-slate-950/35 p-3"
+          >
+            <input type="hidden" name="key" value={@state.key} />
+            <div class="flex flex-col gap-2 md:flex-row md:items-end">
+              <div class="min-w-0 flex-1">
+                <label
+                  for={"discord-channel-rename-input-#{@state.key}"}
+                  class="mb-1 block text-xs font-medium text-slate-400"
+                >
+                  Channel name
+                </label>
+                <input
+                  id={"discord-channel-rename-input-#{@state.key}"}
+                  type="text"
+                  name="channel_name"
+                  value={@state.rename_channel_value}
+                  autocomplete="off"
+                  maxlength="100"
+                  disabled={@state.renaming_channel?}
+                  class={[
+                    "w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 outline-none transition",
+                    "focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30",
+                    @state.renaming_channel? && "opacity-60"
+                  ]}
+                />
+              </div>
+              <div class="flex justify-end gap-2">
+                <button
+                  id={"discord-channel-rename-cancel-#{@state.key}"}
+                  type="button"
+                  phx-click="discord-channel-row:cancel_rename"
+                  phx-value-key={@state.key}
+                  disabled={@state.renaming_channel?}
+                  class={[
+                    "rounded-md border border-slate-700 px-3 py-2 text-sm font-medium text-slate-300 transition hover:bg-slate-800",
+                    @state.renaming_channel? && "cursor-not-allowed opacity-60"
+                  ]}
+                >
+                  Cancel
+                </button>
+                <button
+                  id={"discord-channel-rename-save-#{@state.key}"}
+                  type="submit"
+                  disabled={@state.renaming_channel?}
+                  class={[
+                    "rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-indigo-500",
+                    @state.renaming_channel? && "cursor-not-allowed opacity-60"
+                  ]}
+                >
+                  <%= if @state.renaming_channel? do %>
+                    Saving...
+                  <% else %>
+                    Save
+                  <% end %>
+                </button>
+              </div>
+            </div>
+          </form>
 
           <.modal
             :if={@state.confirming_delete?}
@@ -268,6 +347,107 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
          put_state(socket, key, %{
            state
            | confirming_delete?: true,
+             error: nil
+         })}
+    end
+  end
+
+  defp hooked_event("discord-channel-row:start_rename", %{"key" => key}, socket) do
+    case fetch_state(socket.assigns, key) do
+      nil ->
+        Logger.error("Discord channel rename request failed missing row state key=#{key}")
+        {:halt, socket}
+
+      state ->
+        {:halt,
+         put_state(socket, key, %{
+           state
+           | editing_channel_name?: true,
+             rename_channel_value: toggled_channel_name(state),
+             error: nil
+         })}
+    end
+  end
+
+  defp hooked_event(
+         "discord-channel-row:rename_change",
+         %{"key" => key, "channel_name" => channel_name},
+         socket
+       ) do
+    case fetch_state(socket.assigns, key) do
+      nil ->
+        Logger.error("Discord channel rename change failed missing row state key=#{key}")
+        {:halt, socket}
+
+      state ->
+        {:halt, put_state(socket, key, %{state | rename_channel_value: channel_name})}
+    end
+  end
+
+  defp hooked_event(
+         "discord-channel-row:save_rename",
+         %{"key" => key, "channel_name" => channel_name},
+         socket
+       ) do
+    case fetch_state(socket.assigns, key) do
+      %{channel: %{"id" => channel_id}} = state ->
+        normalized_name = normalize_channel_name(channel_name)
+
+        if normalized_name == "" do
+          {:halt,
+           put_state(socket, key, %{
+             state
+             | rename_channel_value: normalized_name,
+               error: "Enter a channel name."
+           })}
+        else
+          DiscordDomainManager.rename_channel(
+            pid: self(),
+            key: key,
+            channel_id: channel_id,
+            new_name: normalized_name
+          )
+
+          {:halt,
+           put_state(socket, key, %{
+             state
+             | rename_channel_value: normalized_name,
+               renaming_channel?: true,
+               error: nil
+           })}
+        end
+
+      nil ->
+        Logger.error("Discord channel rename save failed missing row state key=#{key}")
+        {:halt, socket}
+
+      state ->
+        Logger.error(
+          "Discord channel rename save failed missing channel id key=#{key} state=#{inspect(state)}"
+        )
+
+        {:halt,
+         put_state(socket, key, %{
+           state
+           | editing_channel_name?: false,
+             renaming_channel?: false,
+             error: "Could not rename channel."
+         })}
+    end
+  end
+
+  defp hooked_event("discord-channel-row:cancel_rename", %{"key" => key}, socket) do
+    case fetch_state(socket.assigns, key) do
+      nil ->
+        Logger.error("Discord channel rename cancel failed missing row state key=#{key}")
+        {:halt, socket}
+
+      state ->
+        {:halt,
+         put_state(socket, key, %{
+           state
+           | editing_channel_name?: false,
+             rename_channel_value: "",
              error: nil
          })}
     end
@@ -493,6 +673,40 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
     end
   end
 
+  defp hooked_info({:discord, {:channel_renamed, key, {:ok, _payload}}}, socket) do
+    case fetch_state(socket.assigns, key) do
+      nil ->
+        {:cont, socket}
+
+      state ->
+        {:cont,
+         put_state(socket, key, %{
+           state
+           | editing_channel_name?: false,
+             renaming_channel?: false,
+             rename_channel_value: "",
+             error: nil
+         })}
+    end
+  end
+
+  defp hooked_info({:discord, {:channel_renamed, key, {:error, reason}}}, socket) do
+    case fetch_state(socket.assigns, key) do
+      nil ->
+        {:cont, socket}
+
+      state ->
+        Logger.error("Discord channel rename failed reason=#{inspect(reason)}")
+
+        {:cont,
+         put_state(socket, key, %{
+           state
+           | renaming_channel?: false,
+             error: "Could not rename channel."
+         })}
+    end
+  end
+
   defp hooked_info({:discord, {:data_synced, _summary}}, socket) do
     Enum.each(socket.assigns, fn
       {key, %__MODULE__{channel: channel}} when is_map(channel) ->
@@ -637,7 +851,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
     |> Enum.join(" ")
   end
 
-  defp channel_name(channel), do: Map.get(channel || %{}, "name", "unnamed")
+  defp channel_name(channel), do: DiscordFormatting.channel_name(channel)
 
   defp channel_type(channel) do
     case Map.get(channel || %{}, "data", %{}) |> Map.get("type") do
@@ -657,4 +871,58 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelRow do
     |> Map.get("permission_overwrites", [])
     |> Enum.any?(&(Map.get(&1, "type") == 0))
   end
+
+  defp toggled_channel_name(state) do
+    name =
+      state.channel
+      |> channel_name()
+      |> normalize_channel_name()
+
+    if term_suffix?(name) do
+      strip_term_suffix(name)
+    else
+      append_assignment_term_suffix(name, state.assignment)
+    end
+  end
+
+  defp strip_term_suffix(name) do
+    String.replace(name, ~r/-\d{4}-(spring|summer|fall|winter|\d{2})$/, "")
+  end
+
+  defp append_assignment_term_suffix(name, %{"term_code" => term_code}) do
+    [name, term_year(term_code), term_slug(term_code)]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join("-")
+    |> normalize_channel_name()
+  end
+
+  defp append_assignment_term_suffix(name, _assignment), do: name
+
+  defp term_suffix?(name), do: Regex.match?(~r/-\d{4}-(spring|summer|fall|winter|\d{2})$/, name)
+
+  defp term_year(term_code) when is_binary(term_code) and byte_size(term_code) >= 4,
+    do: String.slice(term_code, 0, 4)
+
+  defp term_year(_term_code), do: nil
+
+  defp term_slug(term_code) when is_binary(term_code) and byte_size(term_code) >= 6 do
+    case String.slice(term_code, 4, 2) do
+      "10" -> "spring"
+      "30" -> "summer"
+      "40" -> "fall"
+      other -> other
+    end
+  end
+
+  defp term_slug(_term_code), do: nil
+
+  defp normalize_channel_name(value) when is_binary(value) do
+    value
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9-]+/, "-")
+    |> String.replace(~r/-+/, "-")
+    |> String.trim("-")
+  end
+
+  defp normalize_channel_name(_value), do: ""
 end

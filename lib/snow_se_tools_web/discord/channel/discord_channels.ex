@@ -8,6 +8,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
   alias SnowSeToolsWeb.Discord.{
     DiscordAddMyCourses,
     DiscordChannelAssignModal,
+    DiscordFormatting,
     DiscordChannelRow,
     DiscordChannelSyncModal,
     DiscordStudentMapping
@@ -248,6 +249,10 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
     {:cont, refresh_channels(socket)}
   end
 
+  defp hooked_info({:discord, {:channel_renamed, _key, {:ok, _payload}}}, socket) do
+    {:cont, refresh_channels(socket)}
+  end
+
   defp hooked_info({:discord, {:data_synced, _summary}}, socket) do
     Enum.each(socket.assigns, fn
       {key, %__MODULE__{}} ->
@@ -330,7 +335,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannels do
 
     %{
       id: Map.get(item, "id"),
-      name: Map.get(item, "name", "unnamed"),
+      name: DiscordFormatting.channel_name(item),
       type: Map.get(data, "type"),
       parent_id: Map.get(data, "parent_id"),
       position: Map.get(data, "position", 999_999),

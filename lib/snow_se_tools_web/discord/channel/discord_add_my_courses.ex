@@ -4,6 +4,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
 
   alias Phoenix.LiveView
   alias SnowSeTools.Discord.DiscordDomainManager
+  alias SnowSeToolsWeb.Discord.DiscordFormatting
   alias SnowSeToolsWeb.Discord.DiscordGraduationHelpers
 
   defstruct key: nil,
@@ -572,11 +573,13 @@ defmodule SnowSeToolsWeb.Discord.DiscordAddMyCourses do
   defp channel_groups(channels) do
     channels
     |> Enum.filter(fn channel -> channel_type(channel) == 4 end)
-    |> Enum.sort_by(fn channel -> {channel_position(channel), Map.get(channel, "name", "")} end)
+    |> Enum.sort_by(fn channel ->
+      {channel_position(channel), DiscordFormatting.channel_name(channel)}
+    end)
     |> Enum.map(fn channel ->
       %{
         id: Map.get(channel, "id"),
-        name: Map.get(channel, "name", "unnamed"),
+        name: DiscordFormatting.channel_name(channel),
         data: channel_data(channel)
       }
     end)

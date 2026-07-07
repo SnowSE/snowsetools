@@ -98,6 +98,10 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
     GenServer.cast(__MODULE__, {:delete_channel, pid, key, channel_id})
   end
 
+  def rename_channel(pid: pid, key: key, channel_id: channel_id, new_name: new_name) do
+    GenServer.cast(__MODULE__, {:rename_channel, pid, key, channel_id, new_name})
+  end
+
   def save_student_discord_mapping(
         pid: pid,
         key: key,
@@ -348,6 +352,14 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
     {:noreply, state}
   end
 
+  def handle_cast({:rename_channel, pid, key, channel_id, new_name}, state) do
+    Task.start(fn ->
+      rename_channel_async(pid: pid, key: key, channel_id: channel_id, new_name: new_name)
+    end)
+
+    {:noreply, state}
+  end
+
   def handle_cast({:save_student_discord_mapping, pid, key, badger_id, discord_user_id}, state) do
     case DiscordDb.save_student_discord_mapping(
            badger_id: badger_id,
@@ -502,7 +514,6 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
        ) do
     with {:ok, channel} <-
            discord_api().create_text_channel(name: channel_name, parent_id: parent_id),
-         :ok <- DiscordDb.save_channel(channel: channel),
          save_result <-
            DiscordDb.save_course_channel_assignment(
              crn: crn,
@@ -510,7 +521,12 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
              discord_channel_id: Map.fetch!(channel, "id"),
              discord_role_id: discord_role_id
            ),
-         :ok <- normalize_db_result(save_result) do
+         :ok <- normalize_db_result(save_result),
+         :ok <-
+           sync_channels_with_expected_name(
+             channel_id: Map.fetch!(channel, "id"),
+             expected_name: channel_name
+           ) do
       summary = safe_sync_summary()
       DiscordPubSub.broadcast_discord_data_synced(summary)
 
@@ -561,6 +577,30 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
     end
   end
 
+  defp rename_channel_async(pid: pid, key: key, channel_id: channel_id, new_name: new_name) do
+    with {:ok, _channel} <-
+           discord_api().rename_channel(channel_id: channel_id, new_name: new_name),
+         :ok <- sync_channels_with_expected_name(channel_id: channel_id, expected_name: new_name) do
+      summary = safe_sync_summary()
+      DiscordPubSub.broadcast_discord_data_synced(summary)
+      send(pid, {:discord, {:channel_renamed, key, {:ok, %{channel_id: channel_id}}}})
+    else
+      {:error, reason} ->
+        Logger.error(
+          "Discord channel rename failed channel_id=#{channel_id} new_name=#{new_name} reason=#{inspect(reason)}"
+        )
+
+        send(pid, {:discord, {:channel_renamed, key, {:error, reason}}})
+
+      unexpected ->
+        Logger.error(
+          "Discord channel rename returned unexpected result=#{inspect(unexpected)} channel_id=#{channel_id}"
+        )
+
+        send(pid, {:discord, {:channel_renamed, key, {:error, unexpected}}})
+    end
+  end
+
   defp normalize_db_result({:error, reason}), do: {:error, reason}
   defp normalize_db_result(_result), do: :ok
 
@@ -589,6 +629,38 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
     with {:ok, channels} <- discord_api().fetch_channels(),
          :ok <- DiscordDb.save_channels(channels: channels) do
       :ok
+    end
+  end
+
+  defp sync_channels_with_expected_name(channel_id: channel_id, expected_name: expected_name) do
+    with {:ok, channels} <- discord_api().fetch_channels(),
+         :ok <-
+           validate_fetched_channel_name(
+             channels: channels,
+             channel_id: channel_id,
+             expected_name: expected_name
+           ),
+         :ok <- DiscordDb.save_channels(channels: channels) do
+      :ok
+    end
+  end
+
+  defp validate_fetched_channel_name(
+         channels: channels,
+         channel_id: channel_id,
+         expected_name: expected_name
+       ) do
+    case Enum.find(channels, &(Map.get(&1, "id") == channel_id)) do
+      %{"name" => ^expected_name} ->
+        :ok
+
+      %{"name" => fetched_name} ->
+        {:error,
+         {:channel_name_mismatch,
+          %{channel_id: channel_id, expected_name: expected_name, fetched_name: fetched_name}}}
+
+      nil ->
+        {:error, {:channel_not_found_after_sync, %{channel_id: channel_id}}}
     end
   end
 

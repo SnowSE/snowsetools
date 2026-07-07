@@ -73,74 +73,73 @@ defmodule SnowSeToolsWeb.Discord.DiscordMembers do
             >
               <.icon name="hero-pencil" class="size-3.5" />
             </button>
-           <% end %>
-</div>
-
-          <%= if @state.editing_member_id == member["id"] do %>
-            <form
-              id={"discord-member-rename-form-#{member["id"]}"}
-              phx-submit="discord-members:save_nickname"
-              phx-change="discord-members:validate_nickname"
-              class="w-full pt-2"
-            >
-              <input type="hidden" name="member_id" value={member["id"]} />
-              <div class="flex flex-col gap-1.5 w-full">
-                <div class="flex items-center gap-2">
-                  <label
-                    for={"nickname-input-#{member["id"]}"}
-                    class="text-[10px] font-medium text-slate-500"
-                  >
-                    Nickname
-                  </label>
-                  <span class="text-[10px] text-slate-600">{String.length(@state.edit_nickname_value)}/32</span>
-                </div>
-                <input
-                  id={"nickname-input-#{member["id"]}"}
-                  type="text"
-                  name="nickname"
-                  value={@state.edit_nickname_value}
-                  maxlength="32"
-                  placeholder="Server nickname"
-                  autocomplete="off"
-                  class={[
-                    " rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100 placeholder-slate-600 outline-none transition",
-                    "focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30",
-                    @state.rename_loading? && "opacity-60"
-                  ]}
-                />
-                <div class="flex items-center justify-end gap-1">
-                  <button
-                    type="button"
-                    id={"discord-member-cancel-rename-#{member["id"]}"}
-                    phx-click="discord-members:cancel_edit"
-                    disabled={@state.rename_loading?}
-                    class={[
-                      "rounded-md border border-slate-700 px-2 py-1 text-[10px] font-medium text-slate-300 transition hover:bg-slate-800",
-                      @state.rename_loading? && "cursor-not-allowed opacity-60"
-                    ]}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    id={"discord-member-save-rename-#{member["id"]}"}
-                    disabled={@state.rename_loading?}
-                    class={[
-                      "rounded-md bg-indigo-600 px-2 py-1 text-[10px] font-medium text-white transition hover:bg-indigo-500",
-                      @state.rename_loading? && "cursor-not-allowed opacity-60"
-                    ]}
-                  >
-                    <%= if @state.rename_loading? do %>
-                      Saving...
-                    <% else %>
-                      Save
-                    <% end %>
-                  </button>
-                </div>
-              </div>
-            </form>
           <% end %>
+        </div>
 
+        <%= if @state.editing_member_id == member["id"] do %>
+          <form
+            id={"discord-member-rename-form-#{member["id"]}"}
+            phx-submit="discord-members:save_nickname"
+            phx-change="discord-members:validate_nickname"
+            class="w-full pt-2"
+          >
+            <input type="hidden" name="member_id" value={member["id"]} />
+            <div class="flex flex-col gap-1.5 w-full">
+              <div class="flex items-center gap-2">
+                <label
+                  for={"nickname-input-#{member["id"]}"}
+                  class="text-[10px] font-medium text-slate-500"
+                >
+                  Nickname
+                </label>
+                <span class="text-[10px] text-slate-600">{String.length(@state.edit_nickname_value)}/32</span>
+              </div>
+              <input
+                id={"nickname-input-#{member["id"]}"}
+                type="text"
+                name="nickname"
+                value={@state.edit_nickname_value}
+                maxlength="32"
+                placeholder="Server nickname"
+                autocomplete="off"
+                class={[
+                  " rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100 placeholder-slate-600 outline-none transition",
+                  "focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30",
+                  @state.rename_loading? && "opacity-60"
+                ]}
+              />
+              <div class="flex items-center justify-end gap-1">
+                <button
+                  type="button"
+                  id={"discord-member-cancel-rename-#{member["id"]}"}
+                  phx-click="discord-members:cancel_edit"
+                  disabled={@state.rename_loading?}
+                  class={[
+                    "rounded-md border border-slate-700 px-2 py-1 text-[10px] font-medium text-slate-300 transition hover:bg-slate-800",
+                    @state.rename_loading? && "cursor-not-allowed opacity-60"
+                  ]}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  id={"discord-member-save-rename-#{member["id"]}"}
+                  disabled={@state.rename_loading?}
+                  class={[
+                    "rounded-md bg-indigo-600 px-2 py-1 text-[10px] font-medium text-white transition hover:bg-indigo-500",
+                    @state.rename_loading? && "cursor-not-allowed opacity-60"
+                  ]}
+                >
+                  <%= if @state.rename_loading? do %>
+                    Saving...
+                  <% else %>
+                    Save
+                  <% end %>
+                </button>
+              </div>
+            </div>
+          </form>
+        <% end %>
       </article>
     </div>
     """

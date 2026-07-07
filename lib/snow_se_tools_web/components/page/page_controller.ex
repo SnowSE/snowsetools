@@ -16,7 +16,7 @@ defmodule SnowSeToolsWeb.PageController do
       end
 
     if current_user do
-      redirect(conn, to: "/syllabi")
+      redirect(conn, to: "/home")
     else
       render(conn, :home, current_user: current_user)
     end

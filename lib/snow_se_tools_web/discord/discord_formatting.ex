@@ -2,6 +2,26 @@ defmodule SnowSeToolsWeb.Discord.DiscordFormatting do
   def item_name(nil), do: "Not synced"
   def item_name(item), do: item["name"] || item["id"] || "Not synced"
 
+  def channel_name(nil), do: "unnamed"
+
+  def channel_name(channel) do
+    data_name =
+      channel
+      |> Map.get("data", %{})
+      |> Map.get("name")
+
+    id = Map.get(channel, "id") || Map.get(channel, :id)
+    top_level_name = Map.get(channel, "name") || Map.get(channel, :name)
+
+    cond do
+      valid_channel_name?(data_name, id) -> data_name
+      valid_channel_name?(top_level_name, id) -> top_level_name
+      is_binary(data_name) and data_name != "" -> data_name
+      is_binary(top_level_name) and top_level_name != "" -> top_level_name
+      true -> "unnamed"
+    end
+  end
+
   def member_username(member) do
     member
     |> Map.get("data", %{})
@@ -28,6 +48,10 @@ defmodule SnowSeToolsWeb.Discord.DiscordFormatting do
       |> Map.get("color", 0)
 
     "#" <> String.pad_leading(Integer.to_string(color, 16), 6, "0")
+  end
+
+  defp valid_channel_name?(name, id) do
+    is_binary(name) and name != "" and name != id
   end
 
   def format_synced_at(nil), do: "never"

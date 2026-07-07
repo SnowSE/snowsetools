@@ -156,6 +156,12 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
     assert is_binary(created_channel_id)
 
     assert has_element?(view, "[id^='discord-channel-row-discord-channel-row:created-channel-']")
+
+    assert has_element?(
+             view,
+             "[id^='discord-channel-row-discord-channel-row:created-channel-'] span",
+             "engr-1010-2026-fall"
+           )
   end
 
   test "selecting a different course re-auto-selects the matching channel group", %{conn: conn} do
@@ -289,6 +295,132 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
     assert has_element?(view, "#discord-assign-course-query[value='distributed']")
     assert has_element?(view, "#discord-assign-course-option-55555")
     refute has_element?(view, "#discord-assign-course-option-12345")
+  end
+
+  test "user renames a Discord channel and refreshes the cached name from Discord", %{conn: conn} do
+    conn = log_in_test_user(conn)
+
+    {:ok, view, _html} = live(conn, ~p"/discord")
+
+    _ = :sys.get_state(SnowCourseCacheDomainManager)
+    _ = :sys.get_state(DiscordDomainManager)
+    render(view)
+
+    view
+    |> element("[id='discord-channel-rename-discord-channel-row:channel-100']")
+    |> render_click()
+
+    assert has_element?(
+             view,
+             "[id='discord-channel-rename-input-discord-channel-row:channel-100'][value='distributed']"
+           )
+
+    view
+    |> element("[id='discord-channel-rename-form-discord-channel-row:channel-100']")
+    |> render_submit(%{"key" => "discord-channel-row:channel-100", "channel_name" => "Survey"})
+
+    flush_renamed_channel_flow(view, "survey")
+    render(view)
+
+    assert {:rename_channel, %{channel_id: "channel-100", new_name: "survey"}} in DiscordApi.calls()
+
+    assert Enum.any?(DiscordDb.list_channels(), fn channel ->
+             channel["id"] == "channel-100" and channel["name"] == "survey"
+           end)
+
+    assert has_element?(
+             view,
+             "[id='discord-channel-row-discord-channel-row:channel-100'] span",
+             "survey"
+           )
+
+    refute has_element?(
+             view,
+             "[id='discord-channel-rename-form-discord-channel-row:channel-100']"
+           )
+  end
+
+  test "rename form pre-populates a plain channel name with the assigned term suffix", %{
+    conn: conn
+  } do
+    :ok =
+      DiscordDb.save_channel(
+        channel: %{
+          "id" => "channel-100",
+          "name" => "survey",
+          "type" => 0,
+          "parent_id" => "category-10",
+          "position" => 1,
+          "permission_overwrites" => []
+        }
+      )
+
+    DiscordDb.save_course_channel_assignment(
+      crn: "12345",
+      term_code: "202640",
+      discord_channel_id: "channel-100",
+      discord_role_id: "role-course"
+    )
+
+    conn = log_in_test_user(conn)
+
+    {:ok, view, _html} = live(conn, ~p"/discord")
+
+    flush_assignment_flow(view)
+    render(view)
+
+    view
+    |> element("[id='discord-channel-rename-discord-channel-row:channel-100']")
+    |> render_click()
+
+    assert has_element?(
+             view,
+             "[id='discord-channel-rename-input-discord-channel-row:channel-100'][value='survey-2026-fall']"
+           )
+  end
+
+  test "channel rendering prefers the raw Discord name when cached name is the channel id", %{
+    conn: conn
+  } do
+    :ok =
+      DiscordDb.save_channel(
+        channel: %{
+          "id" => "channel-100",
+          "name" => "survey",
+          "type" => 0,
+          "parent_id" => "category-10",
+          "position" => 1,
+          "permission_overwrites" => []
+        }
+      )
+
+    case DbHelpers.run_sql(
+           "UPDATE discord_channels SET name = $(name) WHERE id = $(id)",
+           %{"name" => "channel-100", "id" => "channel-100"}
+         ) do
+      {:error, reason} -> raise "Failed to seed bad channel name: #{inspect(reason)}"
+      _result -> :ok
+    end
+
+    conn = log_in_test_user(conn)
+
+    {:ok, view, _html} = live(conn, ~p"/discord")
+
+    _ = :sys.get_state(DiscordDomainManager)
+    _ = :sys.get_state(view.pid)
+    render(view)
+
+    assert has_element?(
+             view,
+             "[id='discord-channel-row-discord-channel-row:channel-100'] span",
+             "survey"
+           )
+
+    refute has_element?(
+             view,
+             "[id='discord-channel-row-discord-channel-row:channel-100'] span",
+             "channel-100"
+           )
   end
 
   test "user removes a Discord channel course assignment from course details", %{conn: conn} do
@@ -785,22 +917,77 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
   end
 
   defp flush_created_channel_flow(view) do
-    _ = :sys.get_state(DiscordDomainManager)
-    _ = :sys.get_state(view.pid)
+    wait_for_created_channel_row(view, 20)
+  end
+
+  defp flush_renamed_channel_flow(view, channel_name) do
+    wait_for_channel_name(view, channel_name, 20)
+  end
+
+  defp wait_for_created_channel_row(view, attempts_remaining) when attempts_remaining > 0 do
     _ = :sys.get_state(DiscordDomainManager)
     _ = :sys.get_state(view.pid)
     _ = :sys.get_state(SnowCourseCacheDomainManager)
     _ = :sys.get_state(view.pid)
+    render(view)
+
+    if has_element?(view, "[id^='discord-channel-row-discord-channel-row:created-channel-']") do
+      :ok
+    else
+      wait_for_created_channel_row(view, attempts_remaining - 1)
+    end
+  end
+
+  defp wait_for_created_channel_row(_view, 0) do
+    :ok
+  end
+
+  defp wait_for_channel_name(view, channel_name, attempts_remaining)
+       when attempts_remaining > 0 do
+    _ = :sys.get_state(DiscordDomainManager)
+    _ = :sys.get_state(view.pid)
+    _ = :sys.get_state(DiscordDomainManager)
+    _ = :sys.get_state(view.pid)
+    render(view)
+
+    if has_element?(
+         view,
+         "[id='discord-channel-row-discord-channel-row:channel-100'] span",
+         channel_name
+       ) do
+      :ok
+    else
+      wait_for_channel_name(view, channel_name, attempts_remaining - 1)
+    end
+  end
+
+  defp wait_for_channel_name(view, _channel_name, 0) do
+    html = render(view)
+    document = LazyHTML.from_fragment(html)
+    row = LazyHTML.filter(document, "[id='discord-channel-row-discord-channel-row:channel-100']")
+    flunk("Timed out waiting for Discord channel name to render: #{inspect(row)}")
   end
 
   defp flush_deleted_channel_flow(view) do
+    wait_for_deleted_channel(view, "channel-100", 20)
+  end
+
+  defp wait_for_deleted_channel(view, channel_id, attempts_remaining)
+       when attempts_remaining > 0 do
     _ = :sys.get_state(DiscordDomainManager)
     _ = :sys.get_state(view.pid)
     _ = :sys.get_state(DiscordDomainManager)
     _ = :sys.get_state(view.pid)
-    _ = :sys.get_state(DiscordDomainManager)
-    _ = :sys.get_state(view.pid)
-    _ = :sys.get_state(DiscordDomainManager)
-    _ = :sys.get_state(view.pid)
+    render(view)
+
+    if Enum.any?(DiscordDb.list_channels(), fn channel -> channel["id"] == channel_id end) do
+      wait_for_deleted_channel(view, channel_id, attempts_remaining - 1)
+    else
+      :ok
+    end
+  end
+
+  defp wait_for_deleted_channel(_view, channel_id, 0) do
+    flunk("Timed out waiting for Discord channel #{channel_id} to be deleted")
   end
 end

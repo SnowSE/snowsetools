@@ -5,6 +5,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
   alias Phoenix.LiveView
   alias SnowSeTools.Discord.DiscordDomainManager
   alias SnowSeTools.Snow.SnowCourseCacheDomainManager
+  alias SnowSeToolsWeb.Discord.DiscordFormatting
 
   defstruct open_channel_id: nil,
             channel: nil,
@@ -655,9 +656,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignModal do
     end)
   end
 
-  defp channel_name(channel) do
-    Map.get(channel || %{}, :name) || Map.get(channel || %{}, "name") || "unnamed"
-  end
+  defp channel_name(channel), do: DiscordFormatting.channel_name(channel)
 
   defp course_prefix(course) do
     [
