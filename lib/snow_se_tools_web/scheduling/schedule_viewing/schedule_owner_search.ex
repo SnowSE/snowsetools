@@ -4,13 +4,15 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerSearch do
   alias SnowSeTools.Scheduling.ScheduleOwnerMetadata
   alias SnowSeToolsWeb.Scheduling.ScheduleOrder
 
-  # -- Term selector + search bar --
-
   attr :state, :map, required: true
+  attr :selected_schedule_order, :any, required: true
 
-  def term_and_search(assigns) do
+  def search(assigns) do
+    assigns = assign(assigns, :matched_owners, matched_schedule_owners(assigns))
+
     ~H"""
     <div class="flex shrink-0 flex-col gap-3">
+      <!-- Term selector -->
       <.form
         for={to_form(%{})}
         id="scheduling-term-form"
@@ -32,92 +34,99 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerSearch do
         </select>
       </.form>
 
-      <.form
-        for={to_form(%{})}
-        id="scheduling-search-form"
-        phx-change="schedule-viewer:search"
+      <!-- Search input + dropdown -->
+      <div
+        id="schedule-owner-search-container"
+        phx-click-away="schedule-viewer:search_blurred"
+        class="relative"
       >
-        <div class="relative">
-          <.icon
-            name="hero-magnifying-glass"
-            class="pointer-events-none absolute left-3 top-2.5 size-4 text-slate-500"
-          />
-          <input
-            id="scheduling-search-input"
-            type="search"
-            name="query"
-            value={@state.query}
-            autocomplete="off"
-            placeholder="Search professor, room, or program semester"
-            class="w-full rounded-lg border border-slate-700 bg-slate-900 py-2 pl-9 pr-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
-          />
+        <.form
+          for={to_form(%{})}
+          id="scheduling-search-form"
+          phx-change="schedule-viewer:search"
+          phx-feedback-for="query"
+        >
+          <div class="relative">
+            <.icon
+              name="hero-magnifying-glass"
+              class="pointer-events-none absolute left-3 top-2.5 size-4 text-slate-500"
+            />
+            <input
+              id="scheduling-search-input"
+              type="search"
+              name="query"
+              value={@state.query}
+              phx-hook=".ScheduleOwnerSearchInput"
+              autocomplete="off"
+              placeholder="Search professor, room, or program semester"
+              class="w-full rounded-lg border border-slate-700 bg-slate-900 py-2 pl-9 pr-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+            />
+          </div>
+        </.form>
+
+        <!-- Dropdown results -->
+        <div
+          :if={@state.query != "" and @state.search_active}
+          id="schedule-owner-search-results"
+          class="absolute z-50 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 shadow-xl shadow-black/40"
+        >
+          <div :if={@matched_owners == []} class="px-3 py-4 text-center text-sm text-slate-500">
+            No matching schedules.
+          </div>
+
+          <%= for schedule_owner <- @matched_owners do %>
+            <button
+              id={"schedule-owner-search-#{schedule_owner.type}-#{schedule_owner.name}"}
+              type="button"
+              phx-click="schedule-owner-search:select"
+              phx-value-key={schedule_owner.key}
+              class={[
+                "flex w-full items-center gap-3 px-3 py-2 text-left transition",
+                "hover:bg-slate-800/70",
+                if(ScheduleOrder.member?(order: @selected_schedule_order, key: schedule_owner.key),
+                  do: "bg-indigo-950/40 text-indigo-100",
+                  else: "text-slate-200"
+                )
+              ]}
+            >
+              <span class="min-w-0">
+                <span class="block truncate text-sm font-medium">{schedule_owner.name}</span>
+                <span class="block text-xs text-slate-500">{schedule_owner.type}</span>
+              </span>
+              <.icon
+                :if={ScheduleOrder.member?(order: @selected_schedule_order, key: schedule_owner.key)}
+                name="hero-check"
+                class="size-4 shrink-0 text-indigo-400"
+              />
+            </button>
+          <% end %>
         </div>
-      </.form>
+      </div>
     </div>
-    """
-  end
 
-  # -- Schedule owner list --
-
-  attr :state, :any, required: true
-  attr :selected_schedule_order, :any, required: true
-
-  def schedule_owner_list(assigns) do
-    ~H"""
-    <div id="schedule-owner-list" class="min-h-0 flex-1 space-y-2 overflow-y-auto pe-2">
-      <.empty_state :if={@state.schedule_owners_metadata_by_term[@state.selected_term_code] == []} />
-
-      <%= for schedule_owner <- filter_schedule_owners(@state.schedule_owners_metadata_by_term[@state.selected_term_code] || [], @state.query) do %>
-        <.schedule_owner_button
-          schedule_owner={schedule_owner}
-          is_selected={
-            ScheduleOrder.member?(order: @selected_schedule_order, key: schedule_owner.key)
-          }
-        />
-      <% end %>
-    </div>
-    """
-  end
-
-  defp empty_state(assigns) do
-    ~H"""
-    <div id="schedule-owner-empty" class="px-2 py-8 text-center text-sm text-slate-500">
-      No matching schedules.
-    </div>
-    """
-  end
-
-  attr :schedule_owner, ScheduleOwnerMetadata, required: true
-  attr :is_selected, :boolean, default: false
-
-  defp schedule_owner_button(assigns) do
-    ~H"""
-    <button
-      id={"schedule-owner-#{@schedule_owner.type}-#{@schedule_owner.name}"}
-      type="button"
-      phx-click="schedule-details-order:toggle"
-      phx-value-key={@schedule_owner.key}
-      class={[
-        "flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition",
-        if(@is_selected,
-          do: "border-indigo-500/50 bg-indigo-950/50 text-indigo-100",
-          else:
-            "border-slate-800 bg-slate-900/50 text-slate-200 hover:border-slate-700 hover:bg-slate-800/70"
-        )
-      ]}
-    >
-      <span class="min-w-0">
-        <span class="block truncate text-sm font-medium">{@schedule_owner.name}</span>
-        <span class="block text-xs text-slate-500">{@schedule_owner.type}</span>
-      </span>
-    </button>
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".ScheduleOwnerSearchInput">
+      export default {
+        mounted() {
+          this.el.addEventListener("focus", () => {
+            this.pushEvent("schedule-viewer:search_focused", {});
+          });
+        }
+      }
+    </script>
     """
   end
 
   # -- Filtering helpers --
 
-  defp filter_schedule_owners(schedule_owners, "") do
-    schedule_owners
+  defp matched_schedule_owners(assigns) do
+    owners =
+      assigns.state.schedule_owners_metadata_by_term[assigns.state.selected_term_code] || []
+
+    if assigns.state.query == "" do
+      []
+    else
+      filter_schedule_owners(owners, assigns.state.query)
+    end
   end
 
   defp filter_schedule_owners(schedule_owners, query) do

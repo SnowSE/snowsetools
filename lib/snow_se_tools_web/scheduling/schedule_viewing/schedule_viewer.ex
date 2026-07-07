@@ -10,21 +10,30 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
     ScheduleOwnerMetadata
   }
 
-  alias SnowSeToolsWeb.Scheduling.{CourseListForTerm, ScheduleChangeGroups, ScheduleDetailsOrder}
+  alias SnowSeToolsWeb.Scheduling.{
+    CourseListForTerm,
+    ScheduleChangeGroups,
+    ScheduleDetailsOrder,
+    ScheduleOrder,
+    WeekSchedule
+  }
+
   import SnowSeToolsWeb.Scheduling.ScheduleOwnerSearch
 
   defstruct [
     :terms,
     :selected_term_code,
     :schedule_owners_metadata_by_term,
-    :query
+    :query,
+    :search_active
   ]
 
   @type t :: %__MODULE__{
           terms: [map()],
           selected_term_code: String.t() | nil,
           schedule_owners_metadata_by_term: %{optional(String.t()) => [ScheduleOwnerMetadata.t()]},
-          query: String.t()
+          query: String.t(),
+          search_active: boolean()
         }
   @key :schedule_viewer_state
 
@@ -34,7 +43,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
       terms: [],
       selected_term_code: nil,
       schedule_owners_metadata_by_term: %{},
-      query: ""
+      query: "",
+      search_active: false
     })
     |> initial_setup()
   end
@@ -50,9 +60,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
   def render(assigns) do
     ~H"""
     <div id="scheduling-page" class="mx-auto flex h-full min-h-0 w-full max-w-full gap-4 p-4">
-      <aside class="flex shrink-0 flex-col gap-3 pr-2 w-30 sm:w-80">
-        <.term_and_search state={@state} />
-        <.schedule_owner_list
+      <aside class="flex shrink-0 flex-col gap-3 pr-2 w-80">
+        <.search
           state={@state}
           selected_schedule_order={@schedule_details_order.selected_schedule_order}
         />
@@ -339,8 +348,59 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
      socket
      |> assign(@key, %{
        socket.assigns[@key]
-       | query: query
+       | query: query,
+         search_active: true
      })}
+  end
+
+  def hooked_event("schedule-viewer:search_focused", _params, socket) do
+    {:halt, assign(socket, @key, %{socket.assigns[@key] | search_active: true})}
+  end
+
+  def hooked_event("schedule-viewer:search_blurred", _params, socket) do
+    {:halt, assign(socket, @key, %{socket.assigns[@key] | search_active: false})}
+  end
+
+  def hooked_event("schedule-owner-search:select", %{"key" => key}, socket) do
+    selected_term_code = socket.assigns[@key].selected_term_code
+
+    if ScheduleOrder.member?(
+         order: socket.assigns.schedule_details_order.selected_schedule_order,
+         key: key
+       ) do
+      {:halt,
+       socket
+       |> WeekSchedule.remove_owner(owner_key: key)
+       |> assign(:schedule_details_order, %{
+         socket.assigns.schedule_details_order
+         | selected_schedule_order:
+             ScheduleOrder.delete(
+               order: socket.assigns.schedule_details_order.selected_schedule_order,
+               key: key
+             )
+       })}
+    else
+      socket =
+        if is_binary(selected_term_code) do
+          WeekSchedule.assign_owner(socket,
+            owner_key: key,
+            selected_term_code: selected_term_code
+          )
+        else
+          socket
+        end
+
+      {:halt,
+       socket
+       |> assign(:schedule_details_order, %{
+         socket.assigns.schedule_details_order
+         | selected_schedule_order:
+             ScheduleOrder.put(
+               order: socket.assigns.schedule_details_order.selected_schedule_order,
+               key: key
+             )
+       })}
+    end
   end
 
   def hooked_event(_event, _params, socket), do: {:cont, socket}

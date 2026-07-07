@@ -286,8 +286,17 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
   end
 
   defp select_schedule_owner(view, owner_key) do
+    search_query =
+      owner_key
+      |> String.split(":", parts: 2)
+      |> List.last()
+
     view
-    |> element("button[phx-click='schedule-details-order:toggle'][phx-value-key='#{owner_key}']")
+    |> form("#scheduling-search-form")
+    |> render_change(%{"query" => search_query})
+
+    view
+    |> element("button[phx-click='schedule-owner-search:select'][phx-value-key='#{owner_key}']")
     |> render_click()
   end
 
