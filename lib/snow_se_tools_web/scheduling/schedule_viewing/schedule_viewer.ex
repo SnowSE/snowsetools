@@ -11,8 +11,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
   }
 
   alias SnowSeToolsWeb.Scheduling.{CourseListForTerm, ScheduleChangeGroups, ScheduleDetailsOrder}
-  import SnowSeToolsWeb.Scheduling.ScheduleViewerTermAndSearch
-  import SnowSeToolsWeb.Scheduling.ScheduleViewerScheduleOwnerList
+  import SnowSeToolsWeb.Scheduling.ScheduleOwnerSearch
 
   defstruct [
     :terms,

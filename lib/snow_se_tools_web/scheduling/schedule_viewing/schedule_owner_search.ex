@@ -1,8 +1,63 @@
-defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerScheduleOwnerList do
+defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerSearch do
   use SnowSeToolsWeb, :html
 
   alias SnowSeTools.Scheduling.ScheduleOwnerMetadata
   alias SnowSeToolsWeb.Scheduling.ScheduleOrder
+
+  # -- Term selector + search bar --
+
+  attr :state, :map, required: true
+
+  def term_and_search(assigns) do
+    ~H"""
+    <div class="flex shrink-0 flex-col gap-3">
+      <.form
+        for={to_form(%{})}
+        id="scheduling-term-form"
+        phx-change="schedule-viewer:set_term"
+      >
+        <select
+          id="scheduling-term-select"
+          name="term_code"
+          class="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+        >
+          <%= for term <- @state.terms do %>
+            <option
+              value={term["term_code"]}
+              selected={term["term_code"] == @state.selected_term_code}
+            >
+              {term["term_name"]}
+            </option>
+          <% end %>
+        </select>
+      </.form>
+
+      <.form
+        for={to_form(%{})}
+        id="scheduling-search-form"
+        phx-change="schedule-viewer:search"
+      >
+        <div class="relative">
+          <.icon
+            name="hero-magnifying-glass"
+            class="pointer-events-none absolute left-3 top-2.5 size-4 text-slate-500"
+          />
+          <input
+            id="scheduling-search-input"
+            type="search"
+            name="query"
+            value={@state.query}
+            autocomplete="off"
+            placeholder="Search professor, room, or program semester"
+            class="w-full rounded-lg border border-slate-700 bg-slate-900 py-2 pl-9 pr-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+          />
+        </div>
+      </.form>
+    </div>
+    """
+  end
+
+  # -- Schedule owner list --
 
   attr :state, :any, required: true
   attr :selected_schedule_order, :any, required: true
@@ -58,6 +113,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerScheduleOwnerList do
     </button>
     """
   end
+
+  # -- Filtering helpers --
 
   defp filter_schedule_owners(schedule_owners, "") do
     schedule_owners
