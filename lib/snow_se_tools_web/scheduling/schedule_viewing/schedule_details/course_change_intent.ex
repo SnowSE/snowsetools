@@ -49,7 +49,7 @@ defmodule SnowSeToolsWeb.Scheduling.CourseChangeIntent do
       days = Map.get(params, "days", []) |> Enum.filter(&is_binary/1)
       original_meet_info = Map.get(params, "meet_info", [])
       original_meeting = List.first(original_meet_info) || %{}
-      target_room = target_room(owner, original_meeting)
+      target_room = target_room(owner, original_meeting, params)
 
       {:ok,
        %{
@@ -166,9 +166,19 @@ defmodule SnowSeToolsWeb.Scheduling.CourseChangeIntent do
     |> Map.put("room", room)
   end
 
-  defp target_professor(%{type: "professor", name: name}, _params), do: name
+  defp target_professor(owner, params) do
+    case Map.get(params, "target_professor") do
+      professor when is_binary(professor) and professor != "" ->
+        professor
 
-  defp target_professor(_owner, params) do
+      _other ->
+        target_professor_from_owner(owner, params)
+    end
+  end
+
+  defp target_professor_from_owner(%{type: "professor", name: name}, _params), do: name
+
+  defp target_professor_from_owner(_owner, params) do
     params
     |> Map.get("instructors", [])
     |> List.wrap()
@@ -179,6 +189,13 @@ defmodule SnowSeToolsWeb.Scheduling.CourseChangeIntent do
 
   defp target_room(_owner, meeting) do
     ScheduleUtils.room_name(meeting: meeting)
+  end
+
+  defp target_room(owner, meeting, params) do
+    case Map.get(params, "target_room") do
+      room when is_binary(room) and room != "" -> room
+      _other -> target_room(owner, meeting)
+    end
   end
 
   defp room_parts(room_name, %{"building" => building, "room" => room})

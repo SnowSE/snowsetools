@@ -116,6 +116,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
                 state={@schedule_viewer_state}
                 schedule_details_order={@schedule_details_order}
                 week_schedules={@week_schedules}
+                week_schedule_edit_course_modal={@week_schedule_edit_course_modal}
                 courses={CourseListForTerm.courses(@scheduling_course_data)}
                 schedule_change_groups_state={@schedule_change_groups_state}
                 academic_programs={@academic_programs}

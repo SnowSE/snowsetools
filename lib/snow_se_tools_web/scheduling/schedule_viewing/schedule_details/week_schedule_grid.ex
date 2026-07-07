@@ -323,7 +323,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
           this.menu.style.left = `${event.clientX}px`;
           this.menu.style.top = `${event.clientY}px`;
           this.menu.innerHTML =
-            '<button type="button" data-action="edit" class="block w-full px-3 py-2 text-left hover:bg-slate-800">Edit meeting</button><button type="button" data-action="delete" class="block w-full px-3 py-2 text-left text-red-300 hover:bg-red-950/60">Remove course</button>';
+            '<button type="button" data-action="edit" class="block w-full px-3 py-2 text-left hover:bg-slate-800">Edit course</button><button type="button" data-action="delete" class="block w-full px-3 py-2 text-left text-red-300 hover:bg-red-950/60">Remove course</button>';
 
           this.menu.addEventListener("click", (menuEvent) => {
             const action = menuEvent.target.closest("button")?.dataset.action;
@@ -343,21 +343,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
         },
 
         editCourse(payload) {
-          const currentMeeting = payload.meeting || {};
-          const days = window.prompt("Days, comma separated", (currentMeeting.days || []).join(", "));
-          if (days === null) return;
-
-          const startTime = window.prompt("Start time", currentMeeting.start_time || payload.start_time || "");
-          if (startTime === null) return;
-
-          const endTime = window.prompt("End time", currentMeeting.end_time || payload.end_time || "");
-          if (endTime === null) return;
-
-          this.pushEvent("week-schedule-grid:edit_course", {
+          this.pushEvent("week-schedule-grid:open_edit_course", {
             ...payload,
-            days: days.split(",").map((day) => day.trim()).filter(Boolean),
-            start_time: startTime,
-            end_time: endTime,
             owner_key: this.el.dataset.ownerKey,
             owner_type: this.el.dataset.ownerType,
             owner_name: this.el.dataset.ownerName,

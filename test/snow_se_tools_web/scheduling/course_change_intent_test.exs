@@ -64,6 +64,49 @@ defmodule SnowSeToolsWeb.Scheduling.CourseChangeIntentTest do
     assert meeting["room"] == "101"
   end
 
+  test "editing course can explicitly change professor and room" do
+    {:ok, attrs} =
+      CourseChangeIntent.edit_course_attrs(
+        base_payload()
+        |> Map.merge(%{
+          "owner_type" => "academic_program_semester",
+          "owner_name" => "program:semester",
+          "days" => ["Tuesday", "Thursday"],
+          "start_time" => "13:00",
+          "end_time" => "14:15",
+          "target_professor" => "Dr. Jones",
+          "target_room" => "Science 204"
+        })
+      )
+
+    assert attrs["target_professor"] == "Dr. Jones"
+    assert [meeting] = attrs["meet_info"]
+    assert meeting["days"] == ["Tuesday", "Thursday"]
+    assert meeting["start_time"] == "13:00"
+    assert meeting["end_time"] == "14:15"
+    assert meeting["building"] == "Science"
+    assert meeting["room"] == "204"
+  end
+
+  test "editing course explicit room overrides current room schedule owner" do
+    {:ok, attrs} =
+      CourseChangeIntent.edit_course_attrs(
+        base_payload()
+        |> Map.merge(%{
+          "owner_type" => "room",
+          "owner_name" => "Main 101",
+          "days" => ["Monday"],
+          "start_time" => "09:00",
+          "end_time" => "09:50",
+          "target_room" => "Science 204"
+        })
+      )
+
+    assert [meeting] = attrs["meet_info"]
+    assert meeting["building"] == "Science"
+    assert meeting["room"] == "204"
+  end
+
   test "preserving room keeps multi-word building names intact" do
     meeting = %{
       "days" => ["Tuesday", "Thursday"],

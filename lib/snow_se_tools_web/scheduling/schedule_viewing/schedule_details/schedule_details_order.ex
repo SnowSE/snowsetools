@@ -12,8 +12,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
 
   @key :schedule_details_order
 
-  attr :active_change_group, :map, default: nil
-
   def assign_component(socket) do
     socket
     |> assign(@key, %__MODULE__{
@@ -21,6 +19,12 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
     })
     |> maybe_attach_hooks()
   end
+
+  attr :state, __MODULE__, required: true
+  attr :week_schedules, :map, required: true
+  attr :week_schedule_edit_course_modal, :map, default: nil
+  attr :active_change_group, :map, default: nil
+  attr :schedule_owners_metadata, :list, default: []
 
   def render(assigns) do
     ~H"""
@@ -62,6 +66,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
               position={position}
               total_count={ScheduleOrder.size(@state.selected_schedule_order)}
               active_change_group={@active_change_group}
+              schedule_owners_metadata={@schedule_owners_metadata}
+              edit_course_modal={@week_schedule_edit_course_modal}
             />
           <% else %>
             <div

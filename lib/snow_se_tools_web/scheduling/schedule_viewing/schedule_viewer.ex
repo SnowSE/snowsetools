@@ -43,6 +43,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
   attr :state, __MODULE__, required: true
   attr :schedule_details_order, :any, required: true
   attr :week_schedules, :list, default: []
+  attr :week_schedule_edit_course_modal, :map, default: nil
   attr :schedule_change_groups_state, :any, required: true
   attr :academic_programs, :list, default: []
   attr :courses, :list, default: []
@@ -61,7 +62,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
       <ScheduleDetailsOrder.render
         state={@schedule_details_order}
         week_schedules={@week_schedules}
+        week_schedule_edit_course_modal={@week_schedule_edit_course_modal}
         active_change_group={ScheduleChangeGroups.active_change_group(@schedule_change_groups_state)}
+        schedule_owners_metadata={selected_term_schedule_owners(@state)}
       />
 
       <aside class="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-slate-800/70 pl-4">
@@ -106,6 +109,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
           [] -> nil
         end
     end
+  end
+
+  defp selected_term_schedule_owners(%__MODULE__{} = state) do
+    Map.get(state.schedule_owners_metadata_by_term, state.selected_term_code, [])
   end
 
   defp initial_setup(socket) do
