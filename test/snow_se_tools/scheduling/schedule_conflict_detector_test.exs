@@ -3,6 +3,8 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
 
   alias SnowSeTools.Scheduling.{ScheduleConflictDetector, ScheduleOwnerSchedule}
 
+  # -- Existing tests (preserved) --
+
   test "detects room conflicts across term owner schedules" do
     result =
       ScheduleConflictDetector.detect_term_conflicts(
@@ -64,7 +66,7 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
   end
 
   test "does not compare a course with itself through multiple owner schedules" do
-    course = course(crn: "10001")
+    course_data = course(crn: "10001")
 
     result =
       ScheduleConflictDetector.detect_term_conflicts(
@@ -73,13 +75,13 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
             owner_key: "room:Main 101",
             type: :room,
             name: "Main 101",
-            courses: [course]
+            courses: [course_data]
           ),
           schedule_owner(
             owner_key: "professor:Professor One",
             type: :professor,
             name: "Professor One",
-            courses: [course]
+            courses: [course_data]
           )
         ],
         active_changes: []
@@ -150,6 +152,8 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
     assert result.conflicts_by_change_id == %{}
   end
 
+  # -- N-way consolidation tests (from previous refactor) --
+
   test "three courses sharing a professor produce one consolidated conflict, not three" do
     result =
       ScheduleConflictDetector.detect_term_conflicts(
@@ -162,8 +166,6 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
         active_changes: []
       )
 
-    # All 3 courses are in the same room (Main 101 default) and share a professor.
-    # We expect exactly 2 conflicts: 1 room + 1 professor (not C(3,2)*2 = 6).
     prof_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :professor))
     room_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :room))
 
@@ -172,7 +174,6 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
 
     assert length(room_conflicts) == 1, "expected 1 room conflict, got #{length(room_conflicts)}"
 
-    # The single professor conflict references all three courses
     [%{course_crns: crns}] = prof_conflicts
     assert Enum.sort(crns) == ["10001", "10002", "10003"]
   end
@@ -195,6 +196,419 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
     [%{course_crns: crns}] = room_conflicts
     assert Enum.sort(crns) == ["10001", "10002", "10003"]
   end
+
+  # -- New tests: resource-first partitioning prevents bridge-entry false positives --
+
+  test "does not create bridge conflicts: non-overlapping same-room courses are safe" do
+    # Course A and B share Main 101 but have non-overlapping times.
+    # Course C is in a different room and overlaps with both A and B temporally.
+    # Bug (old approach): C acts as a bridge, grouping {A,B,C} by time,
+    # then room_conflicts finds A+B share Main 101 → false conflict.
+    # Fix: partition by room FIRST. Room Main 101 has {A,B}, check overlap → none.
+
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "room:Main 101",
+            type: :room,
+            name: "Main 101",
+            courses: [
+              course(
+                crn: "10001",
+                professor: "Prof A",
+                room: "Main 101",
+                start_time: "09:00:00",
+                end_time: "09:50:00"
+              ),
+              course(
+                crn: "10002",
+                professor: "Prof B",
+                room: "Main 101",
+                start_time: "10:40:00",
+                end_time: "11:30:00"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "room:Other 200",
+            type: :room,
+            name: "Other 200",
+            courses: [
+              course(
+                crn: "10003",
+                professor: "Prof C",
+                room: "Other 200",
+                start_time: "09:30:00",
+                end_time: "11:00:00"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof A",
+            type: :professor,
+            name: "Prof A",
+            courses: [
+              course(
+                crn: "10001",
+                professor: "Prof A",
+                room: "Main 101",
+                start_time: "09:00:00",
+                end_time: "09:50:00"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof B",
+            type: :professor,
+            name: "Prof B",
+            courses: [
+              course(
+                crn: "10002",
+                professor: "Prof B",
+                room: "Main 101",
+                start_time: "10:40:00",
+                end_time: "11:30:00"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof C",
+            type: :professor,
+            name: "Prof C",
+            courses: [
+              course(
+                crn: "10003",
+                professor: "Prof C",
+                room: "Other 200",
+                start_time: "09:30:00",
+                end_time: "11:00:00"
+              )
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    assert result.all_conflicts == [],
+           "expected no conflicts, got #{inspect(result.all_conflicts, pretty: true)}"
+  end
+
+  test "detects room conflict only for overlapping courses, not all same-room courses" do
+    # Three courses in Lab 201: A+B overlap, C is at a different time.
+    # Only A and B should be in the room conflict, not C.
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "room:Lab 201",
+            type: :room,
+            name: "Lab 201",
+            courses: [
+              course(
+                crn: "10001",
+                professor: "Prof A",
+                room: "Lab 201",
+                start_time: "09:00:00",
+                end_time: "09:50:00"
+              ),
+              course(
+                crn: "10002",
+                professor: "Prof B",
+                room: "Lab 201",
+                start_time: "09:30:00",
+                end_time: "10:20:00"
+              ),
+              course(
+                crn: "10003",
+                professor: "Prof C",
+                room: "Lab 201",
+                start_time: "14:00:00",
+                end_time: "14:50:00"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof A",
+            type: :professor,
+            name: "Prof A",
+            courses: [
+              course(
+                crn: "10001",
+                professor: "Prof A",
+                room: "Lab 201",
+                start_time: "09:00:00",
+                end_time: "09:50:00"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof B",
+            type: :professor,
+            name: "Prof B",
+            courses: [
+              course(
+                crn: "10002",
+                professor: "Prof B",
+                room: "Lab 201",
+                start_time: "09:30:00",
+                end_time: "10:20:00"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof C",
+            type: :professor,
+            name: "Prof C",
+            courses: [
+              course(
+                crn: "10003",
+                professor: "Prof C",
+                room: "Lab 201",
+                start_time: "14:00:00",
+                end_time: "14:50:00"
+              )
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    room_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :room))
+
+    assert length(room_conflicts) == 1,
+           "expected exactly 1 room conflict (A+B), got #{length(room_conflicts)}"
+
+    [%{course_crns: crns}] = room_conflicts
+
+    assert Enum.sort(crns) == ["10001", "10002"],
+           "expected only overlapping courses, got #{inspect(crns)}"
+  end
+
+  test "detects multiple independent conflict groups within same room" do
+    # Room Lab 201: A+B overlap in the morning, D+E overlap in the afternoon.
+    # Should produce TWO separate room conflicts.
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "room:Lab 201",
+            type: :room,
+            name: "Lab 201",
+            courses: [
+              course(
+                crn: "10001",
+                professor: "Prof A",
+                room: "Lab 201",
+                start_time: "09:00:00",
+                end_time: "09:50:00"
+              ),
+              course(
+                crn: "10002",
+                professor: "Prof B",
+                room: "Lab 201",
+                start_time: "09:30:00",
+                end_time: "10:20:00"
+              ),
+              course(
+                crn: "10003",
+                professor: "Prof C",
+                room: "Lab 201",
+                start_time: "14:00:00",
+                end_time: "14:50:00"
+              ),
+              course(
+                crn: "10004",
+                professor: "Prof D",
+                room: "Lab 201",
+                start_time: "14:30:00",
+                end_time: "15:20:00"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof A",
+            type: :professor,
+            name: "Prof A",
+            courses: [
+              course(
+                crn: "10001",
+                professor: "Prof A",
+                room: "Lab 201",
+                start_time: "09:00:00",
+                end_time: "09:50:00"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof B",
+            type: :professor,
+            name: "Prof B",
+            courses: [
+              course(
+                crn: "10002",
+                professor: "Prof B",
+                room: "Lab 201",
+                start_time: "09:30:00",
+                end_time: "10:20:00"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof C",
+            type: :professor,
+            name: "Prof C",
+            courses: [
+              course(
+                crn: "10003",
+                professor: "Prof C",
+                room: "Lab 201",
+                start_time: "14:00:00",
+                end_time: "14:50:00"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof D",
+            type: :professor,
+            name: "Prof D",
+            courses: [
+              course(
+                crn: "10004",
+                professor: "Prof D",
+                room: "Lab 201",
+                start_time: "14:30:00",
+                end_time: "15:20:00"
+              )
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    room_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :room))
+
+    assert length(room_conflicts) == 2,
+           "expected 2 room conflicts (A+B and D+E), got #{length(room_conflicts)}"
+  end
+
+  test "professor bridge entry does not create false room conflicts" do
+    # Prof A teaches Course A (Room X, 9-10) and Course B (Room Y, 9-10).
+    # Room X also has Course C (Prof D, 9:30-10:30) which overlaps with A.
+    # Room Y also has Course D (Prof E, 9:30-10:30) which overlaps with B.
+    # Should produce: 2 professor conflicts (A is double-booked), not room false positives.
+
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "room:Room X",
+            type: :room,
+            name: "Room X",
+            courses: [
+              course(
+                crn: "10001",
+                professor: "Prof A",
+                room: "Room X",
+                start_time: "09:00:00",
+                end_time: "09:50:00"
+              ),
+              course(
+                crn: "10003",
+                professor: "Prof D",
+                room: "Room X",
+                start_time: "09:30:00",
+                end_time: "10:20:00"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "room:Room Y",
+            type: :room,
+            name: "Room Y",
+            courses: [
+              course(
+                crn: "10002",
+                professor: "Prof A",
+                room: "Room Y",
+                start_time: "09:00:00",
+                end_time: "09:50:00"
+              ),
+              course(
+                crn: "10004",
+                professor: "Prof E",
+                room: "Room Y",
+                start_time: "09:30:00",
+                end_time: "10:20:00"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof A",
+            type: :professor,
+            name: "Prof A",
+            courses: [
+              course(
+                crn: "10001",
+                professor: "Prof A",
+                room: "Room X",
+                start_time: "09:00:00",
+                end_time: "09:50:00"
+              ),
+              course(
+                crn: "10002",
+                professor: "Prof A",
+                room: "Room Y",
+                start_time: "09:00:00",
+                end_time: "09:50:00"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof D",
+            type: :professor,
+            name: "Prof D",
+            courses: [
+              course(
+                crn: "10003",
+                professor: "Prof D",
+                room: "Room X",
+                start_time: "09:30:00",
+                end_time: "10:20:00"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof E",
+            type: :professor,
+            name: "Prof E",
+            courses: [
+              course(
+                crn: "10004",
+                professor: "Prof E",
+                room: "Room Y",
+                start_time: "09:30:00",
+                end_time: "10:20:00"
+              )
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    prof_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :professor))
+    room_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :room))
+
+    # Prof A teaches two courses at same time → 1 professor conflict
+    assert length(prof_conflicts) == 1,
+           "expected 1 professor conflict (Prof A double-booked), got #{length(prof_conflicts)}"
+
+    # Room X: A+C overlap → 1 room conflict. Room Y: B+D overlap → 1 room conflict.
+    assert length(room_conflicts) == 2,
+           "expected 2 room conflicts (Room X: A+C, Room Y: B+D), got #{length(room_conflicts)}"
+  end
+
+  # -- Helpers --
 
   defp owner_course_lists(courses) do
     courses

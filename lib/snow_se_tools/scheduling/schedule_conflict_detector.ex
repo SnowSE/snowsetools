@@ -13,10 +13,15 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
     change_ids_by_crn = change_ids_by_crn(active_changes)
     entries = meeting_entries(courses: effective_courses, owner_keys_by_crn: owner_keys_by_crn)
 
+    # Resource-first conflict detection: partition by shared resource (room or professor),
+    # then find temporal overlaps WITHIN each partition. This prevents "bridge" entries
+    # in other rooms from creating false positive conflicts between non-overlapping courses
+    # that happen to share a room or professor.
+    all_room_conflicts = detect_room_conflicts(entries)
+    all_prof_conflicts = detect_professor_conflicts(entries)
+
     all_conflicts =
-      entries
-      |> conflict_groups()
-      |> Enum.flat_map(&group_resource_conflicts/1)
+      Enum.concat(all_room_conflicts, all_prof_conflicts)
       |> Enum.map(&attach_schedule_targets(&1, owner_targets_by_key))
       |> Enum.map(&attach_change_ids(&1, change_ids_by_crn))
       |> Enum.uniq_by(&conflict_key/1)
@@ -197,7 +202,7 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
 
   defp derived_owner_keys(room: room, instructors: instructors) do
     room_keys = if blank?(room), do: [], else: ["room:#{room}"]
-    professor_keys = instructors |> Enum.reject(&blank?/1) |> Enum.map(&"professor:#{&1}")
+    professor_keys = Enum.reject(instructors, &blank?/1) |> Enum.map(&"professor:#{&1}")
     MapSet.new(room_keys ++ professor_keys)
   end
 
@@ -212,18 +217,59 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
     |> Enum.reject(&blank?/1)
   end
 
-  # -- Group-based conflict detection --
+  # -- Resource-first conflict detection --
+  #
+  # Partition entries by shared resource FIRST, then find temporal overlaps WITHIN
+  # each partition. This prevents "bridge" entries in other rooms from creating false
+  # positive conflicts between non-overlapping courses that share a room/professor.
+  #
+  # Example of the bug this avoids:
+  #   Course A (Room X, Mon 9:00-9:50) doesn't overlap with Course B (Room X, Mon 14:00-14:50).
+  #   But both overlap temporally with Course C (Room Y, Mon 8:00-16:00).
+  #   Old approach: groups {A, B, C} by temporal overlap. Then room_conflicts sees A+B share Room X.
+  #   New approach: partitions Room X entries {A, B}. No temporal overlap → no conflict.
 
-  defp conflict_groups(entries) do
+  defp detect_room_conflicts(entries) do
     entries
-    |> group_overlapping_entries()
-    |> Enum.filter(&(length(&1) >= 2))
+    |> Enum.reject(&blank?(&1.room))
+    |> Enum.group_by(& &1.room)
+    |> Enum.flat_map(fn {_room, room_entries} ->
+      build_conflicts_for_group(room_entries, :room)
+    end)
   end
 
-  defp group_overlapping_entries(entries) when length(entries) <= 1, do: [entries]
+  defp detect_professor_conflicts(entries) do
+    professor_to_entries =
+      entries
+      |> Enum.flat_map(fn entry ->
+        Enum.map(entry.instructors, &{&1, entry})
+      end)
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
 
-  defp group_overlapping_entries(entries) do
-    # Use union-find to build disjoint sets of temporally-overlapping entries
+    Enum.flat_map(professor_to_entries, fn {_professor, prof_entries} ->
+      # Deduplicate by CRN so a course taught by the same professor twice doesn't self-conflict
+      uniq = Enum.uniq_by(prof_entries, & &1.crn)
+
+      if length(uniq) >= 2 do
+        build_conflicts_for_group(uniq, :professor)
+      else
+        []
+      end
+    end)
+  end
+
+  defp build_conflicts_for_group(entries, _type) when length(entries) < 2, do: []
+
+  defp build_conflicts_for_group(entries, type) do
+    entries
+    |> temporal_overlap_groups()
+    |> Enum.filter(&(length(&1) >= 2))
+    |> Enum.map(fn group -> build_conflict(group, type) end)
+  end
+
+  # -- Union-find temporal overlap grouping (within a resource partition) --
+
+  defp temporal_overlap_groups(entries) do
     indexed = Enum.with_index(entries)
     n = length(indexed)
     parent = Map.new(0..(n - 1), &{&1, &1})
@@ -231,30 +277,38 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
     parent_final =
       for i <- 0..(n - 2), reduce: parent do
         p_acc ->
-          {left_entry, _} = Enum.at(indexed, i)
-          union_range(p_acc, indexed, i, i + 1, n, left_entry)
+          left_entry = Enum.at(indexed, i) |> elem(0)
+          union_overlapping(p_acc, indexed, i, i + 1, n, left_entry)
       end
 
     roots = Map.new(0..(n - 1), fn i -> {i, find_root(parent_final, i)} end)
-    build_groups_from_roots(indexed, roots)
+
+    roots
+    |> Enum.group_by(&elem(&1, 1), &elem(&1, 0))
+    |> Enum.map(fn {_root, indices} ->
+      indices
+      |> Enum.sort()
+      |> Enum.map(&(Enum.at(indexed, &1) |> elem(0)))
+    end)
   end
 
-  defp union_range(parent, _indexed, _i, j, n, _left_entry) when j >= n, do: parent
+  defp union_overlapping(parent, _indexed, _i, j, n, _left_entry) when j >= n, do: parent
 
-  defp union_range(parent, indexed, i, j, n, left_entry) do
-    {right_entry, _} = Enum.at(indexed, j)
+  defp union_overlapping(parent, indexed, i, j, n, left_entry) do
+    right_entry = Enum.at(indexed, j) |> elem(0)
 
     parent_next =
       if left_entry.crn != right_entry.crn and
            meetings_overlap?(left_entry.meeting, right_entry.meeting) do
         root_i = find_root(parent, i)
         root_j = find_root(parent, j)
+
         if root_i == root_j, do: parent, else: Map.put(parent, root_i, root_j)
       else
         parent
       end
 
-    union_range(parent_next, indexed, i, j + 1, n, left_entry)
+    union_overlapping(parent_next, indexed, i, j + 1, n, left_entry)
   end
 
   defp find_root(parent, node) do
@@ -262,81 +316,44 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
     if root == node, do: node, else: find_root(parent, root)
   end
 
-  defp build_groups_from_roots(indexed, roots) do
-    roots
-    |> Enum.group_by(&elem(&1, 1), &elem(&1, 0))
-    |> Enum.map(fn {_root, indices} ->
-      Enum.sort(indices)
-      |> Enum.map(&(Enum.at(indexed, &1) |> elem(0)))
-    end)
+  # -- Build conflict structs from an overlapping group within a resource partition --
+
+  defp build_conflict(entries, :room) do
+    room = List.first(entries).room
+    owner_key = "room:#{room}"
+
+    all_owner_keys =
+      entries
+      |> Enum.reduce(MapSet.new(), fn entry, acc -> MapSet.union(acc, entry.owner_keys) end)
+      |> MapSet.put(owner_key)
+
+    base_conflict(
+      type: :room,
+      owner_keys: all_owner_keys,
+      course_crns: extract_sorted_crns(entries),
+      title: "Room conflict",
+      description:
+        "#{room} is shared by #{course_labels_list(entries)} at #{format_time_range(List.first(entries).meeting)}"
+    )
   end
 
-  # -- Generate consolidated conflicts from a group of overlapping entries --
+  defp build_conflict(entries, :professor) do
+    professor = List.first(entries).instructors |> List.first()
+    owner_key = "professor:#{professor}"
 
-  defp group_resource_conflicts(group) do
-    room_conflicts_for_group(group) ++ professor_conflicts_for_group(group)
-  end
+    all_owner_keys =
+      entries
+      |> Enum.reduce(MapSet.new(), fn entry, acc -> MapSet.union(acc, entry.owner_keys) end)
+      |> MapSet.put(owner_key)
 
-  defp room_conflicts_for_group(group) do
-    group
-    |> Enum.group_by(& &1.room)
-    |> Enum.filter(fn {room, entries} ->
-      is_binary(room) and room != "" and length(entries) >= 2
-    end)
-    |> Enum.map(fn {room, room_entries} ->
-      all_owner_keys =
-        room_entries
-        |> Enum.reduce(MapSet.new(), fn entry, acc -> MapSet.union(acc, entry.owner_keys) end)
-        |> MapSet.put("room:#{room}")
-
-      base_conflict(
-        type: :room,
-        owner_keys: all_owner_keys,
-        course_crns: extract_sorted_crns(room_entries),
-        title: "Room conflict",
-        description:
-          "#{room} is shared by #{course_labels_list(room_entries)} at #{format_time_range(List.first(room_entries).meeting)}"
-      )
-    end)
-  end
-
-  defp professor_conflicts_for_group(group) do
-    # Build professor -> list of entries map, only keep professors with 2+ courses in the group
-    prof_to_entries =
-      group
-      |> Enum.flat_map(fn entry ->
-        Enum.map(entry.instructors, &{&1, entry})
-      end)
-      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
-
-    prof_to_entries
-    |> Enum.filter(fn {_professor, entries} -> length(Enum.uniq_by(entries, & &1.crn)) >= 2 end)
-    |> Enum.map(fn {professor, prof_entries} ->
-      all_owner_keys =
-        prof_entries
-        |> Enum.reduce(MapSet.new(), fn entry, acc -> MapSet.union(acc, entry.owner_keys) end)
-        |> MapSet.put("professor:#{professor}")
-
-      base_conflict(
-        type: :professor,
-        owner_keys: all_owner_keys,
-        course_crns: extract_sorted_crns(prof_entries),
-        title: "Professor conflict",
-        description:
-          "#{professor} teaches #{course_labels_list(prof_entries)} at #{format_time_range(List.first(prof_entries).meeting)}"
-      )
-    end)
-  end
-
-  defp extract_sorted_crns(entries) do
-    entries |> Enum.map(& &1.crn) |> Enum.sort() |> Enum.uniq()
-  end
-
-  defp course_labels_list(entries) do
-    entries
-    |> Enum.uniq_by(& &1.crn)
-    |> Enum.map(&course_label/1)
-    |> Enum.join(", ")
+    base_conflict(
+      type: :professor,
+      owner_keys: all_owner_keys,
+      course_crns: extract_sorted_crns(entries),
+      title: "Professor conflict",
+      description:
+        "#{professor} teaches #{course_labels_list(entries)} at #{format_time_range(List.first(entries).meeting)}"
+    )
   end
 
   # -- Conflict struct construction --
@@ -456,6 +473,17 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
     |> Enum.join(" ")
   end
 
+  defp extract_sorted_crns(entries) do
+    entries |> Enum.map(& &1.crn) |> Enum.sort() |> Enum.uniq()
+  end
+
+  defp course_labels_list(entries) do
+    entries
+    |> Enum.uniq_by(& &1.crn)
+    |> Enum.map(&course_label/1)
+    |> Enum.join(", ")
+  end
+
   defp format_time_range(meeting) do
     [normalize_time(meeting["start_time"]), normalize_time(meeting["end_time"])]
     |> Enum.reject(&blank?/1)
@@ -488,5 +516,7 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
 
   defp time_minutes(_time), do: 0
 
-  defp blank?(value), do: is_nil(value) or value == ""
+  defp blank?(nil), do: true
+  defp blank?(""), do: true
+  defp blank?(_value), do: false
 end
