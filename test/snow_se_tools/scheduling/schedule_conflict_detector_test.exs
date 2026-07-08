@@ -743,6 +743,240 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
            "expected no room conflict for same course, got #{inspect(room_conflicts)}"
   end
 
+  test "does not conflict when two professors co-teach the same course at the same time" do
+    # Scenario: Prof A and Prof B both assigned to MATH 101 on Monday 9-10 in Room X.
+    # Each professor's schedule includes the course with identical instructor lists.
+    # This is a legitimate co-teaching arrangement — not a conflict.
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "professor:Prof A",
+            type: :professor,
+            name: "Prof A",
+            courses: [
+              co_taught_course(crn: "30001", professors: ["Prof A", "Prof B"])            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof B",
+            type: :professor,
+            name: "Prof B",
+            courses: [
+              co_taught_course(crn: "30001", professors: ["Prof A", "Prof B"])
+            ]
+          ),
+          schedule_owner(
+            owner_key: "room:Room X",
+            type: :room,
+            name: "Room X",
+            courses: [
+              co_taught_course(crn: "30001", professors: ["Prof A", "Prof B"])
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    prof_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :professor))
+    room_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :room))
+
+    assert prof_conflicts == [],
+           "expected no professor conflict for co-teaching, got #{inspect(prof_conflicts)}"
+    assert room_conflicts == [],
+           "expected no room conflict for co-teaching, got #{inspect(room_conflicts)}"
+  end
+
+  test "co-teaching exemption does not hide real conflicts between different courses" do
+    # Prof A co-teaches MATH 101 with Prof B AND also teaches PHYS 201 solo.
+    # Both at the same time → PROF A should still be flagged (MATH 101 vs PHYS 201).
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "professor:Prof A",
+            type: :professor,
+            name: "Prof A",
+            courses: [
+              co_taught_course(crn: "30010", professors: ["Prof A", "Prof B"]),
+              course(
+                crn: "30020",
+                professor: "Prof A",
+                room: "Room Z",
+                subject_code: "PHYS",
+                course_number: "201"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof B",
+            type: :professor,
+            name: "Prof B",
+            courses: [
+              co_taught_course(crn: "30010", professors: ["Prof A", "Prof B"])
+            ]
+          ),
+          schedule_owner(
+            owner_key: "room:Room X",
+            type: :room,
+            name: "Room X",
+            courses: [
+              co_taught_course(crn: "30010", professors: ["Prof A", "Prof B"])
+            ]
+          ),
+          schedule_owner(
+            owner_key: "room:Room Z",
+            type: :room,
+            name: "Room Z",
+            courses: [
+              course(
+                crn: "30020",
+                professor: "Prof A",
+                room: "Room Z",
+                subject_code: "PHYS",
+                course_number: "201"
+              )
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    prof_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :professor))
+
+    assert length(prof_conflicts) == 1,
+           "expected 1 professor conflict for Prof A teaching MATH 101 + PHYS 201, got #{inspect(prof_conflicts)}"
+    assert Enum.at(prof_conflicts, 0).course_crns == ["30010", "30020"]
+  end
+
+  test "ignores TBA Staff as a professor resource in conflict detection" do
+    # "TBA Staff" is a placeholder professor used by the registrar for courses
+    # where the actual instructor has not yet been assigned. It should never be
+    # flagged as conflicting with itself or any other professor.
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "professor:TBA Staff",
+            type: :professor,
+            name: "TBA Staff",
+            courses: [
+              course(
+                crn: "40001",
+                professor: "TBA Staff",
+                room: "Room A",
+                subject_code: "MATH",
+                course_number: "101"
+              ),
+              course(
+                crn: "40002",
+                professor: "TBA Staff",
+                room: "Room B",
+                subject_code: "PHYS",
+                course_number: "201"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "room:Room A",
+            type: :room,
+            name: "Room A",
+            courses: [
+              course(
+                crn: "40001",
+                professor: "TBA Staff",
+                room: "Room A",
+                subject_code: "MATH",
+                course_number: "101"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "room:Room B",
+            type: :room,
+            name: "Room B",
+            courses: [
+              course(
+                crn: "40002",
+                professor: "TBA Staff",
+                room: "Room B",
+                subject_code: "PHYS",
+                course_number: "201"
+              )
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    prof_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :professor))
+
+    assert prof_conflicts == [],
+           "expected no professor conflicts for TBA Staff, got #{inspect(prof_conflicts)}"
+  end
+
+  test "TBA Staff on one course does not hide real conflicts for another professor" do
+    # Prof A teaches MATH 101 (co-taught with TBA Staff) and PHYS 201 solo.
+    # TBA Staff should not interfere — Prof A's real conflict should still appear.
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "professor:Prof A",
+            type: :professor,
+            name: "Prof A",
+            courses: [
+              co_taught_course(crn: "40010", professors: ["Prof A", "TBA Staff"]),
+              course(
+                crn: "40020",
+                professor: "Prof A",
+                room: "Room Z",
+                subject_code: "PHYS",
+                course_number: "201"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:TBA Staff",
+            type: :professor,
+            name: "TBA Staff",
+            courses: [
+              co_taught_course(crn: "40010", professors: ["Prof A", "TBA Staff"])
+            ]
+          ),
+          schedule_owner(
+            owner_key: "room:Room X",
+            type: :room,
+            name: "Room X",
+            courses: [
+              co_taught_course(crn: "40010", professors: ["Prof A", "TBA Staff"])
+            ]
+          ),
+          schedule_owner(
+            owner_key: "room:Room Z",
+            type: :room,
+            name: "Room Z",
+            courses: [
+              course(
+                crn: "40020",
+                professor: "Prof A",
+                room: "Room Z",
+                subject_code: "PHYS",
+                course_number: "201"
+              )
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    prof_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :professor))
+
+    assert length(prof_conflicts) == 1,
+           "expected 1 professor conflict for Prof A (MATH 101 + PHYS 201), got #{inspect(prof_conflicts)}"
+    # TBA Staff should NOT appear in the owner keys of this conflict
+    refute Enum.any?(prof_conflicts, fn c -> "professor:TBA Staff" in c.owner_keys end)
+  end
+
   # -- Helpers --
 
   defp owner_course_lists(courses) do
@@ -807,6 +1041,31 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
       "days" => Keyword.get(opts, :days, ["Monday"]),
       "start_time" => Keyword.fetch!(opts, :start_time),
       "end_time" => Keyword.fetch!(opts, :end_time)
+    }
+  end
+
+  defp co_taught_course(opts) do
+    crn = Keyword.fetch!(opts, :crn)
+    professors = Keyword.fetch!(opts, :professors)
+
+    %{      "crn" => crn,
+      "term_code" => "202777",
+      "subject_code" => Keyword.get(opts, :subject_code, "MATH"),
+      "course_number" => Keyword.get(opts, :course_number, "101"),
+      "section_number" => "01",
+      "name" => Keyword.get(opts, :name, "Course #{crn}"),
+      "credit_hours" => 1,
+      "instructors" => Enum.map(professors, fn name ->
+        %{"name" => name, "primary_instructor" => true}
+      end),
+      "meet_info" => [
+        meeting(
+          room: Keyword.get(opts, :room, "Room X"),
+          days: Keyword.get(opts, :days, ["Monday"]),
+          start_time: Keyword.get(opts, :start_time, "09:00:00"),
+          end_time: Keyword.get(opts, :end_time, "09:50:00")
+        )
+      ]
     }
   end
 

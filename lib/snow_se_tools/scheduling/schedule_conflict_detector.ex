@@ -1,6 +1,10 @@
 defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
   alias SnowSeTools.Scheduling.ScheduleUtils
 
+  # Placeholder professor used by registrar for unassigned courses.
+  # Filtered out from professor conflict detection entirely.
+  @tba_staff "TBA Staff"
+
   def detect_term_conflicts(
         owner_course_lists: owner_course_lists,
         active_changes: active_changes
@@ -202,7 +206,12 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
 
   defp derived_owner_keys(room: room, instructors: instructors) do
     room_keys = if blank?(room), do: [], else: ["room:#{room}"]
-    professor_keys = Enum.reject(instructors, &blank?/1) |> Enum.map(&"professor:#{&1}")
+    professor_keys =
+      instructors
+      |> Enum.reject(&blank?/1)
+      |> Enum.reject(&(&1 == @tba_staff))
+      |> Enum.map(&"professor:#{&1}")
+
     MapSet.new(room_keys ++ professor_keys)
   end
 
@@ -242,7 +251,9 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
     professor_to_entries =
       entries
       |> Enum.flat_map(fn entry ->
-        Enum.map(entry.instructors, &{&1, entry})
+        entry.instructors
+        |> Enum.reject(&(&1 == @tba_staff))
+        |> Enum.map(&{&1, entry})
       end)
       |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
 
@@ -263,24 +274,33 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
   defp build_conflicts_for_group(entries, type) do
     entries
     |> temporal_overlap_groups()
-    |> Enum.map(fn group ->
-      # Only deduplicate same-course sections for professor conflicts.
-      # A professor teaching multiple sections of the same course (e.g. MATH 101 Sec 1 + Sec 2)
-      # is not a conflict. Room conflicts already have unique courses per room partition.
-      if type == :professor do
-        dedup_by_course_code(group)
-      else
-        group
-      end
-    end)
+    # Deduplicate same-course sections and co-taught courses within temporal overlap groups.
+    # Two entries are considered duplicates when they share:
+    #   - Same subject_code + course_number (same course identity)
+    #   - Identical sorted instructor lists (co-teaching exemption)
+    #
+    # This handles two scenarios:
+    #   1. A professor teaching multiple sections of the same course (e.g., MATH 101 Sec 1 + Sec 2)
+    #      The first section seen is kept; additional sections with matching code are filtered.
+    #   2. Two professors co-teaching the same course (same time, same room, identical instructors).
+    #      Both professor and room partitions get this treatment to avoid false conflicts.
+    #
+    # NOTE: The co-teaching exemption only applies when instructor lists are IDENTICAL.
+    # If two courses share subject_code + course_number but have DIFFERENT instructor
+    # combinations, they are treated as separate courses and may still conflict.
+    |> Enum.map(fn group -> dedup_same_course_sections(group) end)
     |> Enum.filter(&(length(&1) >= 2))
     |> Enum.map(fn group -> build_conflict(group, type) end)
   end
 
-  defp dedup_by_course_code(entries) do
+  defp dedup_same_course_sections(entries) do
     {_seen, filtered} =
       Enum.reduce(entries, {%MapSet{}, []}, fn entry, {seen, acc} ->
-        course_id = {Map.get(entry, :subject_code), Map.get(entry, :course_number)}
+        course_id = {
+          Map.get(entry, :subject_code),
+          Map.get(entry, :course_number),
+          entry.instructors |> Enum.sort() |> :erlang.term_to_binary()
+        }
 
         if MapSet.member?(seen, course_id) do
           {seen, acc}
@@ -351,6 +371,7 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
       entries
       |> Enum.reduce(MapSet.new(), fn entry, acc -> MapSet.union(acc, entry.owner_keys) end)
       |> MapSet.put(owner_key)
+      |> MapSet.reject(&tba_staff_owner?/1)
 
     base_conflict(
       type: :room,
@@ -370,6 +391,7 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
       entries
       |> Enum.reduce(MapSet.new(), fn entry, acc -> MapSet.union(acc, entry.owner_keys) end)
       |> MapSet.put(owner_key)
+      |> MapSet.reject(&tba_staff_owner?/1)
 
     base_conflict(
       type: :professor,
@@ -544,4 +566,10 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
   defp blank?(nil), do: true
   defp blank?(""), do: true
   defp blank?(_value), do: false
+
+  defp tba_staff_owner?("professor:" <> rest) do
+    String.trim(rest) == @tba_staff
+  end
+
+  defp tba_staff_owner?(_owner_key), do: false
 end
