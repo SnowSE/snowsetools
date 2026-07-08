@@ -7,18 +7,16 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleConflictDetail do
   attr :schedule_event, :string, default: @default_event
 
   def render(assigns) do
-    assigns = assign(assigns, :targets, conflict_targets(assigns.conflict))
-
     ~H"""
     <div class="rounded-md border border-red-500/30 bg-red-950/45 px-2 py-1 text-[11px] text-red-100">
       <div class="flex flex-wrap items-start gap-x-1 gap-y-0.5">
         <span class="font-semibold">{@conflict.title}</span>
-        <span class="text-red-200/85">: {@conflict.description}</span>
+        <span class="text-red-200/85">: {build_description(assigns.conflict)}</span>
       </div>
 
-      <div :if={@targets != []} class="mt-2 flex flex-wrap gap-1">
+      <div :if={conflict_targets(assigns.conflict) != []} class="mt-2 flex flex-wrap gap-1">
         <.schedule_target_button
-          :for={target <- @targets}
+          :for={target <- conflict_targets(assigns.conflict)}
           key={target.key}
           label={target.label}
           kind={target.kind}
@@ -65,6 +63,44 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleConflictDetail do
     conflict
     |> Map.get(:schedule_targets, Map.get(conflict, "schedule_targets", []))
     |> Enum.uniq_by(& &1.key)
+  end
+
+  defp build_description(%{type: :room, entries: entries, resource_label: room}) do
+    [room, "is shared by", course_labels_from_entries(entries), first_time_range(entries)]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" ")
+  end
+
+  defp build_description(%{type: :professor, entries: entries, resource_label: professor}) do
+    [professor, "teaches", course_labels_from_entries(entries), first_time_range(entries)]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" ")
+  end
+
+  defp build_description(_conflict), do: ""
+
+  defp course_labels_from_entries(entries) do
+    labels = Enum.map(entries, & &1.course_label)
+
+    case length(labels) do
+      1 ->
+        hd(labels)
+
+      2 ->
+        "#{Enum.at(labels, 0)} and #{Enum.at(labels, 1)}"
+
+      n when n > 2 ->
+        last = List.last(labels)
+        all_but_last = Enum.drop(labels, -1) |> Enum.join(", ")
+        "#{all_but_last}, and #{last}"
+    end
+  end
+
+  defp first_time_range(entries) do
+    case List.first(entries) do
+      %{time_range: range} when is_binary(range) and range != "" -> "at #{range}"
+      _ -> nil
+    end
   end
 
   defp schedule_target_button_class(:room) do

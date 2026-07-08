@@ -379,8 +379,8 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
       owner_keys: all_owner_keys,
       course_crns: extract_sorted_crns(entries),
       title: "Room conflict",
-      description:
-        "#{room} is shared by #{course_labels_list(entries)} at #{format_time_range(List.first(entries).meeting)}"
+      entries: build_frontend_entries(entries),
+      resource_label: room
     )
   end
 
@@ -399,8 +399,8 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
       owner_keys: all_owner_keys,
       course_crns: extract_sorted_crns(entries),
       title: "Professor conflict",
-      description:
-        "#{professor} teaches #{course_labels_list(entries)} at #{format_time_range(List.first(entries).meeting)}"
+      entries: build_frontend_entries(entries),
+      resource_label: professor
     )
   end
 
@@ -411,12 +411,14 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
          owner_keys: owner_keys,
          course_crns: course_crns,
          title: title,
-         description: description
+         entries: entries,
+         resource_label: resource_label
        ) do
     %{
       type: type,
       title: title,
-      description: description,
+      resource_label: resource_label,
+      entries: entries,
       owner_keys: MapSet.to_list(owner_keys),
       course_crns: course_crns,
       introduced_by_change_ids: [],
@@ -515,21 +517,23 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
 
   # -- Formatting helpers --
 
-  defp course_label(entry) do
-    [entry.subject_code, entry.course_number, entry.course_name]
-    |> Enum.reject(&blank?/1)
-    |> Enum.join(" ")
-  end
-
   defp extract_sorted_crns(entries) do
     entries |> Enum.map(& &1.crn) |> Enum.sort() |> Enum.uniq()
   end
 
-  defp course_labels_list(entries) do
+  defp build_frontend_entries(entries) do
     entries
     |> Enum.uniq_by(& &1.crn)
-    |> Enum.map(&course_label/1)
-    |> Enum.join(", ")
+    |> Enum.map(fn entry ->
+      course_label =
+        [entry.subject_code, entry.course_number, entry.course_name]
+        |> Enum.reject(&blank?/1)
+        |> Enum.join(" ")
+
+      time_range = format_time_range(entry.meeting)
+
+      %{course_label: course_label, time_range: time_range}
+    end)
   end
 
   defp format_time_range(meeting) do
