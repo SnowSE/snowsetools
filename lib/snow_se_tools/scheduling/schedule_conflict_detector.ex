@@ -5,6 +5,12 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
   # Filtered out from professor conflict detection entirely.
   @tba_staff "TBA Staff"
 
+  # Subject codes excluded from conflict detection.
+  # Courses with these subjects (TECS, TENT, NURS) never participate
+  # in room or professor conflict checks. Add new subject codes to this list
+  # as needed without changing any other logic.
+  @conflict_excluded_subject_codes ["TECS", "TENT", "NURS", "PE", "THEA"]
+
   def detect_term_conflicts(
         owner_course_lists: owner_course_lists,
         active_changes: active_changes
@@ -241,6 +247,7 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
 
   defp detect_room_conflicts(entries) do
     entries
+    |> Enum.reject(&conflict_excluded_subject?/1)
     |> Enum.reject(&blank?(&1.room))
     |> Enum.group_by(& &1.room)
     |> Enum.flat_map(fn {_room, room_entries} ->
@@ -251,6 +258,7 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
   defp detect_professor_conflicts(entries) do
     professor_to_entries =
       entries
+      |> Enum.reject(&conflict_excluded_subject?/1)
       |> Enum.flat_map(fn entry ->
         entry.instructors
         |> Enum.reject(&(&1 == @tba_staff))
@@ -291,6 +299,11 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
     # combinations, they are treated as separate courses and may still conflict.
     |> Enum.map(fn group -> dedup_same_course_sections(group) end)
     |> Enum.filter(&(length(&1) >= 2))
+    # Cross-listed courses share the same course_number and course_name but have
+    # different subject_codes (e.g., CS 2700 "Digital Circuits" and ENGR 2700 "Digital Circuits").
+    # When a conflict group consists entirely of such cross-listings, it's the same class
+    # offered under multiple departments — not a real scheduling conflict.
+    |> Enum.reject(&all_cross_listed_same_course?/1)
     |> Enum.map(fn group -> build_conflict(group, type) end)
   end
 
@@ -312,6 +325,29 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
 
     Enum.reverse(filtered)
   end
+
+  defp all_cross_listed_same_course?(entries) when length(entries) >= 2 do
+    # Collect the unique {course_number, course_name} pairs in the group.
+    # If there's only one such pair but multiple subject_codes, all entries are
+    # cross-listings of the same underlying course.
+    identities =
+      entries
+      |> Enum.map(fn entry ->
+        {
+          Map.get(entry, :course_number),
+          Map.get(entry, :course_name)
+        }
+      end)
+      |> MapSet.new()
+
+    subjects =
+      Enum.map(entries, &Map.get(&1, :subject_code))
+      |> MapSet.new()
+
+    MapSet.size(identities) == 1 and MapSet.size(subjects) > 1
+  end
+
+  defp all_cross_listed_same_course?(_entries), do: false
 
   # -- Union-find temporal overlap grouping (within a resource partition) --
 
@@ -577,4 +613,8 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
   end
 
   defp tba_staff_owner?(_owner_key), do: false
+
+  defp conflict_excluded_subject?(entry) do
+    entry.subject_code in @conflict_excluded_subject_codes
+  end
 end

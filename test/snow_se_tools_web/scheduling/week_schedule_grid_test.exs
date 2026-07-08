@@ -110,6 +110,92 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
     assert style =~ "left: 0%; width: calc(100% - 0px)"
   end
 
+  test "renders only one card when six meetings of the same course are in the same room" do
+    schedule_owner =
+      ScheduleUtils.build_week_schedule(
+        type: :academic_program_semester,
+        name: "BIO:Fall2024",
+        courses: [
+          build_course("30001", "Intro to Biology", ["Wednesday"], "13:00", "14:30",
+            subject_code: "BIO",
+            course_number: "101"
+          ),
+          build_course("30002", "Intro to Biology", ["Wednesday"], "13:00", "14:30",
+            subject_code: "BIO",
+            course_number: "101"
+          ),
+          build_course("30003", "Intro to Biology", ["Wednesday"], "13:00", "14:30",
+            subject_code: "BIO",
+            course_number: "101"
+          ),
+          build_course("30004", "Intro to Biology", ["Wednesday"], "13:00", "14:30",
+            subject_code: "BIO",
+            course_number: "101"
+          ),
+          build_course("30005", "Intro to Biology", ["Wednesday"], "13:00", "14:30",
+            subject_code: "BIO",
+            course_number: "101"
+          ),
+          build_course("30006", "Intro to Biology", ["Wednesday"], "13:00", "14:30",
+            subject_code: "BIO",
+            course_number: "101"
+          )
+        ]
+      )
+
+    html =
+      render_component(&WeekScheduleGrid.schedule_grid/1,
+        schedule_owner: schedule_owner,
+        owner_key: "academic_program_semester:bio-fall2024",
+        selected_term_code: "202501",
+        active_change_group: nil
+      )
+
+    document = LazyHTML.from_fragment(html)
+
+    assert document
+           |> LazyHTML.query("[data-week-schedule-course]")
+           |> LazyHTML.attributes()
+           |> length() == 1
+
+    assert LazyHTML.text(document) =~ "6 CRNs: 30001, 30002, 30003, 30004, 30005, 30006"
+  end
+
+  test "combines cross-listed courses with different subject codes into one card" do
+    schedule_owner =
+      ScheduleUtils.build_week_schedule(
+        type: :academic_program_semester,
+        name: "ENG:Fall2024",
+        courses: [
+          build_course("40001", "Digital Circuits", ["Tuesday"], "10:00", "11:30",
+            subject_code: "CS",
+            course_number: "2700"
+          ),
+          build_course("40002", "Digital Circuits", ["Tuesday"], "10:00", "11:30",
+            subject_code: "ENGR",
+            course_number: "2700"
+          )
+        ]
+      )
+
+    html =
+      render_component(&WeekScheduleGrid.schedule_grid/1,
+        schedule_owner: schedule_owner,
+        owner_key: "academic_program_semester:eng-fall2024",
+        selected_term_code: "202501",
+        active_change_group: nil
+      )
+
+    document = LazyHTML.from_fragment(html)
+
+    assert document
+           |> LazyHTML.query("[data-week-schedule-course]")
+           |> LazyHTML.attributes()
+           |> length() == 1
+
+    assert LazyHTML.text(document) =~ "2 CRNs: 40001, 40002"
+  end
+
   defp build_course(crn, name, days, start_time, end_time, opts \\ []) do
     %{
       "crn" => crn,

@@ -417,7 +417,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
     |> Enum.with_index()
     |> Enum.group_by(fn {meeting, _index} ->
       {
-        meeting.subject_code,
+        meeting.course_name,
         meeting.course_number,
         meeting.start_minutes,
         meeting.end_minutes

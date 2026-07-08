@@ -26,11 +26,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleConflictDetail do
     </div>
     """
   end
-
-  def schedule_targets(conflict) when is_map(conflict) do
-    conflict_targets(conflict)
-  end
-
   attr :key, :string, required: true
   attr :label, :string, required: true
   attr :kind, :atom, required: true

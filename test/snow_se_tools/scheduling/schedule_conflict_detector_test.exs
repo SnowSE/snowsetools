@@ -851,6 +851,79 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
     assert Enum.at(prof_conflicts, 0).course_crns == ["30010", "30020"]
   end
 
+  test "does not conflict when cross-listed courses have different subjects but identical code and title" do
+    # CS 2700 "Digital Circuits" and ENGR 2700 "Digital Circuits" are the same class
+    # cross-listed under two departments. They share a room and time — not a conflict.
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "room:Lecture Hall A",
+            type: :room,
+            name: "Lecture Hall A",
+            courses: [
+              crosslisted_course(crn: "50001", subject: "CS", room: "Lecture Hall A"),
+              crosslisted_course(crn: "50002", subject: "ENGR", room: "Lecture Hall A")
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof Smith",
+            type: :professor,
+            name: "Prof Smith",
+            courses: [
+              crosslisted_course(crn: "50001", subject: "CS", room: "Lecture Hall A"),
+              crosslisted_course(crn: "50002", subject: "ENGR", room: "Lecture Hall A")
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    assert result.all_conflicts == [],
+           "expected no conflicts for cross-listed courses, got #{inspect(result.all_conflicts)}"
+  end
+
+  test "still detects conflict when same course number has different titles" do
+    # CS 2700 "Digital Circuits" and ENGR 2700 "Fluid Mechanics" are different classes
+    # that happen to share a course number. Same room + time IS a conflict.
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "room:Lecture Hall B",
+            type: :room,
+            name: "Lecture Hall B",
+            courses: [
+              course(crn: "50010", subject_code: "CS", course_number: "2700", name: "Digital Circuits", room: "Lecture Hall B"),
+              course(crn: "50011", subject_code: "ENGR", course_number: "2700", name: "Fluid Mechanics", room: "Lecture Hall B")
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof X",
+            type: :professor,
+            name: "Prof X",
+            courses: [
+              course(crn: "50010", subject_code: "CS", course_number: "2700", name: "Digital Circuits", room: "Lecture Hall B")
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof Y",
+            type: :professor,
+            name: "Prof Y",
+            courses: [
+              course(crn: "50011", subject_code: "ENGR", course_number: "2700", name: "Fluid Mechanics", room: "Lecture Hall B")
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    room_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :room))
+
+    assert length(room_conflicts) == 1,
+           "expected 1 room conflict for different-titled courses with same number, got #{inspect(room_conflicts)}"
+  end
+
   test "ignores TBA Staff as a professor resource in conflict detection" do
     # "TBA Staff" is a placeholder professor used by the registrar for courses
     # where the actual instructor has not yet been assigned. It should never be
@@ -981,6 +1054,180 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
     refute Enum.any?(prof_conflicts, fn c -> "professor:TBA Staff" in c.owner_keys end)
   end
 
+  test "does not consider excluded subject codes (TECS, TENT, NURS) when detecting conflicts" do
+    # TECS, TENT, and NURS courses should never participate in conflict detection,
+    # even when they share a room or professor with regular courses at the same time.
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "room:Lecture Hall A",
+            type: :room,
+            name: "Lecture Hall A",
+            courses: [
+              course(
+                crn: "60001",
+                professor: "Prof X",
+                room: "Lecture Hall A",
+                subject_code: "TECS",
+                course_number: "999"
+              ),
+              course(
+                crn: "60002",
+                professor: "Prof Y",
+                room: "Lecture Hall A",
+                subject_code: "TENT",
+                course_number: "100"
+              ),
+              course(
+                crn: "60003",
+                professor: "Prof Z",
+                room: "Lecture Hall A",
+                subject_code: "NURS",
+                course_number: "200"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof X",
+            type: :professor,
+            name: "Prof X",
+            courses: [
+              course(
+                crn: "60001",
+                professor: "Prof X",
+                room: "Lecture Hall A",
+                subject_code: "TECS",
+                course_number: "999"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof Y",
+            type: :professor,
+            name: "Prof Y",
+            courses: [
+              course(
+                crn: "60002",
+                professor: "Prof Y",
+                room: "Lecture Hall A",
+                subject_code: "TENT",
+                course_number: "100"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof Z",
+            type: :professor,
+            name: "Prof Z",
+            courses: [
+              course(
+                crn: "60003",
+                professor: "Prof Z",
+                room: "Lecture Hall A",
+                subject_code: "NURS",
+                course_number: "200"
+              )
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    assert result.all_conflicts == [],
+           "expected no conflicts for excluded subjects, got #{inspect(result.all_conflicts)}"
+  end
+
+  test "excluded subject codes do not hide real conflicts between regular courses" do
+    # A TECS course shares a room with two regular courses that conflict.
+    # The TECS course should be invisible — the regular courses still conflict.
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "room:Lecture Hall B",
+            type: :room,
+            name: "Lecture Hall B",
+            courses: [
+              course(
+                crn: "60010",
+                professor: "Prof A",
+                room: "Lecture Hall B",
+                subject_code: "TECS",
+                course_number: "999"
+              ),
+              course(
+                crn: "60020",
+                professor: "Prof B",
+                room: "Lecture Hall B",
+                subject_code: "MATH",
+                course_number: "101"
+              ),
+              course(
+                crn: "60030",
+                professor: "Prof C",
+                room: "Lecture Hall B",
+                subject_code: "PHYS",
+                course_number: "201"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof A",
+            type: :professor,
+            name: "Prof A",
+            courses: [
+              course(
+                crn: "60010",
+                professor: "Prof A",
+                room: "Lecture Hall B",
+                subject_code: "TECS",
+                course_number: "999"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof B",
+            type: :professor,
+            name: "Prof B",
+            courses: [
+              course(
+                crn: "60020",
+                professor: "Prof B",
+                room: "Lecture Hall B",
+                subject_code: "MATH",
+                course_number: "101"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof C",
+            type: :professor,
+            name: "Prof C",
+            courses: [
+              course(
+                crn: "60030",
+                professor: "Prof C",
+                room: "Lecture Hall B",
+                subject_code: "PHYS",
+                course_number: "201"
+              )
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    room_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :room))
+
+    assert length(room_conflicts) == 1,
+           "expected 1 room conflict (MATH vs PHYS), got #{inspect(room_conflicts)}"
+
+    # TECS course should NOT be in the conflict
+    [%{course_crns: crns}] = room_conflicts
+    assert Enum.sort(crns) == ["60020", "60030"]
+  end
+
   # -- Helpers --
 
   defp owner_course_lists(courses) do
@@ -1067,6 +1314,32 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
       "meet_info" => [
         meeting(
           room: Keyword.get(opts, :room, "Room X"),
+          days: Keyword.get(opts, :days, ["Monday"]),
+          start_time: Keyword.get(opts, :start_time, "09:00:00"),
+          end_time: Keyword.get(opts, :end_time, "09:50:00")
+        )
+      ]
+    }
+  end
+
+  defp crosslisted_course(opts) do
+    crn = Keyword.fetch!(opts, :crn)
+    subject = Keyword.fetch!(opts, :subject)
+
+    %{
+      "crn" => crn,
+      "term_code" => "202777",
+      "subject_code" => subject,
+      "course_number" => "2700",
+      "section_number" => to_string(subject),
+      "name" => "Digital Circuits",
+      "credit_hours" => 3,
+      "instructors" => [
+        %{"name" => "Prof Smith", "primary_instructor" => true}
+      ],
+      "meet_info" => [
+        meeting(
+          room: Keyword.fetch!(opts, :room),
           days: Keyword.get(opts, :days, ["Monday"]),
           start_time: Keyword.get(opts, :start_time, "09:00:00"),
           end_time: Keyword.get(opts, :end_time, "09:50:00")
