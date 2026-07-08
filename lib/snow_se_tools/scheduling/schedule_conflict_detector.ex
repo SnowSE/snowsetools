@@ -1,4 +1,5 @@
 defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
+  alias SnowSeTools.Scheduling.CourseNameSequel
   alias SnowSeTools.Scheduling.ScheduleUtils
 
   # Placeholder professor used by registrar for unassigned courses.
@@ -9,7 +10,19 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
   # Courses with these subjects (TECS, TENT, NURS) never participate
   # in room or professor conflict checks. Add new subject codes to this list
   # as needed without changing any other logic.
-  @conflict_excluded_subject_codes ["TECS", "TENT", "NURS", "PE", "THEA", "TEDT", "TEAU"]
+  @conflict_excluded_subject_codes [
+    "TECS",
+    "TENT",
+    "NURS",
+    "PE",
+    "THEA",
+    "TEDT",
+    "TEAU",
+    "TEWT",
+    "TEAC",
+    "DANC",
+    "OLE"
+  ]
 
   def detect_term_conflicts(
         owner_course_lists: owner_course_lists,
@@ -304,6 +317,7 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
     # When a conflict group consists entirely of such cross-listings, it's the same class
     # offered under multiple departments — not a real scheduling conflict.
     |> Enum.reject(&all_cross_listed_same_course?/1)
+    |> Enum.reject(&all_sequel_level_courses?/1)
     |> Enum.map(fn group -> build_conflict(group, type) end)
   end
 
@@ -348,6 +362,17 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
   end
 
   defp all_cross_listed_same_course?(_entries), do: false
+
+  defp all_sequel_level_courses?(entries) when length(entries) >= 2 do
+    names = Enum.map(entries, &Map.get(&1, :course_name))
+
+    case CourseNameSequel.all_same_sequel_base?(names) do
+      {:ok, _base} -> true
+      {:error, _reason} -> false
+    end
+  end
+
+  defp all_sequel_level_courses?(_entries), do: false
 
   # -- Union-find temporal overlap grouping (within a resource partition) --
 

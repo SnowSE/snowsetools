@@ -894,8 +894,20 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
             type: :room,
             name: "Lecture Hall B",
             courses: [
-              course(crn: "50010", subject_code: "CS", course_number: "2700", name: "Digital Circuits", room: "Lecture Hall B"),
-              course(crn: "50011", subject_code: "ENGR", course_number: "2700", name: "Fluid Mechanics", room: "Lecture Hall B")
+              course(
+                crn: "50010",
+                subject_code: "CS",
+                course_number: "2700",
+                name: "Digital Circuits",
+                room: "Lecture Hall B"
+              ),
+              course(
+                crn: "50011",
+                subject_code: "ENGR",
+                course_number: "2700",
+                name: "Fluid Mechanics",
+                room: "Lecture Hall B"
+              )
             ]
           ),
           schedule_owner(
@@ -903,7 +915,13 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
             type: :professor,
             name: "Prof X",
             courses: [
-              course(crn: "50010", subject_code: "CS", course_number: "2700", name: "Digital Circuits", room: "Lecture Hall B")
+              course(
+                crn: "50010",
+                subject_code: "CS",
+                course_number: "2700",
+                name: "Digital Circuits",
+                room: "Lecture Hall B"
+              )
             ]
           ),
           schedule_owner(
@@ -911,7 +929,13 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
             type: :professor,
             name: "Prof Y",
             courses: [
-              course(crn: "50011", subject_code: "ENGR", course_number: "2700", name: "Fluid Mechanics", room: "Lecture Hall B")
+              course(
+                crn: "50011",
+                subject_code: "ENGR",
+                course_number: "2700",
+                name: "Fluid Mechanics",
+                room: "Lecture Hall B"
+              )
             ]
           )
         ],
@@ -1228,6 +1252,472 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
     assert Enum.sort(crns) == ["60020", "60030"]
   end
 
+  # -- Sequel-level course tests (differ only by one number) --
+
+  test "does not conflict when two sequel levels share a room at the same time (arabic numerals)" do
+    # "Level 1 Conversation" and "Level 2 Conversation" are taught simultaneously
+    # in the same room. They differ only by one arabic numeral → not a conflict.
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "room:Lecture Hall A",
+            type: :room,
+            name: "Lecture Hall A",
+            courses: [
+              levels_of_course(
+                crn: "70001",
+                name: "Level 1 Conversation",
+                room: "Lecture Hall A"
+              ),
+              levels_of_course(crn: "70002", name: "Level 2 Conversation", room: "Lecture Hall A")
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof A",
+            type: :professor,
+            name: "Prof A",
+            courses: [
+              levels_of_course(crn: "70001", name: "Level 1 Conversation", room: "Lecture Hall A")
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof B",
+            type: :professor,
+            name: "Prof B",
+            courses: [
+              levels_of_course(crn: "70002", name: "Level 2 Conversation", room: "Lecture Hall A")
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    assert result.all_conflicts == [],
+           "expected no conflicts for sequel-level courses (Level 1 vs Level 2), got #{inspect(result.all_conflicts)}"
+  end
+
+  test "does not conflict when two sequel levels share a room at the same time (roman numerals)" do
+    # "Practicum I" and "Practicum II" are taught simultaneously in the same room.
+    # They differ only by one Roman numeral → not a conflict.
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "room:Lecture Hall B",
+            type: :room,
+            name: "Lecture Hall B",
+            courses: [
+              levels_of_course(crn: "70010", name: "Practicum I", room: "Lecture Hall B"),
+              levels_of_course(crn: "70011", name: "Practicum II", room: "Lecture Hall B")
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof C",
+            type: :professor,
+            name: "Prof C",
+            courses: [
+              levels_of_course(crn: "70010", name: "Practicum I", room: "Lecture Hall B")
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof D",
+            type: :professor,
+            name: "Prof D",
+            courses: [
+              levels_of_course(crn: "70011", name: "Practicum II", room: "Lecture Hall B")
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    assert result.all_conflicts == [],
+           "expected no conflicts for sequel-level courses (Practicum I vs Practicum II), got #{inspect(result.all_conflicts)}"
+  end
+
+  test "does not conflict when a professor teaches two sequel levels at the same time" do
+    # Prof A teaches "Biblical Hebrew 1" and "Biblical Hebrew 2" simultaneously.
+    # Different rooms, same time → no professor conflict (sequel levels).
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "professor:Prof A",
+            type: :professor,
+            name: "Prof A",
+            courses: [
+              levels_of_course(crn: "70020", name: "Biblical Hebrew 1", room: "Room X"),
+              levels_of_course(crn: "70021", name: "Biblical Hebrew 2", room: "Room Y")
+            ]
+          ),
+          schedule_owner(
+            owner_key: "room:Room X",
+            type: :room,
+            name: "Room X",
+            courses: [
+              levels_of_course(crn: "70020", name: "Biblical Hebrew 1", room: "Room X")
+            ]
+          ),
+          schedule_owner(
+            owner_key: "room:Room Y",
+            type: :room,
+            name: "Room Y",
+            courses: [
+              levels_of_course(crn: "70021", name: "Biblical Hebrew 2", room: "Room Y")
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    prof_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :professor))
+
+    assert prof_conflicts == [],
+           "expected no professor conflict for sequel levels (Biblical Hebrew 1 vs 2), got #{inspect(prof_conflicts)}"
+  end
+
+  test "does not conflict when multiple sequel levels share a room (three courses)" do
+    # "Theology I", "Theology II", and "Theology III" all taught in the same room.
+    # They differ only by one Roman numeral each → no conflicts.
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "room:Lecture Hall C",
+            type: :room,
+            name: "Lecture Hall C",
+            courses: [
+              levels_of_course(crn: "70030", name: "Theology I", room: "Lecture Hall C"),
+              levels_of_course(crn: "70031", name: "Theology II", room: "Lecture Hall C"),
+              levels_of_course(crn: "70032", name: "Theology III", room: "Lecture Hall C")
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof A",
+            type: :professor,
+            name: "Prof A",
+            courses: [
+              levels_of_course(crn: "70030", name: "Theology I", room: "Lecture Hall C")
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof B",
+            type: :professor,
+            name: "Prof B",
+            courses: [
+              levels_of_course(crn: "70031", name: "Theology II", room: "Lecture Hall C")
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof C",
+            type: :professor,
+            name: "Prof C",
+            courses: [
+              levels_of_course(crn: "70032", name: "Theology III", room: "Lecture Hall C")
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    assert result.all_conflicts == [],
+           "expected no conflicts for multi-level sequel courses (Theology I/II/III), got #{inspect(result.all_conflicts)}"
+  end
+
+  test "does not conflict with arabic numerals in the middle of a course name" do
+    # "Intro to Biblical Hebrew 1" and "Intro to Biblical Hebrew 2"
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "room:Lecture Hall D",
+            type: :room,
+            name: "Lecture Hall D",
+            courses: [
+              levels_of_course(
+                crn: "70040",
+                name: "Intro to Biblical Hebrew 1",
+                room: "Lecture Hall D"
+              ),
+              levels_of_course(
+                crn: "70041",
+                name: "Intro to Biblical Hebrew 2",
+                room: "Lecture Hall D"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof A",
+            type: :professor,
+            name: "Prof A",
+            courses: [
+              levels_of_course(
+                crn: "70040",
+                name: "Intro to Biblical Hebrew 1",
+                room: "Lecture Hall D"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof B",
+            type: :professor,
+            name: "Prof B",
+            courses: [
+              levels_of_course(
+                crn: "70041",
+                name: "Intro to Biblical Hebrew 2",
+                room: "Lecture Hall D"
+              )
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    assert result.all_conflicts == [],
+           "expected no conflicts for sequel with number in middle, got #{inspect(result.all_conflicts)}"
+  end
+
+  test "does not conflict with lower-case roman numerals" do
+    # "practicum i" and "practicum ii" (lowercase) should also be detected.
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "room:Lecture Hall E",
+            type: :room,
+            name: "Lecture Hall E",
+            courses: [
+              levels_of_course(crn: "70050", name: "practicum i", room: "Lecture Hall E"),
+              levels_of_course(crn: "70051", name: "practicum ii", room: "Lecture Hall E")
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof A",
+            type: :professor,
+            name: "Prof A",
+            courses: [
+              levels_of_course(crn: "70050", name: "practicum i", room: "Lecture Hall E")
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof B",
+            type: :professor,
+            name: "Prof B",
+            courses: [
+              levels_of_course(crn: "70051", name: "practicum ii", room: "Lecture Hall E")
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    assert result.all_conflicts == [],
+           "expected no conflicts for lowercase roman numeral sequel (practicum i vs ii), got #{inspect(result.all_conflicts)}"
+  end
+
+  test "does not conflict with arabic numerals at the end of a course name" do
+    # "Biblical Hebrew 10" and "Biblical Hebrew 11"
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "room:Lecture Hall F",
+            type: :room,
+            name: "Lecture Hall F",
+            courses: [
+              levels_of_course(crn: "70060", name: "Biblical Hebrew 10", room: "Lecture Hall F"),
+              levels_of_course(crn: "70061", name: "Biblical Hebrew 11", room: "Lecture Hall F")
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof A",
+            type: :professor,
+            name: "Prof A",
+            courses: [
+              levels_of_course(crn: "70060", name: "Biblical Hebrew 10", room: "Lecture Hall F")
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof B",
+            type: :professor,
+            name: "Prof B",
+            courses: [
+              levels_of_course(crn: "70061", name: "Biblical Hebrew 11", room: "Lecture Hall F")
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    assert result.all_conflicts == [],
+           "expected no conflicts for sequel levels with multi-digit numbers (10 vs 11), got #{inspect(result.all_conflicts)}"
+  end
+
+  test "still detects conflict when course titles differ by more than just the number" do
+    # "Level 1 Reading" and "Level 2 Conversation" differ in both word AND number.
+    # This is NOT a sequel-level relationship → should still be a room conflict.
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "room:Lecture Hall G",
+            type: :room,
+            name: "Lecture Hall G",
+            courses: [
+              levels_of_course(crn: "70070", name: "Level 1 Reading", room: "Lecture Hall G"),
+              levels_of_course(
+                crn: "70071",
+                name: "Level 2 Conversation",
+                room: "Lecture Hall G",
+                subject_code: "CONV"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof A",
+            type: :professor,
+            name: "Prof A",
+            courses: [
+              levels_of_course(crn: "70070", name: "Level 1 Reading", room: "Lecture Hall G")
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof B",
+            type: :professor,
+            name: "Prof B",
+            courses: [
+              levels_of_course(
+                crn: "70071",
+                name: "Level 2 Conversation",
+                room: "Lecture Hall G",
+                subject_code: "CONV"
+              )
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    room_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :room))
+
+    assert length(room_conflicts) == 1,
+           "expected 1 room conflict for different titles (not sequel levels), got #{inspect(room_conflicts)}"
+  end
+
+  test "still detects conflict when a sequel-level course and an unrelated course share a room" do
+    # "Practicum I" and "Exegesis Workshop" are in the same room at the same time.
+    # Only one has a level number → NOT sequel levels, should conflict.
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "room:Lecture Hall H",
+            type: :room,
+            name: "Lecture Hall H",
+            courses: [
+              levels_of_course(crn: "70080", name: "Practicum I", room: "Lecture Hall H"),
+              levels_of_course(
+                crn: "70081",
+                name: "Exegesis Workshop",
+                room: "Lecture Hall H",
+                subject_code: "EXEG"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof A",
+            type: :professor,
+            name: "Prof A",
+            courses: [
+              levels_of_course(crn: "70080", name: "Practicum I", room: "Lecture Hall H")
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof B",
+            type: :professor,
+            name: "Prof B",
+            courses: [
+              levels_of_course(
+                crn: "70081",
+                name: "Exegesis Workshop",
+                room: "Lecture Hall H",
+                subject_code: "EXEG"
+              )
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    room_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :room))
+
+    assert length(room_conflicts) == 1,
+           "expected 1 room conflict for unrelated courses, got #{inspect(room_conflicts)}"
+  end
+
+  test "sequel-level exemption does not hide conflicts when mixed with non-sequel course" do
+    # Room has: "Practicum I", "Practicum II", AND "Exegesis Workshop".
+    # Practicum I and II are sequel levels (no conflict between them),
+    # but Exegesis Workshop conflicts with both → real room conflict should be detected.
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "room:Lecture Hall I",
+            type: :room,
+            name: "Lecture Hall I",
+            courses: [
+              levels_of_course(crn: "70090", name: "Practicum I", room: "Lecture Hall I"),
+              levels_of_course(crn: "70091", name: "Practicum II", room: "Lecture Hall I"),
+              levels_of_course(
+                crn: "70092",
+                name: "Exegesis Workshop",
+                room: "Lecture Hall I",
+                subject_code: "EXEG"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof A",
+            type: :professor,
+            name: "Prof A",
+            courses: [
+              levels_of_course(crn: "70090", name: "Practicum I", room: "Lecture Hall I")
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof B",
+            type: :professor,
+            name: "Prof B",
+            courses: [
+              levels_of_course(crn: "70091", name: "Practicum II", room: "Lecture Hall I")
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof C",
+            type: :professor,
+            name: "Prof C",
+            courses: [
+              levels_of_course(
+                crn: "70092",
+                name: "Exegesis Workshop",
+                room: "Lecture Hall I",
+                subject_code: "EXEG"
+              )
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    room_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :room))
+
+    assert length(room_conflicts) >= 1,
+           "expected at least 1 room conflict (Exegesis Workshop vs sequels), got #{inspect(room_conflicts)}"
+  end
+
   # -- Helpers --
 
   defp owner_course_lists(courses) do
@@ -1336,6 +1826,31 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
       "credit_hours" => 3,
       "instructors" => [
         %{"name" => "Prof Smith", "primary_instructor" => true}
+      ],
+      "meet_info" => [
+        meeting(
+          room: Keyword.fetch!(opts, :room),
+          days: Keyword.get(opts, :days, ["Monday"]),
+          start_time: Keyword.get(opts, :start_time, "09:00:00"),
+          end_time: Keyword.get(opts, :end_time, "09:50:00")
+        )
+      ]
+    }
+  end
+
+  defp levels_of_course(opts) do
+    crn = Keyword.fetch!(opts, :crn)
+
+    %{
+      "crn" => crn,
+      "term_code" => "202777",
+      "subject_code" => Keyword.get(opts, :subject_code, "SEQ#{crn}"),
+      "course_number" => Keyword.get(opts, :course_number, "#{crn}"),
+      "section_number" => "01",
+      "name" => Keyword.fetch!(opts, :name),
+      "credit_hours" => 3,
+      "instructors" => [
+        %{"name" => Keyword.get(opts, :professor, "Professor One"), "primary_instructor" => true}
       ],
       "meet_info" => [
         meeting(

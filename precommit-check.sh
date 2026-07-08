@@ -37,7 +37,7 @@ podman run \
     -e "POSTGRES_PASSWORD=${DB_PASS}" \
     -e "POSTGRES_DB=${DB_NAME}" \
     --tmpfs /var/lib/postgresql:rw,noexec,nosuid,size=512m \
-    postgres:18-alpine
+    postgres:18-alpine > /dev/null
 
 # Wait for postgres to be ready
 for i in $(seq 1 30); do

@@ -26,6 +26,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleConflictDetail do
     </div>
     """
   end
+
   attr :key, :string, required: true
   attr :label, :string, required: true
   attr :kind, :atom, required: true
@@ -52,6 +53,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleConflictDetail do
       <span class="truncate">{@label}</span>
     </button>
     """
+  end
+
+  def schedule_targets(conflict) when is_map(conflict) do
+    conflict_targets(conflict)
   end
 
   defp conflict_targets(conflict) do
