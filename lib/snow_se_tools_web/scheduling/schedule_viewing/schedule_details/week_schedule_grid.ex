@@ -59,11 +59,13 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
                 />
               <% end %>
 
-              <%= for meeting <- Map.get(@schedule_owner.meetings_by_day, day, []) do %>
+              <%= for meeting <- positioned_meetings(
+                meetings: Map.get(@schedule_owner.meetings_by_day, day, [])
+              ) do %>
                 <% source = Map.get(meeting, "__source", :base) %>
                 <div
                   class={[
-                    "absolute left-0 right-0 z-10 rounded px-1.5 py-1 leading-tight shadow-sm shadow-black cursor-move transition-colors hover:bg-slate-800",
+                    "absolute z-10 rounded px-1.5 py-1 leading-tight shadow-sm shadow-black cursor-move transition-colors hover:bg-slate-800",
                     source == :added && "bg-emerald-950/60 ring-1 ring-emerald-500/50",
                     source == :updated && "bg-amber-950/40 ring-1 ring-amber-500/50",
                     source == :base && "bg-slate-900"
@@ -101,6 +103,15 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
                         </div>
                         <div class="text-[11px] text-slate-300">
                           {meeting.subject_code} {meeting.course_number}
+                        </div>
+                        <div
+                          :if={length(grouped_crns(meeting: meeting)) > 1}
+                          class="text-[11px] text-slate-300"
+                        >
+                          {length(grouped_crns(meeting: meeting))} CRNs: {Enum.join(
+                            grouped_crns(meeting: meeting),
+                            ", "
+                          )}
                         </div>
                         <div class="text-[11px] text-slate-400">
                           {format_minutes(meeting.start_minutes)} – {format_minutes(
@@ -385,16 +396,177 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
     |> Enum.map(&(&1 - start_minutes))
   end
 
+  defp positioned_meetings(meetings: meetings) do
+    meetings
+    |> grouped_same_course_meetings()
+    |> Enum.with_index()
+    |> Enum.sort_by(fn {meeting, index} ->
+      {meeting.start_minutes, meeting.end_minutes, index}
+    end)
+    |> Enum.chunk_while(
+      [],
+      fn entry, cluster -> collect_overlap_cluster(entry: entry, cluster: cluster) end,
+      &emit_overlap_cluster/1
+    )
+    |> Enum.flat_map(&assign_overlap_columns/1)
+    |> Enum.sort_by(& &1.display_index)
+  end
+
+  defp grouped_same_course_meetings(meetings) do
+    meetings
+    |> Enum.with_index()
+    |> Enum.group_by(fn {meeting, _index} ->
+      {
+        meeting.subject_code,
+        meeting.course_number,
+        meeting.start_minutes,
+        meeting.end_minutes
+      }
+    end)
+    |> Enum.map(fn {_key, indexed_meetings} ->
+      indexed_meetings
+      |> Enum.sort_by(fn {_meeting, index} -> index end)
+      |> build_grouped_meeting()
+    end)
+    |> Enum.sort_by(& &1.display_index)
+  end
+
+  defp build_grouped_meeting([{meeting, index}]) do
+    meeting
+    |> Map.put(:display_index, index)
+    |> Map.put(:grouped_crns, [meeting.crn])
+  end
+
+  defp build_grouped_meeting([{meeting, index} | _rest] = indexed_meetings) do
+    grouped_crns =
+      indexed_meetings
+      |> Enum.map(fn {grouped_meeting, _index} -> grouped_meeting.crn end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    meeting
+    |> Map.put(:display_index, index)
+    |> Map.put(:grouped_crns, grouped_crns)
+  end
+
+  defp collect_overlap_cluster(entry: {meeting, index}, cluster: []) do
+    {:cont,
+     [
+       %{
+         meeting: meeting,
+         display_index: Map.get(meeting, :display_index, index),
+         max_end_minutes: meeting.end_minutes
+       }
+     ]}
+  end
+
+  defp collect_overlap_cluster(entry: {meeting, index}, cluster: cluster) do
+    cluster_end_minutes = cluster |> Enum.map(& &1.max_end_minutes) |> Enum.max()
+
+    if meeting.start_minutes < cluster_end_minutes do
+      max_end_minutes = max(meeting.end_minutes, cluster_end_minutes)
+
+      {:cont,
+       [
+         %{
+           meeting: meeting,
+           display_index: Map.get(meeting, :display_index, index),
+           max_end_minutes: max_end_minutes
+         }
+         | Enum.map(cluster, &%{&1 | max_end_minutes: max_end_minutes})
+       ]}
+    else
+      {:cont, Enum.reverse(cluster),
+       [
+         %{
+           meeting: meeting,
+           display_index: Map.get(meeting, :display_index, index),
+           max_end_minutes: meeting.end_minutes
+         }
+       ]}
+    end
+  end
+
+  defp emit_overlap_cluster([]), do: {:cont, []}
+  defp emit_overlap_cluster(cluster), do: {:cont, Enum.reverse(cluster), []}
+
+  defp assign_overlap_columns(cluster) do
+    {positioned_cluster, column_end_minutes} =
+      Enum.map_reduce(cluster, [], fn entry, column_end_minutes ->
+        column =
+          first_available_column(
+            column_end_minutes: column_end_minutes,
+            start_minutes: entry.meeting.start_minutes
+          )
+
+        column_end_minutes =
+          put_column_end(
+            column_end_minutes: column_end_minutes,
+            column: column,
+            end_minutes: entry.meeting.end_minutes
+          )
+
+        {Map.put(entry, :column, column), column_end_minutes}
+      end)
+
+    total_columns = max(length(column_end_minutes), 1)
+
+    Enum.map(positioned_cluster, fn entry ->
+      entry.meeting
+      |> Map.put(:display_index, entry.display_index)
+      |> Map.put(:display_column, entry.column)
+      |> Map.put(:display_total_columns, total_columns)
+    end)
+  end
+
+  defp first_available_column(
+         column_end_minutes: column_end_minutes,
+         start_minutes: start_minutes
+       ) do
+    column_end_minutes
+    |> Enum.find_index(&(&1 <= start_minutes))
+    |> case do
+      nil -> length(column_end_minutes)
+      column -> column
+    end
+  end
+
+  defp put_column_end(
+         column_end_minutes: column_end_minutes,
+         column: column,
+         end_minutes: end_minutes
+       ) do
+    if column == length(column_end_minutes) do
+      column_end_minutes ++ [end_minutes]
+    else
+      List.replace_at(column_end_minutes, column, end_minutes)
+    end
+  end
+
   defp meeting_style(meeting: meeting, schedule_start_minutes: schedule_start_minutes) do
     top = meeting.start_minutes - schedule_start_minutes
     height = max(meeting.end_minutes - meeting.start_minutes, 24)
+    total_columns = Map.get(meeting, :display_total_columns, 1)
+    column = Map.get(meeting, :display_column, 0)
+    width = 100 / total_columns
+    left = width * column
+    column_gap = if total_columns == 1, do: 0, else: 2
 
-    "top: #{top}px; height: #{height}px"
+    "top: #{top}px; height: #{height}px; left: #{percent(left)}%; width: calc(#{percent(width)}% - #{column_gap}px)"
   end
+
+  defp percent(value),
+    do:
+      :erlang.float_to_binary(value, decimals: 4)
+      |> String.trim_trailing("0")
+      |> String.trim_trailing(".")
+
+  defp grouped_crns(meeting: meeting), do: Map.get(meeting, :grouped_crns, [meeting.crn])
 
   defp course_payload_json(meeting: meeting, selected_term_code: selected_term_code) do
     %{
       crn: meeting.crn,
+      crns: grouped_crns(meeting: meeting),
       term: meeting_term(meeting.term, selected_term_code),
       course_name: meeting.course_name,
       subject_code: meeting.subject_code,

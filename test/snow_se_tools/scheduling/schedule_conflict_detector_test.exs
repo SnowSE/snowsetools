@@ -755,7 +755,8 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
             type: :professor,
             name: "Prof A",
             courses: [
-              co_taught_course(crn: "30001", professors: ["Prof A", "Prof B"])            ]
+              co_taught_course(crn: "30001", professors: ["Prof A", "Prof B"])
+            ]
           ),
           schedule_owner(
             owner_key: "professor:Prof B",
@@ -782,6 +783,7 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
 
     assert prof_conflicts == [],
            "expected no professor conflict for co-teaching, got #{inspect(prof_conflicts)}"
+
     assert room_conflicts == [],
            "expected no room conflict for co-teaching, got #{inspect(room_conflicts)}"
   end
@@ -845,6 +847,7 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
 
     assert length(prof_conflicts) == 1,
            "expected 1 professor conflict for Prof A teaching MATH 101 + PHYS 201, got #{inspect(prof_conflicts)}"
+
     assert Enum.at(prof_conflicts, 0).course_crns == ["30010", "30020"]
   end
 
@@ -973,6 +976,7 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
 
     assert length(prof_conflicts) == 1,
            "expected 1 professor conflict for Prof A (MATH 101 + PHYS 201), got #{inspect(prof_conflicts)}"
+
     # TBA Staff should NOT appear in the owner keys of this conflict
     refute Enum.any?(prof_conflicts, fn c -> "professor:TBA Staff" in c.owner_keys end)
   end
@@ -1048,16 +1052,18 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
     crn = Keyword.fetch!(opts, :crn)
     professors = Keyword.fetch!(opts, :professors)
 
-    %{      "crn" => crn,
+    %{
+      "crn" => crn,
       "term_code" => "202777",
       "subject_code" => Keyword.get(opts, :subject_code, "MATH"),
       "course_number" => Keyword.get(opts, :course_number, "101"),
       "section_number" => "01",
       "name" => Keyword.get(opts, :name, "Course #{crn}"),
       "credit_hours" => 1,
-      "instructors" => Enum.map(professors, fn name ->
-        %{"name" => name, "primary_instructor" => true}
-      end),
+      "instructors" =>
+        Enum.map(professors, fn name ->
+          %{"name" => name, "primary_instructor" => true}
+        end),
       "meet_info" => [
         meeting(
           room: Keyword.get(opts, :room, "Room X"),

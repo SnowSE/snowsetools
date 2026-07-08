@@ -206,6 +206,7 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
 
   defp derived_owner_keys(room: room, instructors: instructors) do
     room_keys = if blank?(room), do: [], else: ["room:#{room}"]
+
     professor_keys =
       instructors
       |> Enum.reject(&blank?/1)
