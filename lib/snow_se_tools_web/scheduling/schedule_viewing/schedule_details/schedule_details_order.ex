@@ -28,7 +28,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
 
   def render(assigns) do
     ~H"""
-    <section class="min-w-0 flex-1 overflow-y-auto" data-schedule-scroll-container>
+    <section class="min-w-0 flex-1 overflow-y-auto">
       <div
         :if={ScheduleOrder.size(@state.selected_schedule_order) > 0}
         class="flex items-center justify-end"
@@ -88,10 +88,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
           this.draggedCard = null;
           this.dropTargetCard = null;
           this.dropSpacer = null;
-          this.autoScrollRaf = null;
-          this.autoScrollDirection = 0;
-          this.autoScrollIntensity = 0;
-          this.scrollContainer = this.el.closest("[data-schedule-scroll-container]");
 
           this.onDragStart = (event) => {
             const card = event.target.closest("[data-schedule-card]");
@@ -125,18 +121,15 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
               card.hasAttribute("data-drop-spacer") &&
               this.dropTargetCard
             ) {
-              this.updateAutoScroll(event.clientY);
               return;
             }
 
             if (!card || !this.el.contains(card) || card.dataset.scheduleKey === this.draggedKey) {
               this.setDropTarget(null);
-              this.updateAutoScroll(event.clientY);
               return;
             }
 
             this.setDropTarget(card);
-            this.updateAutoScroll(event.clientY);
           };
 
           this.onDrop = (event) => {
@@ -200,7 +193,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
           this.el.removeEventListener("drop", this.onDrop);
           this.el.removeEventListener("dragend", this.onDragEnd);
           this.el.removeEventListener("keydown", this.onKeyDown);
-          this.stopAutoScroll();
         },
 
         setDropTarget(card) {
@@ -235,7 +227,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
           }
 
           this.setDropTarget(null);
-          this.stopAutoScroll();
 
           this.draggedKey = null;
           this.draggedCard = null;
@@ -315,81 +306,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
           });
         },
 
-        updateAutoScroll(clientY) {
-          if (!this.scrollContainer) {
-            return;
-          }
-
-          const rect = this.scrollContainer.getBoundingClientRect();
-          const edgeThreshold = 120;
-          const topDistance = clientY - rect.top;
-          const bottomDistance = rect.bottom - clientY;
-          const maxScrollTop =
-            this.scrollContainer.scrollHeight - this.scrollContainer.clientHeight;
-
-          if (topDistance < edgeThreshold && this.scrollContainer.scrollTop > 0) {
-            this.startAutoScroll(-1, 1 - topDistance / edgeThreshold);
-            return;
-          }
-
-          if (bottomDistance < edgeThreshold && this.scrollContainer.scrollTop < maxScrollTop) {
-            this.startAutoScroll(1, 1 - bottomDistance / edgeThreshold);
-            return;
-          }
-
-          this.stopAutoScroll();
-        },
-
-        startAutoScroll(direction, intensity) {
-          this.autoScrollDirection = direction;
-          this.autoScrollIntensity = Math.max(0.15, Math.min(intensity, 1));
-
-          if (this.autoScrollRaf) {
-            return;
-          }
-
-          const tick = () => {
-            if (!this.autoScrollDirection || !this.scrollContainer) {
-              this.autoScrollRaf = null;
-              return;
-            }
-
-            const maxScrollTop =
-              this.scrollContainer.scrollHeight - this.scrollContainer.clientHeight;
-            const speed = 8 + this.autoScrollIntensity * 20;
-            const nextScrollTop = Math.max(
-              0,
-              Math.min(
-                this.scrollContainer.scrollTop + this.autoScrollDirection * speed,
-                maxScrollTop
-              )
-            );
-
-            this.scrollContainer.scrollTop = nextScrollTop;
-
-            if (
-              (nextScrollTop === 0 && this.autoScrollDirection < 0) ||
-              (nextScrollTop === maxScrollTop && this.autoScrollDirection > 0)
-            ) {
-              this.stopAutoScroll();
-              return;
-            }
-
-            this.autoScrollRaf = window.requestAnimationFrame(tick);
-          };
-
-          this.autoScrollRaf = window.requestAnimationFrame(tick);
-        },
-
-        stopAutoScroll() {
-          this.autoScrollDirection = 0;
-          this.autoScrollIntensity = 0;
-
-          if (this.autoScrollRaf) {
-            window.cancelAnimationFrame(this.autoScrollRaf);
-            this.autoScrollRaf = null;
-          }
-        },
       }
     </script>
     """

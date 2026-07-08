@@ -608,6 +608,141 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
            "expected 2 room conflicts (Room X: A+C, Room Y: B+D), got #{length(room_conflicts)}"
   end
 
+  # -- Same-course exemption tests --
+
+  test "does not conflict when a professor teaches two sections of the same course at the same time" do
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "professor:Prof A",
+            type: :professor,
+            name: "Prof A",
+            courses: [
+              course(
+                crn: "10001",
+                professor: "Prof A",
+                room: "Room X",
+                subject_code: "MATH",
+                course_number: "101"
+              ),
+              course(
+                crn: "10002",
+                professor: "Prof A",
+                room: "Room Y",
+                subject_code: "MATH",
+                course_number: "101"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "room:Room X",
+            type: :room,
+            name: "Room X",
+            courses: [
+              course(
+                crn: "10001",
+                professor: "Prof A",
+                room: "Room X",
+                subject_code: "MATH",
+                course_number: "101"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "room:Room Y",
+            type: :room,
+            name: "Room Y",
+            courses: [
+              course(
+                crn: "10002",
+                professor: "Prof A",
+                room: "Room Y",
+                subject_code: "MATH",
+                course_number: "101"
+              )
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    prof_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :professor))
+
+    assert prof_conflicts == [],
+           "expected no professor conflict for same course, got #{inspect(prof_conflicts)}"
+  end
+
+  test "does not conflict when two rooms host sections of the same course at the same time" do
+    result =
+      ScheduleConflictDetector.detect_term_conflicts(
+        owner_course_lists: [
+          schedule_owner(
+            owner_key: "room:Room A",
+            type: :room,
+            name: "Room A",
+            courses: [
+              course(
+                crn: "20001",
+                professor: "Prof X",
+                room: "Room A",
+                subject_code: "CHEM",
+                course_number: "201"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "room:Room B",
+            type: :room,
+            name: "Room B",
+            courses: [
+              course(
+                crn: "20002",
+                professor: "Prof Y",
+                room: "Room B",
+                subject_code: "CHEM",
+                course_number: "201"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof X",
+            type: :professor,
+            name: "Prof X",
+            courses: [
+              course(
+                crn: "20001",
+                professor: "Prof X",
+                room: "Room A",
+                subject_code: "CHEM",
+                course_number: "201"
+              )
+            ]
+          ),
+          schedule_owner(
+            owner_key: "professor:Prof Y",
+            type: :professor,
+            name: "Prof Y",
+            courses: [
+              course(
+                crn: "20002",
+                professor: "Prof Y",
+                room: "Room B",
+                subject_code: "CHEM",
+                course_number: "201"
+              )
+            ]
+          )
+        ],
+        active_changes: []
+      )
+
+    room_conflicts = Enum.filter(result.all_conflicts, &(&1.type == :room))
+
+    assert room_conflicts == [],
+           "expected no room conflict for same course, got #{inspect(room_conflicts)}"
+  end
+
   # -- Helpers --
 
   defp owner_course_lists(courses) do
@@ -640,8 +775,8 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
     %{
       "crn" => crn,
       "term_code" => "202777",
-      "subject_code" => "TEST",
-      "course_number" => Keyword.get(opts, :course_number, "1010"),
+      "subject_code" => Keyword.get(opts, :subject_code, "C#{crn}"),
+      "course_number" => Keyword.get(opts, :course_number, crn),
       "section_number" => "01",
       "name" => Keyword.get(opts, :name, "Course #{crn}"),
       "credit_hours" => 1,

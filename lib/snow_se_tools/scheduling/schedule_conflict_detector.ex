@@ -263,8 +263,33 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
   defp build_conflicts_for_group(entries, type) do
     entries
     |> temporal_overlap_groups()
+    |> Enum.map(fn group ->
+      # Only deduplicate same-course sections for professor conflicts.
+      # A professor teaching multiple sections of the same course (e.g. MATH 101 Sec 1 + Sec 2)
+      # is not a conflict. Room conflicts already have unique courses per room partition.
+      if type == :professor do
+        dedup_by_course_code(group)
+      else
+        group
+      end
+    end)
     |> Enum.filter(&(length(&1) >= 2))
     |> Enum.map(fn group -> build_conflict(group, type) end)
+  end
+
+  defp dedup_by_course_code(entries) do
+    {_seen, filtered} =
+      Enum.reduce(entries, {%MapSet{}, []}, fn entry, {seen, acc} ->
+        course_id = {Map.get(entry, :subject_code), Map.get(entry, :course_number)}
+
+        if MapSet.member?(seen, course_id) do
+          {seen, acc}
+        else
+          {MapSet.put(seen, course_id), [entry | acc]}
+        end
+      end)
+
+    Enum.reverse(filtered)
   end
 
   # -- Union-find temporal overlap grouping (within a resource partition) --

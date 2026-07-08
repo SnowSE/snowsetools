@@ -51,6 +51,7 @@ defmodule SnowSeToolsWeb.Components.HoverTooltip do
           this.template = this.el.querySelector("[data-tooltip-template]");
           this.tooltip = null;
           this.visible = false;
+          this.removeTimer = null;
 
           if (!this.trigger || !this.template) {
             return;
@@ -65,8 +66,6 @@ defmodule SnowSeToolsWeb.Components.HoverTooltip do
           this.trigger.addEventListener("focusin", this.show);
           this.trigger.addEventListener("mouseleave", this.hide);
           this.trigger.addEventListener("focusout", this.hide);
-          window.addEventListener("scroll", this.position, true);
-          window.addEventListener("resize", this.position);
         },
 
         updated() {
@@ -80,12 +79,13 @@ defmodule SnowSeToolsWeb.Components.HoverTooltip do
           this.trigger?.removeEventListener("focusin", this.show);
           this.trigger?.removeEventListener("mouseleave", this.hide);
           this.trigger?.removeEventListener("focusout", this.hide);
-          window.removeEventListener("scroll", this.position, true);
-          window.removeEventListener("resize", this.position);
+          window.clearTimeout(this.removeTimer);
           this.removeTooltip();
         },
 
         show() {
+          window.clearTimeout(this.removeTimer);
+
           if (!this.tooltip) {
             this.mountTooltip();
           }
@@ -105,6 +105,7 @@ defmodule SnowSeToolsWeb.Components.HoverTooltip do
 
           this.tooltip.style.opacity = "0";
           this.tooltip.style.transform = "translateY(-4px)";
+          this.removeTimer = window.setTimeout(() => this.removeTooltip(), 180);
         },
 
         sync() {
