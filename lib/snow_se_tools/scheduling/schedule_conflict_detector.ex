@@ -9,7 +9,7 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
   # Courses with these subjects (TECS, TENT, NURS) never participate
   # in room or professor conflict checks. Add new subject codes to this list
   # as needed without changing any other logic.
-  @conflict_excluded_subject_codes ["TECS", "TENT", "NURS", "PE", "THEA"]
+  @conflict_excluded_subject_codes ["TECS", "TENT", "NURS", "PE", "THEA", "TEDT", "TEAU"]
 
   def detect_term_conflicts(
         owner_course_lists: owner_course_lists,
