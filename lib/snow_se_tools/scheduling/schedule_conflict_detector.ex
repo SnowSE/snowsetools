@@ -21,7 +21,8 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
     "TEWT",
     "TEAC",
     "DANC",
-    "OLE"
+    "OLE",
+    "TEEM"
   ]
 
   def detect_term_conflicts(
@@ -593,7 +594,18 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
 
       time_range = format_time_range(entry.meeting)
 
-      %{course_label: course_label, time_range: time_range}
+      %{
+        crn: entry.crn,
+        course_label: course_label,
+        time_range: time_range,
+        days: entry.meeting["days"] || [],
+        start_time: normalize_time(entry.meeting["start_time"]),
+        end_time: normalize_time(entry.meeting["end_time"]),
+        building: entry.meeting["building"],
+        building_code: entry.meeting["building_code"],
+        room: entry.meeting["room"],
+        room_label: entry.room
+      }
     end)
   end
 

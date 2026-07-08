@@ -17,7 +17,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
     loading?: false,
     error: nil,
     resolved_conflicts: [],
-    conflict_count: 0
+    conflict_count: 0,
+    conflicted_course_crns: MapSet.new()
   ]
 
   @type t :: %__MODULE__{
@@ -26,7 +27,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
           loading?: boolean(),
           error: String.t() | nil,
           resolved_conflicts: [map()],
-          conflict_count: non_neg_integer()
+          conflict_count: non_neg_integer(),
+          conflicted_course_crns: MapSet.t(String.t())
         }
 
   @key :schedule_term_conflicts_state
@@ -57,7 +59,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
           loading?: false,
           error: nil,
           resolved_conflicts: [],
-          conflict_count: 0
+          conflict_count: 0,
+          conflicted_course_crns: MapSet.new()
       }
 
       socket
@@ -97,6 +100,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
               socket
             )
 
+          conflicted_course_crns = conflict_crns(conflicts_by_owner_key)
+
           {:halt,
            assign(socket, @key, %{
              state
@@ -104,7 +109,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
                loading?: false,
                error: nil,
                resolved_conflicts: resolved_conflicts,
-               conflict_count: count_conflicts(resolved_conflicts)
+               conflict_count: count_conflicts(resolved_conflicts),
+               conflicted_course_crns: conflicted_course_crns
            })}
 
         {:error, reason} ->
@@ -118,7 +124,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
              | loading?: false,
                error: inspect(reason),
                resolved_conflicts: [],
-               conflict_count: 0
+               conflict_count: 0,
+               conflicted_course_crns: MapSet.new()
            })}
       end
     else
@@ -127,6 +134,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
   end
 
   def hooked_info(_message, socket), do: {:cont, socket}
+
+  def conflicted_course_crns(%__MODULE__{} = state), do: state.conflicted_course_crns
 
   # -- Trigger async conflict detection in a Task and send result back via message --
 
@@ -208,6 +217,18 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
   defp count_conflicts(owners),
     do: Enum.reduce(owners, 0, &(&2 + length(&1.conflicts)))
 
+  defp conflict_crns(conflicts_by_owner_key) do
+    conflicts_by_owner_key
+    |> Map.values()
+    |> List.flatten()
+    |> Enum.flat_map(&conflict_course_crns/1)
+    |> MapSet.new()
+  end
+
+  defp conflict_course_crns(conflict) do
+    Map.get(conflict, :course_crns, Map.get(conflict, "course_crns", []))
+  end
+
   # -- Rendering --
 
   attr :state, __MODULE__, required: true
@@ -219,7 +240,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
       class="flex-1 min-h-0  border-t border-slate-800/80 pt-3 flex flex-col"
     >
       <div class="flex items-center justify-between gap-2">
-        <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">
+        <h3 class="font-semibold uppercase tracking-wider text-slate-400">
           Schedule Conflicts
         </h3>
         <.status_badge
@@ -308,10 +329,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
       data-owner-key={@owner.owner_key}
       class="rounded-lg border border-red-500/25 bg-red-950/15 p-2.5"
     >
-      <div class="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-red-200">
+      <div class="mb-1 flex items-center gap-1.5  text-red-200">
         <.icon name={@owner.icon_name} class="size-3.5 shrink-0 text-red-400" />
         <span class="truncate">{@owner.owner_name}</span>
-        <span class="ml-auto rounded bg-red-900/60 px-1.5 py-0.5 text-[10px] font-medium text-red-200">
+        <span class="ml-auto rounded bg-red-900/60 px-1.5 py-0.5 text-red-200 text-sm">
           {length(@owner.conflicts)}
         </span>
       </div>

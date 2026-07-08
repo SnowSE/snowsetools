@@ -24,6 +24,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
   attr :week_schedules, :map, required: true
   attr :week_schedule_edit_course_modal, :map, default: nil
   attr :active_change_group, :map, default: nil
+  attr :conflicted_course_crns, :any, default: MapSet.new()
+  attr :active_conflicted_course_crns, :any, default: MapSet.new()
   attr :schedule_owners_metadata, :list, default: []
 
   def render(assigns) do
@@ -66,6 +68,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
               position={position}
               total_count={ScheduleOrder.size(@state.selected_schedule_order)}
               active_change_group={@active_change_group}
+              conflicted_course_crns={@conflicted_course_crns}
+              active_conflicted_course_crns={@active_conflicted_course_crns}
               schedule_owners_metadata={@schedule_owners_metadata}
               edit_course_modal={@week_schedule_edit_course_modal}
             />

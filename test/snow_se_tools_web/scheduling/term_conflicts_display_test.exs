@@ -78,7 +78,9 @@ defmodule SnowSeToolsWeb.Scheduling.TermConflictsDisplayTest do
 
     # Verify professor conflict card is rendered
     assert has_element?(view, ~s([data-owner-key="professor:Dr. Smith"]))
-    assert has_element?(view, ~s([data-owner-key="professor:Dr. Smith"]), "Professor conflict")
+    assert has_element?(view, ~s([data-owner-key="professor:Dr. Smith"]), "Dr. Smith")
+    assert has_element?(view, ~s([data-owner-key="professor:Dr. Smith"]), "PSY 1010")
+    assert has_element?(view, ~s([data-owner-key="professor:Dr. Smith"]), "BIO 1100")
   end
 
   defp wait_for_conflicts(view) do

@@ -264,12 +264,13 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
     wait_for_change_group_refresh(view)
 
     change_id = active_change_id(view)
+    change_selector = "#schedule-change-#{change_id}"
 
-    assert has_element?(view, "#schedule-change-#{change_id}", "Time changed to 10:30-11:20")
-    assert has_element?(view, "#schedule-change-#{change_id}", "Room changed to #{@target_room}")
-    assert has_element?(view, "#schedule-change-#{change_id}", "Room conflict")
-    assert has_element?(view, "#schedule-change-#{change_id}", @conflict_course_name)
-    refute has_element?(view, "#schedule-change-#{change_id}", "Professor changed")
+    assert has_element?(view, change_selector, "Time changed to 10:30-11:20")
+    assert has_element?(view, change_selector, "Room changed to #{@target_room}")
+    assert has_element?(view, "#{change_selector} button[phx-value-key='room:#{@target_room}']")
+    assert has_element?(view, change_selector, @conflict_course_name)
+    refute has_element?(view, change_selector, "Professor changed")
   end
 
   defp create_change_group(view) do

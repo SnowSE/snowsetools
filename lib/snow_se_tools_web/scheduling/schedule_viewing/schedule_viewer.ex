@@ -83,6 +83,12 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
         week_schedules={@week_schedules}
         week_schedule_edit_course_modal={@week_schedule_edit_course_modal}
         active_change_group={ScheduleChangeGroups.active_change_group(@schedule_change_groups_state)}
+        conflicted_course_crns={
+          ScheduleTermConflicts.conflicted_course_crns(@schedule_term_conflicts_state)
+        }
+        active_conflicted_course_crns={
+          ScheduleChangeGroups.active_conflicted_course_crns(@schedule_change_groups_state)
+        }
         schedule_owners_metadata={selected_term_schedule_owners(@state)}
       />
     </div>

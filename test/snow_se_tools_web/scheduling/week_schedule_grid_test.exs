@@ -110,6 +110,46 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
     assert style =~ "left: 0%; width: calc(100% - 0px)"
   end
 
+  test "marks meetings with conflicted CRNs" do
+    schedule_owner =
+      ScheduleUtils.build_week_schedule(
+        type: :academic_program_semester,
+        name: "Math:Fall2024",
+        courses: [
+          build_course("21001", "College Algebra", ["Monday"], "09:00", "10:00",
+            subject_code: "MATH",
+            course_number: "101"
+          ),
+          build_course("21002", "College Algebra", ["Monday"], "09:00", "10:00",
+            subject_code: "MATH",
+            course_number: "101"
+          ),
+          build_course("21003", "Calculus", ["Monday"], "11:00", "12:00",
+            subject_code: "MATH",
+            course_number: "201"
+          )
+        ]
+      )
+
+    html =
+      render_component(&WeekScheduleGrid.schedule_grid/1,
+        schedule_owner: schedule_owner,
+        owner_key: "academic_program_semester:math-fall2024",
+        selected_term_code: "202501",
+        active_change_group: nil,
+        conflicted_course_crns: MapSet.new(["21002"]),
+        active_conflicted_course_crns: MapSet.new()
+      )
+
+    conflicted_attributes =
+      html
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("[data-week-schedule-course]")
+      |> LazyHTML.attribute("data-week-schedule-conflicted")
+
+    assert ["true", "false"] = conflicted_attributes
+  end
+
   test "renders only one card when six meetings of the same course are in the same room" do
     schedule_owner =
       ScheduleUtils.build_week_schedule(

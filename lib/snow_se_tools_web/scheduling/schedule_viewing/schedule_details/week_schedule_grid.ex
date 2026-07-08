@@ -7,6 +7,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
   attr :owner_key, :string, required: true
   attr :selected_term_code, :string, required: true
   attr :active_change_group, :map, default: nil
+  attr :conflicted_course_crns, :any, default: MapSet.new()
+  attr :active_conflicted_course_crns, :any, default: MapSet.new()
 
   def schedule_grid(assigns) do
     ~H"""
@@ -63,15 +65,23 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
                 meetings: Map.get(@schedule_owner.meetings_by_day, day, [])
               ) do %>
                 <% source = Map.get(meeting, "__source", :base) %>
+                <% conflicted? =
+                  meeting_conflicted?(
+                    meeting: meeting,
+                    conflicted_course_crns: @conflicted_course_crns,
+                    active_conflicted_course_crns: @active_conflicted_course_crns
+                  ) %>
                 <div
                   class={[
                     "absolute z-10 rounded px-1.5 py-1 leading-tight shadow-sm shadow-black cursor-move transition-colors hover:bg-slate-800",
-                    source == :added && "bg-emerald-950/60 ring-1 ring-emerald-500/50",
-                    source == :updated && "bg-amber-950/40 ring-1 ring-amber-500/50",
-                    source == :base && "bg-slate-900"
+                    conflicted? && "bg-rose-950/40 ring-1 ring-rose-500/50",
+                    !conflicted? && source == :added && "bg-emerald-950/60 ring-1 ring-emerald-500/50",
+                    !conflicted? && source == :updated && "bg-amber-950/40 ring-1 ring-amber-500/50",
+                    !conflicted? && source == :base && "bg-slate-900"
                   ]}
                   draggable="true"
                   data-week-schedule-course
+                  data-week-schedule-conflicted={to_string(conflicted?)}
                   data-course-payload={
                     course_payload_json(
                       meeting: meeting,
@@ -562,6 +572,17 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
       |> String.trim_trailing(".")
 
   defp grouped_crns(meeting: meeting), do: Map.get(meeting, :grouped_crns, [meeting.crn])
+
+  defp meeting_conflicted?(
+         meeting: meeting,
+         conflicted_course_crns: conflicted_course_crns,
+         active_conflicted_course_crns: active_conflicted_course_crns
+       ) do
+    meeting_crns = MapSet.new(grouped_crns(meeting: meeting))
+
+    !MapSet.disjoint?(meeting_crns, conflicted_course_crns) or
+      !MapSet.disjoint?(meeting_crns, active_conflicted_course_crns)
+  end
 
   defp course_payload_json(meeting: meeting, selected_term_code: selected_term_code) do
     %{

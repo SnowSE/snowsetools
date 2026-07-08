@@ -11,7 +11,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroups do
     :groups,
     :active_change_group_id,
     :active_change_group,
-    :creating
+    :creating,
+    :active_conflicted_course_crns
   ]
 
   @key :schedule_change_groups_state
@@ -25,7 +26,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroups do
       groups: [],
       active_change_group_id: nil,
       active_change_group: nil,
-      creating: false
+      creating: false,
+      active_conflicted_course_crns: MapSet.new()
     })
     |> maybe_attach_hooks()
   end
@@ -89,7 +91,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroups do
      assign(socket, @key, %{
        state
        | active_change_group_id: new_active_id,
-         active_change_group: active_group
+         active_change_group: active_group,
+         active_conflicted_course_crns: conflicted_course_crns(active_group)
      })}
   end
 
@@ -144,11 +147,30 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroups do
       state
       | groups: groups,
         active_change_group_id: active_id,
-        active_change_group: active_group
+        active_change_group: active_group,
+        active_conflicted_course_crns: conflicted_course_crns(active_group)
     })
   end
 
   def active_change_group(state) do
     state.active_change_group
+  end
+
+  def active_conflicted_course_crns(state) do
+    state.active_conflicted_course_crns
+  end
+
+  defp conflicted_course_crns(nil), do: MapSet.new()
+
+  defp conflicted_course_crns(active_group) do
+    active_group
+    |> Map.get("changes", [])
+    |> Enum.flat_map(&Map.get(&1, "conflicts", []))
+    |> Enum.flat_map(&conflict_course_crns/1)
+    |> MapSet.new()
+  end
+
+  defp conflict_course_crns(conflict) do
+    Map.get(conflict, :course_crns, Map.get(conflict, "course_crns", []))
   end
 end

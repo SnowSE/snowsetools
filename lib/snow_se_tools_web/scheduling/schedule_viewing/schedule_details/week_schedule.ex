@@ -85,6 +85,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
   attr :position, :integer, required: true
   attr :total_count, :integer, required: true
   attr :active_change_group, :map, default: nil
+  attr :conflicted_course_crns, :any, default: MapSet.new()
+  attr :active_conflicted_course_crns, :any, default: MapSet.new()
   attr :schedule_owners_metadata, :list, default: []
   attr :edit_course_modal, :map, default: nil
 
@@ -129,6 +131,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
             owner_key={@state.owner_key}
             selected_term_code={@state.selected_term_code}
             active_change_group={@active_change_group}
+            conflicted_course_crns={@conflicted_course_crns}
+            active_conflicted_course_crns={@active_conflicted_course_crns}
           />
         <% end %>
       </div>
