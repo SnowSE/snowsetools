@@ -6,7 +6,7 @@ set -euo pipefail
 NAMESPACE="snow-se-tools"
 PROD_POD="postgres-0"
 PROD_CONTAINER="postgres"
-LOCAL_CONTAINER="simplesyllabusreporter-db-1"
+LOCAL_CONTAINER="snow-se-tools-dev-db-1"
 LOCAL_USER="syllabus_user"
 LOCAL_DB="snow_se_tools_dev"
 DUMP_FILE="$(mktemp /tmp/prod_dump.XXXXXX.sql)"

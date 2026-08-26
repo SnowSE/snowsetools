@@ -1,3 +1,5 @@
+name: snow-se-tools-dev
+
 services:
   db:
     image: postgres:18-alpine

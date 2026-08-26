@@ -1,5 +1,5 @@
 
--- Simple Syllabus Reporter Database Schema
+-- Snow SE Tools Database Schema
 -- This schema creates all tables from scratch for a fresh database
 
 CREATE TABLE users (

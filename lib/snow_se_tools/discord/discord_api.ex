@@ -149,7 +149,7 @@ defmodule SnowSeTools.Discord.DiscordApi do
         {:ok,
          [
            {"authorization", "Bot #{token}"},
-           {"user-agent", "SimpleSyllabusReporter/1.0"}
+           {"user-agent", "SnowSETools/1.0"}
          ]}
 
       {:error, reason} ->

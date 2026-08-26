@@ -290,7 +290,7 @@ The main constraint: all list items share one set of hooks, so event names must 
 `docker compose up` starts two containers:
 
 1. **db** — Postgres 17; `schema.sql` is mounted and run on first start
-   - you can run sql with `docker exec simplesyllabusreporter-db-1 sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "\dt"'`
+   - you can run sql with `docker exec snow-se-tools-dev-db-1 sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "\dt"'`
 2. **app** — Elixir/Phoenix; source is bind-mounted so live reload works
 
 ## Production Deployment
@@ -326,7 +326,7 @@ or OIDC login breaks.
 
 ## Getting feedback
 
-you can read current logs with `docker logs simplesyllabusreporter-app-1` be sure to use bash to filter for only the logs you care about.
+you can read current logs with `docker logs snow-se-tools-dev-app-1` be sure to use bash to filter for only the logs you care about.
 
 when checking if changes compile use `./precommit-check.sh` on the terminal (not in container)
 

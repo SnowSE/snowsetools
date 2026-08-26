@@ -8,7 +8,7 @@ while ($true) {
     Start-Sleep -Seconds 5
 }
 
-set-location /home/jonathan/simpleSyllabusReporter
+set-location /home/jonathan/snowSeTools
 
 # prod.sh wraps docker compose with --env-file prod.env -f docker-compose.prod.yml
 ./prod.sh down
