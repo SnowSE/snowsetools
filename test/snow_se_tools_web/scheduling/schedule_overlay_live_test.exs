@@ -7,6 +7,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOverlayLiveTest do
 
   @room_a "room:Overlay Hall 101"
   @room_b "room:Overlay Hall 202"
+  @room_c "room:Overlay Hall 303"
+  @room_d "room:Overlay Hall 404"
   @professor "professor:Overlay Prof One"
 
   setup do
@@ -120,6 +122,48 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOverlayLiveTest do
     assert has_element?(view, "#scheduling-empty-selection")
   end
 
+  test "overlaying a group onto another group merges their members", %{
+    conn: conn,
+    term_code: term_code
+  } do
+    {:ok, view, _html} =
+      live(log_in_test_user(conn), ~p"/scheduling?mode=viewer&term=#{term_code}")
+
+    wait_for_schedule_metadata(view)
+
+    for key <- [@room_a, @room_b, @room_c, @room_d], do: select_schedule_owner(view, key)
+    wait_for_week_schedules(view)
+
+    render_click(view, "schedule-details-order:overlay", %{"key" => @room_a, "target" => @room_b})
+    render_click(view, "schedule-details-order:overlay", %{"key" => @room_c, "target" => @room_d})
+    assert [group_ab, group_cd] = group_keys(render(view))
+
+    render_click(view, "schedule-details-order:overlay", %{
+      "key" => group_ab,
+      "target" => group_cd
+    })
+
+    html = render(view)
+    assert group_keys(html) == [group_cd]
+    assert has_element?(view, "[data-schedule-key='#{group_cd}']", "Overlay · 4 rooms")
+
+    for key <- [@room_a, @room_b, @room_c, @room_d] do
+      assert has_element?(
+               view,
+               "[data-schedule-key='#{group_cd}'] [data-week-schedule-course][data-owner-key='#{key}']"
+             )
+    end
+
+    # and a group onto a solo card flattens the same way
+    render_click(view, "schedule-details-order:separate_all", %{"group" => group_cd})
+    render_click(view, "schedule-details-order:overlay", %{"key" => @room_a, "target" => @room_b})
+    assert [group] = group_keys(render(view))
+    render_click(view, "schedule-details-order:overlay", %{"key" => group, "target" => @room_c})
+    assert [merged] = group_keys(render(view))
+    assert has_element?(view, "[data-schedule-key='#{merged}']", "Overlay · 3 rooms")
+    refute render(view) =~ "overlay:#{String.replace(group, "overlay:", "")}\""
+  end
+
   test "overlay across kinds is refused", %{conn: conn, term_code: term_code} do
     {:ok, view, _html} =
       live(log_in_test_user(conn), ~p"/scheduling?mode=viewer&term=#{term_code}")
@@ -188,7 +232,33 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOverlayLiveTest do
           "09:00:00",
           "09:50:00"
         ),
-        course("80002", "Networks", "Overlay Prof Two", "202", ["Monday"], "09:30:00", "10:20:00")
+        course(
+          "80002",
+          "Networks",
+          "Overlay Prof Two",
+          "202",
+          ["Monday"],
+          "09:30:00",
+          "10:20:00"
+        ),
+        course(
+          "80003",
+          "Databases",
+          "Overlay Prof Three",
+          "303",
+          ["Tuesday"],
+          "09:00:00",
+          "09:50:00"
+        ),
+        course(
+          "80004",
+          "Compilers",
+          "Overlay Prof Four",
+          "404",
+          ["Wednesday"],
+          "09:00:00",
+          "09:50:00"
+        )
       ]
     )
   end

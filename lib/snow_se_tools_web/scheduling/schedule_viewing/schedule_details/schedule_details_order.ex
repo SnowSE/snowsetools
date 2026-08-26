@@ -586,9 +586,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
 
   # -- Overlay operations --
 
-  # Overlays `key` (a solo card) onto `target_key`, which is either another solo
-  # card of the same kind (a new group is created in the target's place) or an
-  # existing group of the same kind (the card joins it).
+  # Overlays the card or group at `key` onto `target_key`, which is either a
+  # solo card of the same kind (a new group is created in the initiator's
+  # place) or an existing group of the same kind (the initiator's schedules
+  # join it). A group initiator is flattened into its members, never nested.
   defp overlay(socket, key: key, target_key: target_key) do
     state = socket.assigns[@key]
     order = state.selected_schedule_order
@@ -607,38 +608,55 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
         socket
 
       ScheduleOverlays.group_key?(target_key) ->
-        state = %{
-          state
-          | overlays:
-              ScheduleOverlays.add_member(
-                overlays: state.overlays,
-                group_key: target_key,
-                owner_key: key
-              ),
-            selected_schedule_order: ScheduleOrder.delete(order: order, key: key),
-            open_overlay_menu_key: nil
-        }
-
-        assign(socket, @key, state)
-
-      true ->
-        {group_key, overlays} =
-          ScheduleOverlays.create(overlays: state.overlays, owner_keys: [key, target_key])
-
-        # The new group takes the initiating card's slot; the initiator gets the first color.
-        order =
-          order
-          |> ScheduleOrder.put_before(key: group_key, before_key: key)
-          |> then(&ScheduleOrder.delete(order: &1, key: target_key))
-          |> then(&ScheduleOrder.delete(order: &1, key: key))
+        overlays =
+          Enum.reduce(entry_owner_keys(state, key), state.overlays, fn owner_key, overlays ->
+            ScheduleOverlays.add_member(
+              overlays: overlays,
+              group_key: target_key,
+              owner_key: owner_key
+            )
+          end)
 
         assign(socket, @key, %{
           state
-          | overlays: overlays,
+          | overlays: drop_group_if_any(overlays, key),
+            selected_schedule_order: ScheduleOrder.delete(order: order, key: key),
+            open_overlay_menu_key: nil
+        })
+
+      true ->
+        {group_key, overlays} =
+          ScheduleOverlays.create(
+            overlays: state.overlays,
+            owner_keys: entry_owner_keys(state, key) ++ [target_key]
+          )
+
+        # The new group takes the initiator's slot; the initiator gets the first color.
+        order =
+          order
+          |> ScheduleOrder.put_before(key: group_key, before_key: key)
+          |> then(&ScheduleOrder.delete(order: &1, key: key))
+          |> then(&ScheduleOrder.delete(order: &1, key: target_key))
+
+        assign(socket, @key, %{
+          state
+          | overlays: drop_group_if_any(overlays, key),
             selected_schedule_order: order,
             open_overlay_menu_key: nil
         })
     end
+  end
+
+  defp entry_owner_keys(state, key) do
+    if ScheduleOverlays.group_key?(key),
+      do: ScheduleOverlays.members(overlays: state.overlays, group_key: key),
+      else: [key]
+  end
+
+  defp drop_group_if_any(overlays, key) do
+    if ScheduleOverlays.group_key?(key),
+      do: ScheduleOverlays.delete_group(overlays: overlays, group_key: key),
+      else: overlays
   end
 
   # Removes one member from a group and shows it as a solo card right after
