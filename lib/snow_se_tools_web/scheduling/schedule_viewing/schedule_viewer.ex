@@ -24,7 +24,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
     :selected_term_code,
     :schedule_owners_metadata_by_term,
     :query,
-    :search_active
+    :search_active,
+    :highlighted_index
   ]
 
   @type t :: %__MODULE__{
@@ -32,7 +33,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
           selected_term_code: String.t() | nil,
           schedule_owners_metadata_by_term: %{optional(String.t()) => [ScheduleOwnerMetadata.t()]},
           query: String.t(),
-          search_active: boolean()
+          search_active: boolean(),
+          highlighted_index: non_neg_integer()
         }
   @key :schedule_viewer_state
 
@@ -43,7 +45,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
       selected_term_code: nil,
       schedule_owners_metadata_by_term: %{},
       query: "",
-      search_active: false
+      search_active: false,
+      highlighted_index: 0
     })
     |> initial_setup()
   end
@@ -362,8 +365,49 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
      |> assign(@key, %{
        socket.assigns[@key]
        | query: query,
-         search_active: true
+         search_active: true,
+         highlighted_index: 0
      })}
+  end
+
+  def hooked_event("schedule-viewer:search_key", %{"key" => key}, socket) do
+    state = socket.assigns[@key]
+    matched = matched_owners(state)
+    last_index = max(length(matched) - 1, 0)
+
+    case key do
+      "ArrowDown" ->
+        {:halt,
+         assign(socket, @key, %{
+           state
+           | search_active: true,
+             highlighted_index: min(state.highlighted_index + 1, last_index)
+         })}
+
+      "ArrowUp" ->
+        {:halt,
+         assign(socket, @key, %{state | highlighted_index: max(state.highlighted_index - 1, 0)})}
+
+      "Enter" ->
+        socket =
+          case Enum.at(matched, state.highlighted_index) do
+            nil -> socket
+            owner -> ScheduleDetailsOrder.toggle_owner(socket, key: owner.key)
+          end
+
+        {:halt,
+         assign(socket, @key, %{
+           socket.assigns[@key]
+           | query: "",
+             highlighted_index: 0
+         })}
+
+      "Escape" ->
+        {:halt, assign(socket, @key, %{state | search_active: false})}
+
+      _other ->
+        {:halt, socket}
+    end
   end
 
   def hooked_event("schedule-viewer:search_focused", _params, socket) do

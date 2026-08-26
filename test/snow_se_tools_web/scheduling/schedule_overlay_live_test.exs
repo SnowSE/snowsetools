@@ -164,6 +164,52 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOverlayLiveTest do
     refute render(view) =~ "overlay:#{String.replace(group, "overlay:", "")}\""
   end
 
+  test "arrow keys and Enter pick a search result and clear the box", %{
+    conn: conn,
+    term_code: term_code
+  } do
+    {:ok, view, _html} =
+      live(log_in_test_user(conn), ~p"/scheduling?mode=viewer&term=#{term_code}")
+
+    wait_for_schedule_metadata(view)
+
+    view |> form("#scheduling-search-form") |> render_change(%{"query" => "Overlay Hall"})
+    # first result is highlighted by default
+    assert has_element?(
+             view,
+             "[id='schedule-owner-search-room-Overlay Hall 101'][data-highlighted='true']"
+           )
+
+    render_hook(view, "schedule-viewer:search_key", %{"key" => "ArrowDown"})
+
+    assert has_element?(
+             view,
+             "[id='schedule-owner-search-room-Overlay Hall 202'][data-highlighted='true']"
+           )
+
+    refute has_element?(
+             view,
+             "[id='schedule-owner-search-room-Overlay Hall 101'][data-highlighted='true']"
+           )
+
+    render_hook(view, "schedule-viewer:search_key", %{"key" => "ArrowUp"})
+    render_hook(view, "schedule-viewer:search_key", %{"key" => "ArrowUp"})
+
+    assert has_element?(
+             view,
+             "[id='schedule-owner-search-room-Overlay Hall 101'][data-highlighted='true']"
+           )
+
+    render_hook(view, "schedule-viewer:search_key", %{"key" => "ArrowDown"})
+    render_hook(view, "schedule-viewer:search_key", %{"key" => "Enter"})
+    wait_for_week_schedules(view)
+
+    assert has_element?(view, "[data-schedule-key='#{@room_b}']")
+    refute has_element?(view, "[data-schedule-key='#{@room_a}']")
+    assert has_element?(view, "#scheduling-search-input[value='']")
+    refute has_element?(view, "#schedule-owner-search-results")
+  end
+
   test "overlay across kinds is refused", %{conn: conn, term_code: term_code} do
     {:ok, view, _html} =
       live(log_in_test_user(conn), ~p"/scheduling?mode=viewer&term=#{term_code}")

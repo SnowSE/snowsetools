@@ -8,7 +8,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerSearch do
   attr :selected_schedule_order, :any, required: true
 
   def search(assigns) do
-    assigns = assign(assigns, :matched_owners, matched_schedule_owners(assigns))
+    assigns = assign(assigns, :matched_owners, matched_owners(assigns.state))
 
     ~H"""
     <div class="flex shrink-0 flex-col">
@@ -70,21 +70,25 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerSearch do
         <div
           :if={@state.query != "" and @state.search_active}
           id="schedule-owner-search-results"
+          phx-hook=".ScheduleOwnerSearchResults"
           class="absolute z-50 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 shadow-xl shadow-black/40"
         >
           <div :if={@matched_owners == []} class="px-3 py-4 text-center text-sm text-slate-500">
             No matching schedules.
           </div>
 
-          <%= for schedule_owner <- @matched_owners do %>
+          <%= for {schedule_owner, index} <- Enum.with_index(@matched_owners) do %>
             <button
               id={"schedule-owner-search-#{schedule_owner.type}-#{schedule_owner.name}"}
               type="button"
               phx-click="schedule-owner-search:select"
               phx-value-key={schedule_owner.key}
+              data-highlighted={to_string(index == @state.highlighted_index)}
               class={[
                 "flex w-full items-center gap-3 px-3 py-2 text-left transition",
                 "hover:bg-slate-800/70",
+                index == @state.highlighted_index &&
+                  "bg-slate-800/70 ring-1 ring-inset ring-indigo-400/40",
                 if(ScheduleOrder.member?(order: @selected_schedule_order, key: schedule_owner.key),
                   do: "bg-indigo-950/40 text-indigo-100",
                   else: "text-slate-200"
@@ -112,6 +116,28 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerSearch do
           this.el.addEventListener("focus", () => {
             this.pushEvent("schedule-viewer:search_focused", {});
           });
+
+          // Arrow keys move the highlight, Enter selects it (and clears the box
+          // so the next name can be typed), Escape closes the list. The input
+          // is cleared here because LiveView never patches a focused input.
+          this.el.addEventListener("keydown", (event) => {
+            if (!["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(event.key)) return;
+            if (this.el.value === "" && event.key !== "Escape") return;
+            event.preventDefault();
+            if (event.key === "Enter") this.el.value = "";
+            this.pushEvent("schedule-viewer:search_key", { key: event.key });
+          });
+        }
+      }
+    </script>
+
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".ScheduleOwnerSearchResults">
+      export default {
+        mounted() { this.scrollToHighlighted(); },
+        updated() { this.scrollToHighlighted(); },
+        scrollToHighlighted() {
+          const highlighted = this.el.querySelector("[data-highlighted='true']");
+          if (highlighted) highlighted.scrollIntoView({ block: "nearest" });
         }
       }
     </script>
@@ -120,14 +146,13 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOwnerSearch do
 
   # -- Filtering helpers --
 
-  defp matched_schedule_owners(assigns) do
-    owners =
-      assigns.state.schedule_owners_metadata_by_term[assigns.state.selected_term_code] || []
+  def matched_owners(state) do
+    owners = state.schedule_owners_metadata_by_term[state.selected_term_code] || []
 
-    if assigns.state.query == "" do
+    if state.query == "" do
       []
     else
-      filter_schedule_owners(owners, assigns.state.query)
+      filter_schedule_owners(owners, state.query)
     end
   end
 
