@@ -14,9 +14,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
     CourseListForTerm,
     ScheduleChangeGroups,
     ScheduleDetailsOrder,
-    ScheduleOrder,
-    ScheduleTermConflicts,
-    WeekSchedule
+    ScheduleTermConflicts
   }
 
   import SnowSeToolsWeb.Scheduling.ScheduleOwnerSearch
@@ -68,7 +66,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
       <aside class="flex shrink-0 flex-col gap-3 pr-2 w-80 min-h-0">
         <.search
           state={@state}
-          selected_schedule_order={@schedule_details_order.selected_schedule_order}
+          selected_schedule_order={ScheduleDetailsOrder.selected_owner_order(@schedule_details_order)}
         />
         <ScheduleChangeGroups.render
           state={@schedule_change_groups_state}
@@ -377,45 +375,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
   end
 
   def hooked_event("schedule-owner-search:select", %{"key" => key}, socket) do
-    selected_term_code = socket.assigns[@key].selected_term_code
-
-    if ScheduleOrder.member?(
-         order: socket.assigns.schedule_details_order.selected_schedule_order,
-         key: key
-       ) do
-      {:halt,
-       socket
-       |> WeekSchedule.remove_owner(owner_key: key)
-       |> assign(:schedule_details_order, %{
-         socket.assigns.schedule_details_order
-         | selected_schedule_order:
-             ScheduleOrder.delete(
-               order: socket.assigns.schedule_details_order.selected_schedule_order,
-               key: key
-             )
-       })}
-    else
-      socket =
-        if is_binary(selected_term_code) do
-          WeekSchedule.assign_owner(socket,
-            owner_key: key,
-            selected_term_code: selected_term_code
-          )
-        else
-          socket
-        end
-
-      {:halt,
-       socket
-       |> assign(:schedule_details_order, %{
-         socket.assigns.schedule_details_order
-         | selected_schedule_order:
-             ScheduleOrder.put(
-               order: socket.assigns.schedule_details_order.selected_schedule_order,
-               key: key
-             )
-       })}
-    end
+    {:halt, ScheduleDetailsOrder.toggle_owner(socket, key: key)}
   end
 
   def hooked_event(_event, _params, socket), do: {:cont, socket}

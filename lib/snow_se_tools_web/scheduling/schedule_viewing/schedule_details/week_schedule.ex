@@ -11,7 +11,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
     ScheduleUtils
   }
 
-  alias SnowSeToolsWeb.Scheduling.{CourseChangeIntent, ScheduleChangeApply}
+  alias SnowSeToolsWeb.Scheduling.{CourseChangeIntent, OverlayControls, ScheduleChangeApply}
   import SnowSeToolsWeb.Scheduling.WeekScheduleGrid
 
   defstruct [
@@ -89,6 +89,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
   attr :active_conflicted_course_crns, :any, default: MapSet.new()
   attr :schedule_owners_metadata, :list, default: []
   attr :edit_course_modal, :map, default: nil
+  attr :overlay_targets, :list, default: []
+  attr :overlay_menu_open?, :boolean, default: false
 
   def render(assigns) do
     if is_nil(assigns.state.week_schedule) and !assigns.state.loading? do
@@ -125,6 +127,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
             position={@position}
             total_count={@total_count}
             selected_variant_index={@state.selected_variant_index || 0}
+            overlay_targets={@overlay_targets}
+            overlay_menu_open?={@overlay_menu_open?}
           />
           <.schedule_grid
             schedule_owner={effective_schedule(@state.week_schedule, @active_change_group)}
@@ -306,6 +310,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
   attr :position, :integer, required: true
   attr :total_count, :integer, required: true
   attr :selected_variant_index, :integer, default: 0
+  attr :overlay_targets, :list, default: []
+  attr :overlay_menu_open?, :boolean, default: false
 
   defp schedule_header(assigns) do
     ~H"""
@@ -358,6 +364,14 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
         <% end %>
       </div>
       <div class="flex items-center gap-1">
+        <OverlayControls.overlay_with_menu
+          :if={@overlay_targets != []}
+          id={"overlay-menu-#{@owner_key}"}
+          entry_key={@owner_key}
+          owner_type={@schedule_owner.type}
+          targets={@overlay_targets}
+          open?={@overlay_menu_open?}
+        />
         <button
           type="button"
           phx-click="schedule-details-order:move_schedule"
@@ -783,9 +797,9 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
 
   defp empty_week_schedule_type(owner_key), do: {:room, owner_key}
 
-  defp effective_schedule(schedule_owner, nil), do: schedule_owner
+  def effective_schedule(schedule_owner, nil), do: schedule_owner
 
-  defp effective_schedule(schedule_owner, active_change_group) do
+  def effective_schedule(schedule_owner, active_change_group) do
     ScheduleChangeApply.effective_schedule(schedule_owner, active_change_group)
   end
 end

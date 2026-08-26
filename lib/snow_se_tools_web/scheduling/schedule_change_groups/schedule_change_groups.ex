@@ -5,7 +5,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroups do
   alias SnowSeTools.Scheduling.ScheduleChangeDomainManager
   alias SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails
   alias SnowSeToolsWeb.Scheduling.ScheduleChangeGroupSelector
-  alias SnowSeToolsWeb.Scheduling.{ScheduleOrder, WeekSchedule}
+  alias SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder
 
   defstruct [
     :groups,
@@ -97,29 +97,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroups do
   end
 
   def hooked_event("schedule-change-groups:view_schedule", %{"key" => key}, socket) do
-    selected_term_code = socket.assigns.schedule_viewer_state.selected_term_code
-
-    socket =
-      if is_binary(selected_term_code) and
-           !ScheduleOrder.member?(
-             order: socket.assigns.schedule_details_order.selected_schedule_order,
-             key: key
-           ) do
-        socket
-        |> WeekSchedule.assign_owner(owner_key: key, selected_term_code: selected_term_code)
-        |> assign(:schedule_details_order, %{
-          socket.assigns.schedule_details_order
-          | selected_schedule_order:
-              ScheduleOrder.put(
-                order: socket.assigns.schedule_details_order.selected_schedule_order,
-                key: key
-              )
-        })
-      else
-        socket
-      end
-
-    {:halt, socket}
+    {:halt, ScheduleDetailsOrder.ensure_owner_selected(socket, key: key)}
   end
 
   def hooked_event("schedule-change-groups:delete_change", %{"change-id" => change_id}, socket) do

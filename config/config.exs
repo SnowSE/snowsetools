@@ -10,6 +10,9 @@ import Config
 config :snow_se_tools,
   generators: [timestamp_type: :utc_datetime]
 
+# Decode uuid columns to strings at the driver level (see PostgrexUuidString).
+config :snow_se_tools, SnowSeTools.Repo, types: SnowSeTools.Data.PostgresTypes
+
 # Configure the endpoint
 config :snow_se_tools, SnowSeToolsWeb.Endpoint,
   url: [host: "0.0.0.0"],

@@ -43,6 +43,25 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOrder do
     end
   end
 
+  @doc "Inserts `key` immediately before `before_key` (or at the end if absent)."
+  def put_before(%__MODULE__{} = order, key: key, before_key: before_key) when is_binary(key) do
+    order = order |> then(&delete(order: &1, key: key)) |> then(&put(order: &1, key: key))
+    move_before(order: order, dragged_key: key, target_key: before_key)
+  end
+
+  @doc "Inserts `key` immediately after `after_key` (or at the end if absent)."
+  def put_after(%__MODULE__{} = order, key: key, after_key: after_key) when is_binary(key) do
+    order = order |> then(&delete(order: &1, key: key)) |> then(&put(order: &1, key: key))
+
+    case Enum.find_index(order.keys, &(&1 == after_key)) do
+      nil ->
+        order
+
+      index ->
+        move_before(order: order, dragged_key: key, target_key: Enum.at(order.keys, index + 1))
+    end
+  end
+
   def retain_keys(order: %__MODULE__{} = order, keys: keys) when is_list(keys) or is_map(keys) do
     retained_keys = MapSet.new(keys)
 

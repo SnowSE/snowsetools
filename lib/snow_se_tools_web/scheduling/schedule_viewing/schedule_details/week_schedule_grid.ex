@@ -71,17 +71,22 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
                     conflicted_course_crns: @conflicted_course_crns,
                     active_conflicted_course_crns: @active_conflicted_course_crns
                   ) %>
+                <% overlay_color = Map.get(meeting, :overlay_color) %>
                 <div
                   class={[
                     "absolute z-10 rounded px-1.5 py-1 leading-tight shadow-sm shadow-black cursor-move transition-colors hover:bg-slate-800",
                     conflicted? && "bg-rose-950/40 ring-1 ring-rose-500/50",
                     !conflicted? && source == :added && "bg-emerald-950/60 ring-1 ring-emerald-500/50",
                     !conflicted? && source == :updated && "bg-amber-950/40 ring-1 ring-amber-500/50",
-                    !conflicted? && source == :base && "bg-slate-900"
+                    !conflicted? && source == :base && is_nil(overlay_color) && "bg-slate-900",
+                    !conflicted? && source == :base && overlay_color && overlay_color.block
                   ]}
                   draggable="true"
                   data-week-schedule-course
                   data-week-schedule-conflicted={to_string(conflicted?)}
+                  data-owner-key={Map.get(meeting, :overlay_owner_key)}
+                  data-owner-type={Map.get(meeting, :overlay_owner_type)}
+                  data-owner-name={Map.get(meeting, :overlay_owner_name)}
                   data-course-payload={
                     course_payload_json(
                       meeting: meeting,
@@ -113,6 +118,13 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
                         </div>
                         <div class="text-[11px] text-slate-300">
                           {meeting.subject_code} {meeting.course_number}
+                        </div>
+                        <div
+                          :if={Map.get(meeting, :overlay_owner_name)}
+                          class="flex items-center gap-1.5 text-[11px] text-slate-300"
+                        >
+                          <span class={["size-2 rounded-full", overlay_color && overlay_color.dot]} />
+                          {Map.get(meeting, :overlay_owner_name)}
                         </div>
                         <div
                           :if={length(grouped_crns(meeting: meeting)) > 1}
@@ -182,7 +194,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
             if (!card || !this.el.contains(card)) return;
 
             event.stopPropagation();
-            this.dragPayload = this.coursePayload(card);
+            this.dragPayload = { ...this.coursePayload(card), ...this.ownerFor(card) };
 
             if (event.dataTransfer) {
               event.dataTransfer.effectAllowed = "move";
@@ -226,12 +238,10 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
             const drop = this.dropDetails(event, dayColumn);
 
             this.pushEvent("week-schedule-grid:move_course", {
+              ...this.ownerFor(null),
               ...payload,
               target_day: dayColumn.dataset.weekScheduleDay,
               target_time: drop.time,
-              owner_key: this.el.dataset.ownerKey,
-              owner_type: this.el.dataset.ownerType,
-              owner_name: this.el.dataset.ownerName,
             });
 
             this.dragPayload = null;
@@ -249,7 +259,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
 
             event.preventDefault();
             event.stopPropagation();
-            this.openMenu(event, this.coursePayload(card));
+            this.openMenu(event, { ...this.coursePayload(card), ...this.ownerFor(card) });
           };
 
           this.onDocumentClick = (event) => {
@@ -281,6 +291,14 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
 
         coursePayload(card) {
           return JSON.parse(card.dataset.coursePayload);
+        },
+        ownerFor(card) {
+          const source = card && card.dataset.ownerKey ? card.dataset : this.el.dataset;
+          return {
+            owner_key: source.ownerKey,
+            owner_type: source.ownerType,
+            owner_name: source.ownerName,
+          };
         },
 
         currentDragPayload(event) {
@@ -365,10 +383,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
 
         editCourse(payload) {
           this.pushEvent("week-schedule-grid:open_edit_course", {
+            ...this.ownerFor(null),
             ...payload,
-            owner_key: this.el.dataset.ownerKey,
-            owner_type: this.el.dataset.ownerType,
-            owner_name: this.el.dataset.ownerName,
           });
         },
 
@@ -376,10 +392,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
           if (!window.confirm(`Remove ${payload.course_name} from this change group view?`)) return;
 
           this.pushEvent("week-schedule-grid:delete_course", {
+            ...this.ownerFor(null),
             ...payload,
-            owner_key: this.el.dataset.ownerKey,
-            owner_type: this.el.dataset.ownerType,
-            owner_name: this.el.dataset.ownerName,
           });
         },
       };
@@ -430,7 +444,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
         meeting.course_name,
         meeting.course_number,
         meeting.start_minutes,
-        meeting.end_minutes
+        meeting.end_minutes,
+        Map.get(meeting, :overlay_owner_key)
       }
     end)
     |> Enum.map(fn {_key, indexed_meetings} ->

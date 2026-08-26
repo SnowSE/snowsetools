@@ -61,13 +61,8 @@ defmodule SnowSeTools.Data.DbHelpers do
     {positional_sql, ordered_values}
   end
 
-  defp format_db_value(<<a::4-bytes, b::2-bytes, c::2-bytes, d::2-bytes, e::6-bytes>>) do
-    [a, b, c, d, e]
-    |> Enum.map(&Base.encode16(&1, case: :lower))
-    |> Enum.join("-")
-  end
-
-  defp format_db_value(val) when is_list(val), do: Enum.map(val, &format_db_value/1)
+  # UUID columns are decoded to strings by SnowSeTools.Data.PostgrexUuidString,
+  # so no per-value type guessing is needed here.
   defp format_db_value(val), do: val
 
   @doc """
