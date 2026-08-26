@@ -1,6 +1,7 @@
 defmodule SnowSeToolsWeb.Syllabus.SearchQuickNavigation do
   import Phoenix.LiveView
   import Phoenix.Component
+  require Logger
 
   alias SnowSeTools.Syllabi.SyllabusDomainManager
 
@@ -118,7 +119,12 @@ defmodule SnowSeToolsWeb.Syllabus.SearchQuickNavigation do
     {:halt, socket}
   end
 
-  def hooked_async({:fetch_departments, _key}, _result, socket), do: {:halt, socket}
+  def hooked_async({:fetch_departments, _key}, result, socket) do
+    Logger.error("SearchQuickNavigation failed to load departments: #{inspect(result)}")
+    {:halt, socket}
+  end
+
+  def hooked_async(_name, _result, socket), do: {:cont, socket}
 
   defp maybe_attach_hooks(socket) do
     if first_instance?(socket) do

@@ -56,7 +56,15 @@ defmodule SnowSeToolsWeb.Admin.SnowCacheComponent do
     {:noreply, assign(socket, :expanded_term_code, expanded_term_code)}
   end
 
-  def handle_event("select_sync_term", %{"snow_sync" => %{"term_code" => ""}}, socket) do
+  # Only treat an empty term as a cancel when the user actually changed the
+  # dropdown. Typing/pasting into the JWT field also fires phx-change, and the
+  # dropdown reads "" whenever the selected term isn't listed in it (e.g. when
+  # refreshing an already-cached semester).
+  def handle_event(
+        "select_sync_term",
+        %{"_target" => ["snow_sync", "term_code"], "snow_sync" => %{"term_code" => ""}},
+        socket
+      ) do
     {:noreply, cancel_sync(socket)}
   end
 
@@ -65,6 +73,7 @@ defmodule SnowSeToolsWeb.Admin.SnowCacheComponent do
         %{"snow_sync" => %{"term_code" => term_code} = attrs},
         socket
       ) do
+    term_code = resolve_term_code(term_code, socket)
     jwt_token = String.trim(Map.get(attrs, "jwt_token", "") || "")
 
     {:noreply,
@@ -128,8 +137,17 @@ defmodule SnowSeToolsWeb.Admin.SnowCacheComponent do
         %{"snow_sync" => %{"term_code" => term_code} = attrs},
         socket
       ) do
+    term_code = resolve_term_code(term_code, socket)
     jwt_token = String.trim(Map.get(attrs, "jwt_token", "") || "")
 
+    if term_code in [nil, ""] do
+      {:noreply, assign(socket, :sync_error, "Choose a semester before syncing.") |> put_sync_form()}
+    else
+      sync_classes(term_code, jwt_token, socket)
+    end
+  end
+
+  defp sync_classes(term_code, jwt_token, socket) do
     if jwt_token == "" do
       {:noreply, assign(socket, :sync_error, "Paste your JWT before syncing.") |> put_sync_form()}
     else
@@ -242,6 +260,11 @@ defmodule SnowSeToolsWeb.Admin.SnowCacheComponent do
     </section>
     """
   end
+
+  # Fall back to the term already selected (e.g. via "Refresh class list") when
+  # the dropdown submits "" because that term isn't one of its options.
+  defp resolve_term_code("", socket), do: socket.assigns[:sync_term_code]
+  defp resolve_term_code(term_code, _socket), do: term_code
 
   defp base_assigns(socket) do
     socket

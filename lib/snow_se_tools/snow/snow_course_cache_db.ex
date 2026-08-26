@@ -1,4 +1,6 @@
 defmodule SnowSeTools.Snow.SnowCourseCacheDb do
+  require Logger
+
   alias SnowSeTools.Data.DbHelpers
 
   @term_summary_schema Zoi.object(%{
@@ -117,10 +119,12 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
 
             _ ->
               rows =
-                Enum.map(courses, fn course ->
+                courses
+                |> Enum.map(fn course ->
                   attrs = course_attributes(course)
                   Map.put(attrs, "term_code", term_code)
                 end)
+                |> dedupe_by_crn()
 
               insert_sql = """
               INSERT INTO snow_courses (
@@ -411,6 +415,24 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
       {:error, _} = err -> err
       rows -> {:ok, Enum.map(rows, & &1["data"])}
     end
+  end
+
+  # Postgres rejects an ON CONFLICT DO UPDATE that hits the same row twice in one
+  # statement, so the payload can only contain one row per CRN. Last one wins.
+  defp dedupe_by_crn(rows) do
+    deduped =
+      rows
+      |> Enum.reverse()
+      |> Enum.uniq_by(& &1["crn"])
+      |> Enum.reverse()
+
+    if length(deduped) < length(rows) do
+      Logger.warning(
+        "SnowCourseCacheDb dropped #{length(rows) - length(deduped)} duplicate CRN(s) before caching courses"
+      )
+    end
+
+    deduped
   end
 
   defp course_attributes(course) when is_map(course) do

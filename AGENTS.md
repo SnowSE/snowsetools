@@ -293,6 +293,37 @@ The main constraint: all list items share one set of hooks, so event names must 
    - you can run sql with `docker exec simplesyllabusreporter-db-1 sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "\dt"'`
 2. **app** — Elixir/Phoenix; source is bind-mounted so live reload works
 
+## Production Deployment
+
+Production runs as a docker compose stack (`docker-compose.prod.yml`) behind a
+Cloudflare tunnel — it replaces the old k8s/ArgoCD deployment.
+
+```bash
+cp prod.env.example prod.env   # then fill in every REPLACE_ME
+./prod.sh up -d --build        # build the release image and start the stack
+./prod.sh logs -f app
+```
+
+Always go through `./prod.sh` rather than `docker compose` directly — it passes
+both `-f docker-compose.prod.yml` and `--env-file prod.env`, and the `${VAR}`
+substitutions in the compose file fail without the latter.
+
+Three containers:
+
+1. **db** — Postgres 18, data in the `postgres_data` named volume; `schema.sql`
+   is mounted into `/docker-entrypoint-initdb.d/` and runs only on first start
+   (i.e. when the volume is empty). There are no Ecto migrations; schema
+   changes are applied by editing `schema.sql` **and** running the equivalent
+   SQL against the live database by hand.
+2. **app** — the prod `Dockerfile` release image. `DATABASE_URL` is assembled by
+   compose from the `POSTGRES_*` values, so it is not set in `prod.env`.
+3. **cloudflared** — a token-based tunnel; the public hostname → `http://app:4000`
+   mapping lives in the Cloudflare Zero Trust dashboard, not in this repo. No
+   host ports are published, so the app is reachable only through the tunnel.
+
+`PHX_HOST`, `OIDC_REDIRECT_URI`, and the tunnel's public hostname must all agree,
+or OIDC login breaks.
+
 ## Getting feedback
 
 you can read current logs with `docker logs simplesyllabusreporter-app-1` be sure to use bash to filter for only the logs you care about.
