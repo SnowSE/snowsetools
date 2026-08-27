@@ -31,6 +31,27 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
     assert html =~ "data-week-schedule-day=\"Monday\""
   end
 
+  test "minute_scale stretches the grid vertically" do
+    schedule_owner =
+      ScheduleUtils.build_week_schedule(
+        type: :academic_program_semester,
+        name: "CS:Fall2024",
+        courses: [build_course("10001", "Intro to CS", ["Monday"], "09:00", "10:30")]
+      )
+
+    html =
+      render_component(&WeekScheduleGrid.schedule_grid/1,
+        schedule_owner: schedule_owner,
+        owner_key: "academic_program_semester:cs-fall2024",
+        selected_term_code: "202501",
+        active_change_group: nil,
+        minute_scale: 2.0
+      )
+
+    assert html =~ "data-minute-scale=\"2.0\""
+    assert html =~ "top: 120px; height: 180px"
+  end
+
   test "renders overlapping meetings side by side" do
     schedule_owner =
       ScheduleUtils.build_week_schedule(

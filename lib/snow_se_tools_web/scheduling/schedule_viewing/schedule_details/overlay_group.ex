@@ -20,6 +20,7 @@ defmodule SnowSeToolsWeb.Scheduling.OverlayGroup do
   attr :active_conflicted_course_crns, :any, default: MapSet.new()
   attr :overlay_targets, :list, default: []
   attr :overlay_menu_open?, :boolean, default: false
+  attr :size, :map, default: %{width: nil, scale: 1.0}
 
   def render(assigns) do
     members =
@@ -37,6 +38,7 @@ defmodule SnowSeToolsWeb.Scheduling.OverlayGroup do
       |> assign(:type, type)
       |> assign(:merged_schedule, merged_schedule(members: members, type: type))
       |> assign(:selected_term_code, selected_term_code(members))
+      |> assign(:width_attrs, OverlayControls.card_width_attrs(assigns.size))
 
     ~H"""
     <section
@@ -45,13 +47,16 @@ defmodule SnowSeToolsWeb.Scheduling.OverlayGroup do
       data-schedule-key={@group_key}
       draggable="true"
       tabindex="0"
+      style={@width_attrs.style}
       class={[
-        "relative w-[700px] p-3",
+        "relative p-3",
+        @width_attrs.class,
         "select-none cursor-grab motion-safe:transition-[transform,opacity,box-shadow,border-color,background-color] motion-safe:duration-200 motion-safe:ease-out active:cursor-grabbing",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
       ]}
     >
-      <div class="rounded-lg border border-slate-800/80 bg-slate-950/55 p-3 shadow-sm shadow-slate-950/20 h-full">
+      <div class="relative rounded-lg border border-slate-800/80 bg-slate-950/55 p-3 shadow-sm shadow-slate-950/20 h-full">
+        <OverlayControls.resize_grip />
         <div class="mb-2 grid grid-cols-[1fr_auto] items-start gap-3">
           <div class="min-w-0">
             <h2 class="truncate text-base font-semibold leading-tight text-slate-100">
@@ -81,8 +86,9 @@ defmodule SnowSeToolsWeb.Scheduling.OverlayGroup do
               phx-value-group={@group_key}
               class="inline-flex items-center gap-1.5 rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-800 hover:text-slate-100"
             >
-              <.icon name="hero-arrows-pointing-out" class="size-3.5" /> Separate
+              <.icon name="hero-rectangle-group" class="size-3.5" /> Separate
             </button>
+            <OverlayControls.size_button entry_key={@group_key} size={@size} />
             <button
               type="button"
               phx-click="schedule-details-order:move_schedule"
@@ -147,6 +153,7 @@ defmodule SnowSeToolsWeb.Scheduling.OverlayGroup do
           active_change_group={@active_change_group}
           conflicted_course_crns={@conflicted_course_crns}
           active_conflicted_course_crns={@active_conflicted_course_crns}
+          minute_scale={@size.scale}
         />
       </div>
     </section>

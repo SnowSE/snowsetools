@@ -210,6 +210,66 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOverlayLiveTest do
     refute has_element?(view, "#schedule-owner-search-results")
   end
 
+  test "cards can be resized, maximized and restored", %{conn: conn, term_code: term_code} do
+    {:ok, view, _html} =
+      live(log_in_test_user(conn), ~p"/scheduling?mode=viewer&term=#{term_code}")
+
+    wait_for_schedule_metadata(view)
+    select_schedule_owner(view, @room_a)
+    wait_for_week_schedules(view)
+
+    card = "[data-schedule-key='#{@room_a}']"
+    assert has_element?(view, "#{card}.w-\\[700px\\]")
+    assert has_element?(view, "#{card} [data-resize-grip].cursor-nwse-resize")
+    assert has_element?(view, "#{card} [data-minute-scale='1.0']")
+
+    render_click(view, "schedule-details-order:resize", %{
+      "key" => @room_a,
+      "width" => 900,
+      "scale" => 1.5
+    })
+
+    assert has_element?(view, "#{card}[style='width: 900px']")
+    assert has_element?(view, "#{card} [data-minute-scale='1.5']")
+
+    # width below the minimum and scale above the maximum are clamped
+    render_click(view, "schedule-details-order:resize", %{
+      "key" => @room_a,
+      "width" => 100,
+      "scale" => 9
+    })
+
+    assert has_element?(view, "#{card}[style='width: 480px']")
+    assert has_element?(view, "#{card} [data-minute-scale='3.0']")
+
+    render_click(view, "schedule-details-order:maximize", %{"key" => @room_a})
+    assert has_element?(view, "#{card}.w-full")
+
+    view
+    |> element("#{card} button[phx-click='schedule-details-order:restore_size']")
+    |> render_click()
+
+    assert has_element?(view, "#{card}.w-\\[700px\\]")
+    assert has_element?(view, "#{card} [data-minute-scale='1.0']")
+  end
+
+  test "the sidebar can be unpinned to an auto-hide rail", %{conn: conn, term_code: term_code} do
+    {:ok, view, _html} =
+      live(log_in_test_user(conn), ~p"/scheduling?mode=viewer&term=#{term_code}")
+
+    assert has_element?(view, "#scheduling-sidebar[data-pinned='true']")
+    refute has_element?(view, "#scheduling-sidebar-rail")
+
+    view |> element("#scheduling-sidebar-pin-true") |> render_click()
+    assert has_element?(view, "#scheduling-sidebar[data-pinned='false']")
+    assert has_element?(view, "#scheduling-sidebar-rail")
+    assert has_element?(view, "#scheduling-sidebar-flyout #scheduling-search-input")
+
+    render_hook(view, "schedule-viewer:set_sidebar_pinned", %{"pinned" => true})
+    assert has_element?(view, "#scheduling-sidebar[data-pinned='true']")
+    refute has_element?(view, "#scheduling-sidebar-rail")
+  end
+
   test "overlay across kinds is refused", %{conn: conn, term_code: term_code} do
     {:ok, view, _html} =
       live(log_in_test_user(conn), ~p"/scheduling?mode=viewer&term=#{term_code}")

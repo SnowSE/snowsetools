@@ -9,6 +9,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
   attr :active_change_group, :map, default: nil
   attr :conflicted_course_crns, :any, default: MapSet.new()
   attr :active_conflicted_course_crns, :any, default: MapSet.new()
+  attr :minute_scale, :float, default: 1.0
 
   def schedule_grid(assigns) do
     ~H"""
@@ -21,16 +22,14 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
       data-owner-name={@schedule_owner.name}
       data-start-minutes={@schedule_owner.start_minutes}
       data-end-minutes={@schedule_owner.end_minutes}
+      data-minute-scale={@minute_scale}
     >
       <div class="w-14 pt-[2.05rem]">
         <div
           class="relative"
-          style={"height: #{grid_height(start_minutes: @schedule_owner.start_minutes, end_minutes: @schedule_owner.end_minutes)}px"}
+          style={"height: #{grid_height(start_minutes: @schedule_owner.start_minutes, end_minutes: @schedule_owner.end_minutes, scale: @minute_scale)}px"}
         >
-          <%= for label <- time_labels(
-            start_minutes: @schedule_owner.start_minutes,
-            end_minutes: @schedule_owner.end_minutes
-          ) do %>
+          <%= for label <- time_labels(start_minutes: @schedule_owner.start_minutes, end_minutes: @schedule_owner.end_minutes, scale: @minute_scale) do %>
             <div
               class="absolute right-1  text-[11px] text-slate-500 text-end"
               style={"top: #{label.offset}px"}
@@ -49,12 +48,9 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
             <div
               class="relative bg-slate-950/20"
               data-week-schedule-day={day}
-              style={"height: #{grid_height(start_minutes: @schedule_owner.start_minutes, end_minutes: @schedule_owner.end_minutes)}px"}
+              style={"height: #{grid_height(start_minutes: @schedule_owner.start_minutes, end_minutes: @schedule_owner.end_minutes, scale: @minute_scale)}px"}
             >
-              <%= for line <- grid_lines(
-                start_minutes: @schedule_owner.start_minutes,
-                end_minutes: @schedule_owner.end_minutes
-              ) do %>
+              <%= for line <- grid_lines(start_minutes: @schedule_owner.start_minutes, end_minutes: @schedule_owner.end_minutes, scale: @minute_scale) do %>
                 <div
                   class="absolute left-0 right-0 border-t border-slate-800/55 "
                   style={"top: #{line}px"}
@@ -96,7 +92,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
                   style={
                     meeting_style(
                       meeting: meeting,
-                      schedule_start_minutes: @schedule_owner.start_minutes
+                      schedule_start_minutes: @schedule_owner.start_minutes,
+                      scale: @minute_scale
                     )
                   }
                 >
@@ -401,24 +398,27 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
     """
   end
 
-  defp time_labels(start_minutes: start_minutes, end_minutes: end_minutes) do
+  defp time_labels(start_minutes: start_minutes, end_minutes: end_minutes, scale: scale) do
     (start_minutes + 30)
     |> Stream.iterate(&(&1 + 60))
     |> Enum.take_while(&(&1 <= end_minutes))
     |> Enum.map(fn minutes ->
-      %{time: format_minutes(minutes), offset: minutes - start_minutes}
+      %{time: format_minutes(minutes), offset: px(minutes - start_minutes, scale)}
     end)
   end
 
-  defp grid_height(start_minutes: start_minutes, end_minutes: end_minutes),
-    do: max(end_minutes - start_minutes, 60)
+  defp grid_height(start_minutes: start_minutes, end_minutes: end_minutes, scale: scale),
+    do: px(max(end_minutes - start_minutes, 60), scale)
 
-  defp grid_lines(start_minutes: start_minutes, end_minutes: end_minutes) do
+  defp grid_lines(start_minutes: start_minutes, end_minutes: end_minutes, scale: scale) do
     start_minutes
     |> Stream.iterate(&(&1 + 30))
     |> Enum.take_while(&(&1 <= end_minutes))
-    |> Enum.map(&(&1 - start_minutes))
+    |> Enum.map(&px(&1 - start_minutes, scale))
   end
+
+  # Vertical pixels per minute default to 1; a card's time scale stretches that.
+  defp px(minutes, scale), do: round(minutes * scale)
 
   defp positioned_meetings(meetings: meetings) do
     meetings
@@ -568,9 +568,13 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
     end
   end
 
-  defp meeting_style(meeting: meeting, schedule_start_minutes: schedule_start_minutes) do
-    top = meeting.start_minutes - schedule_start_minutes
-    height = max(meeting.end_minutes - meeting.start_minutes, 24)
+  defp meeting_style(
+         meeting: meeting,
+         schedule_start_minutes: schedule_start_minutes,
+         scale: scale
+       ) do
+    top = px(meeting.start_minutes - schedule_start_minutes, scale)
+    height = max(px(meeting.end_minutes - meeting.start_minutes, scale), 24)
     total_columns = Map.get(meeting, :display_total_columns, 1)
     column = Map.get(meeting, :display_column, 0)
     width = 100 / total_columns

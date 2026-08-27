@@ -91,8 +91,11 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
   attr :edit_course_modal, :map, default: nil
   attr :overlay_targets, :list, default: []
   attr :overlay_menu_open?, :boolean, default: false
+  attr :size, :map, default: %{width: nil, scale: 1.0}
 
   def render(assigns) do
+    assigns = assign(assigns, :width_attrs, OverlayControls.card_width_attrs(assigns.size))
+
     if is_nil(assigns.state.week_schedule) and !assigns.state.loading? do
       ScheduleOwnerDomainManager.request_schedule_owner_course_list(
         pid: self(),
@@ -108,13 +111,16 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
       data-schedule-key={@state.owner_key}
       draggable="true"
       tabindex="0"
+      style={@width_attrs.style}
       class={[
-        "relative w-[700px] p-3",
+        "relative p-3",
+        @width_attrs.class,
         "select-none cursor-grab motion-safe:transition-[transform,opacity,box-shadow,border-color,background-color] motion-safe:duration-200 motion-safe:ease-out active:cursor-grabbing",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
       ]}
     >
-      <div class="rounded-lg border border-slate-800/80 bg-slate-950/55 p-3 shadow-sm shadow-slate-950/20 h-full">
+      <div class="relative rounded-lg border border-slate-800/80 bg-slate-950/55 p-3 shadow-sm shadow-slate-950/20 h-full">
+        <OverlayControls.resize_grip />
         <%= if @state.loading? or is_nil(@state.week_schedule) do %>
           <div class="flex h-40 items-center justify-center text-sm text-slate-500">
             <.icon name="hero-arrow-path" class="size-4 animate-spin" />
@@ -129,6 +135,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
             selected_variant_index={@state.selected_variant_index || 0}
             overlay_targets={@overlay_targets}
             overlay_menu_open?={@overlay_menu_open?}
+            size={@size}
           />
           <.schedule_grid
             schedule_owner={effective_schedule(@state.week_schedule, @active_change_group)}
@@ -137,6 +144,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
             active_change_group={@active_change_group}
             conflicted_course_crns={@conflicted_course_crns}
             active_conflicted_course_crns={@active_conflicted_course_crns}
+            minute_scale={@size.scale}
           />
         <% end %>
       </div>
@@ -312,6 +320,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
   attr :selected_variant_index, :integer, default: 0
   attr :overlay_targets, :list, default: []
   attr :overlay_menu_open?, :boolean, default: false
+  attr :size, :map, default: %{width: nil, scale: 1.0}
 
   defp schedule_header(assigns) do
     ~H"""
@@ -372,6 +381,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
           targets={@overlay_targets}
           open?={@overlay_menu_open?}
         />
+        <OverlayControls.size_button entry_key={@owner_key} size={@size} />
         <button
           type="button"
           phx-click="schedule-details-order:move_schedule"

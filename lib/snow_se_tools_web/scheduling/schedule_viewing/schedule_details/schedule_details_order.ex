@@ -11,8 +11,14 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
   defstruct [
     :selected_schedule_order,
     :overlays,
-    :open_overlay_menu_key
+    :open_overlay_menu_key,
+    :card_sizes
   ]
+
+  @default_card_size %{width: nil, scale: 1.0}
+  @min_card_width 480
+  @min_scale 0.5
+  @max_scale 3.0
 
   @key :schedule_details_order
 
@@ -21,12 +27,16 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
     |> assign(@key, %__MODULE__{
       selected_schedule_order: ScheduleOrder.new(),
       overlays: ScheduleOverlays.new(),
-      open_overlay_menu_key: nil
+      open_overlay_menu_key: nil,
+      card_sizes: %{}
     })
     |> maybe_attach_hooks()
   end
 
   # -- Public API used by the search, change groups and conflicts panels --
+
+  @doc "The size a card was resized to: `%{width: nil | px | :full, scale: px-per-minute}`."
+  def card_size(%__MODULE__{card_sizes: sizes}, key), do: Map.get(sizes, key, @default_card_size)
 
   @doc "Every selected owner key, whether shown solo or inside an overlay group."
   def selected_owner_order(%__MODULE__{} = state) do
@@ -119,6 +129,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
                 active_conflicted_course_crns={@active_conflicted_course_crns}
                 overlay_targets={overlay_targets(@state, @week_schedules, key)}
                 overlay_menu_open?={@state.open_overlay_menu_key == key}
+                size={card_size(@state, key)}
               />
             <% week_schedule = @week_schedules[key] -> %>
               <WeekSchedule.render
@@ -132,6 +143,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
                 edit_course_modal={@week_schedule_edit_course_modal}
                 overlay_targets={overlay_targets(@state, @week_schedules, key)}
                 overlay_menu_open?={@state.open_overlay_menu_key == key}
+                size={card_size(@state, key)}
               />
             <% true -> %>
               <div
@@ -244,19 +256,95 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
             });
           };
 
+          // Resizing: a grip in each card's corner. Width snaps to half / full
+          // row; height becomes that card's time scale (pixels per minute).
+          this.resizing = null;
+          this.onPointerDown = (event) => {
+            const grip = event.target.closest("[data-resize-grip]");
+            const card = grip && grip.closest("[data-schedule-card]");
+            if (!grip || !card || !this.el.contains(card)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const grid = card.querySelector("[data-week-schedule-day]");
+            const gridEl = card.querySelector("[data-start-minutes]");
+            const span = gridEl
+              ? Math.max(Number(gridEl.dataset.endMinutes) - Number(gridEl.dataset.startMinutes), 60)
+              : 0;
+            this.resizing = {
+              card,
+              key: card.dataset.scheduleKey,
+              startX: event.clientX,
+              startY: event.clientY,
+              startWidth: card.getBoundingClientRect().width,
+              gridHeight: grid ? grid.getBoundingClientRect().height : 0,
+              span,
+              scale: gridEl ? Number(gridEl.dataset.minuteScale || 1) : 1,
+              startScale: gridEl ? Number(gridEl.dataset.minuteScale || 1) : 1,
+              width: null,
+              badge: this.showResizeBadge(card),
+            };
+            card.draggable = false;
+            grip.setPointerCapture(event.pointerId);
+            document.body.style.cursor = "nwse-resize";
+          };
+          this.onPointerMove = (event) => {
+            const r = this.resizing;
+            if (!r) return;
+            const containerWidth = this.el.getBoundingClientRect().width;
+            let width = Math.max(480, Math.min(containerWidth, r.startWidth + (event.clientX - r.startX)));
+            for (const snap of [containerWidth / 2, containerWidth]) {
+              if (Math.abs(width - snap) < 40) width = snap;
+            }
+            r.width = width >= containerWidth - 1 ? "full" : Math.round(width);
+            r.card.style.width = `${width}px`;
+            if (r.span > 0 && r.gridHeight > 0) {
+              const targetHeight = Math.max(r.gridHeight + (event.clientY - r.startY), 60);
+              r.scale = Math.max(0.5, Math.min(3, (targetHeight / r.gridHeight) * r.startScale));
+              r.scale = Math.round(r.scale * 20) / 20;
+            }
+            r.badge.textContent = `${r.width === "full" ? "full width" : `${Math.round(width)}px`} · ${r.scale.toFixed(2)}× time`;
+          };
+          this.onPointerUp = () => {
+            const r = this.resizing;
+            if (!r) return;
+            this.resizing = null;
+            r.card.draggable = true;
+            r.badge.remove();
+            document.body.style.cursor = "";
+            this.pushEvent("schedule-details-order:resize", {
+              key: r.key,
+              width: r.width === null ? Math.round(r.startWidth) : r.width,
+              scale: r.scale,
+            });
+          };
+
           this.el.addEventListener("dragstart", this.onDragStart);
           this.el.addEventListener("dragover", this.onDragOver);
           this.el.addEventListener("drop", this.onDrop);
           this.el.addEventListener("dragend", this.onDragEnd);
           this.el.addEventListener("keydown", this.onKeyDown);
+          this.el.addEventListener("pointerdown", this.onPointerDown);
+          this.el.addEventListener("pointermove", this.onPointerMove);
+          this.el.addEventListener("pointerup", this.onPointerUp);
+          this.el.addEventListener("pointercancel", this.onPointerUp);
         },
-
         destroyed() {
           this.el.removeEventListener("dragstart", this.onDragStart);
           this.el.removeEventListener("dragover", this.onDragOver);
           this.el.removeEventListener("drop", this.onDrop);
           this.el.removeEventListener("dragend", this.onDragEnd);
           this.el.removeEventListener("keydown", this.onKeyDown);
+          this.el.removeEventListener("pointerdown", this.onPointerDown);
+          this.el.removeEventListener("pointermove", this.onPointerMove);
+          this.el.removeEventListener("pointerup", this.onPointerUp);
+          this.el.removeEventListener("pointercancel", this.onPointerUp);
+        },
+        showResizeBadge(card) {
+          const badge = document.createElement("div");
+          badge.className =
+            "pointer-events-none absolute bottom-6 right-6 z-50 rounded bg-indigo-500 px-2 py-1 text-[11px] font-medium text-white shadow-lg";
+          card.appendChild(badge);
+          return badge;
         },
 
         setDropTarget(card) {
@@ -481,6 +569,28 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
     else
       {:halt, remove_owner(socket, key: key)}
     end
+  end
+
+  def hooked_event(
+        "schedule-details-order:resize",
+        %{"key" => key, "width" => width, "scale" => scale},
+        socket
+      ) do
+    {:halt,
+     put_card_size(socket, key, %{width: normalize_width(width), scale: clamp_scale(scale)})}
+  end
+
+  def hooked_event("schedule-details-order:maximize", %{"key" => key}, socket) do
+    size = card_size(socket.assigns[@key], key)
+    {:halt, put_card_size(socket, key, %{size | width: :full})}
+  end
+
+  def hooked_event("schedule-details-order:restore_size", %{"key" => key}, socket) do
+    {:halt,
+     assign(socket, @key, %{
+       socket.assigns[@key]
+       | card_sizes: Map.delete(socket.assigns[@key].card_sizes, key)
+     })}
   end
 
   def hooked_event("schedule-details-order:open_overlay_menu", %{"key" => key}, socket) do
@@ -788,9 +898,33 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
       state
       | selected_schedule_order: ScheduleOrder.new(),
         overlays: ScheduleOverlays.new(),
-        open_overlay_menu_key: nil
+        open_overlay_menu_key: nil,
+        card_sizes: %{}
     }
   end
+
+  defp put_card_size(socket, key, size) do
+    state = socket.assigns[@key]
+    assign(socket, @key, %{state | card_sizes: Map.put(state.card_sizes, key, size)})
+  end
+
+  defp normalize_width("full"), do: :full
+  defp normalize_width(width) when is_integer(width), do: max(width, @min_card_width)
+  defp normalize_width(width) when is_float(width), do: normalize_width(round(width))
+
+  defp normalize_width(width) when is_binary(width) do
+    case Integer.parse(width) do
+      {value, _rest} -> normalize_width(value)
+      :error -> nil
+    end
+  end
+
+  defp normalize_width(_width), do: nil
+
+  defp clamp_scale(scale) when is_number(scale),
+    do: scale |> max(@min_scale) |> min(@max_scale) |> Kernel.*(1.0)
+
+  defp clamp_scale(_scale), do: 1.0
 
   defp all_owner_keys(%__MODULE__{} = state) do
     state.selected_schedule_order

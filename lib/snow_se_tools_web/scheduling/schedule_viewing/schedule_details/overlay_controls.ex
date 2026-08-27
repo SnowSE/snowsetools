@@ -8,6 +8,69 @@ defmodule SnowSeToolsWeb.Scheduling.OverlayControls do
 
   alias SnowSeToolsWeb.Scheduling.ScheduleOverlays
 
+  @doc "Classes/style for a card wrapper given its size (`%{width: nil | px | :full}`)."
+  def card_width_attrs(%{width: :full}), do: %{class: "w-full", style: nil}
+
+  def card_width_attrs(%{width: width}) when is_integer(width),
+    do: %{class: nil, style: "width: #{width}px"}
+
+  def card_width_attrs(_size), do: %{class: "w-[700px]", style: nil}
+
+  attr :entry_key, :string, required: true
+  attr :size, :map, required: true
+
+  @doc "Maximize / restore buttons for a card header."
+  def size_button(assigns) do
+    ~H"""
+    <button
+      :if={@size.width != nil or @size.scale != 1.0}
+      type="button"
+      id={"card-restore-#{:erlang.phash2(@entry_key)}"}
+      phx-click="schedule-details-order:restore_size"
+      phx-value-key={@entry_key}
+      class="rounded p-1 text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-200"
+      aria-label="Restore default size"
+      title="Restore default size"
+    >
+      <.icon name="hero-arrows-pointing-in" class="size-4" />
+    </button>
+    <button
+      :if={@size.width != :full}
+      type="button"
+      id={"card-maximize-#{:erlang.phash2(@entry_key)}"}
+      phx-click="schedule-details-order:maximize"
+      phx-value-key={@entry_key}
+      class="rounded p-1 text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-200"
+      aria-label="Maximize"
+      title="Maximize"
+    >
+      <.icon name="hero-arrows-pointing-out" class="size-4" />
+    </button>
+    """
+  end
+
+  @doc "The drag grip in a card's bottom-right corner."
+  def resize_grip(assigns) do
+    ~H"""
+    <div
+      data-resize-grip
+      title="Drag to resize"
+      class="absolute bottom-1.5 right-1.5 z-20 flex size-5 cursor-nwse-resize items-end justify-end text-slate-600 transition-colors hover:text-indigo-300"
+    >
+      <svg
+        viewBox="0 0 12 12"
+        class="size-3"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+      >
+        <path d="M11 1L1 11M11 6L6 11" />
+      </svg>
+    </div>
+    """
+  end
+
   attr :id, :string, required: true
   attr :entry_key, :string, required: true
   attr :owner_type, :atom, required: true
