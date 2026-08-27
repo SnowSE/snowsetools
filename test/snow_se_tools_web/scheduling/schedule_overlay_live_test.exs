@@ -265,6 +265,13 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOverlayLiveTest do
     assert has_element?(view, "#scheduling-sidebar-rail")
     assert has_element?(view, "#scheduling-sidebar-flyout #scheduling-search-input")
 
+    # tapping the rail opens the flyout without hover (mobile); close it again
+    view |> element("#scheduling-sidebar-rail") |> render_click()
+    assert has_element?(view, "#scheduling-sidebar-flyout.flex")
+    assert has_element?(view, "#scheduling-sidebar-close")
+    view |> element("#scheduling-sidebar-close") |> render_click()
+    assert has_element?(view, "#scheduling-sidebar-flyout.hidden")
+
     render_hook(view, "schedule-viewer:set_sidebar_pinned", %{"pinned" => true})
     assert has_element?(view, "#scheduling-sidebar[data-pinned='true']")
     refute has_element?(view, "#scheduling-sidebar-rail")

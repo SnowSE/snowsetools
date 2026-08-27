@@ -26,7 +26,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
     :query,
     :search_active,
     :highlighted_index,
-    :sidebar_pinned?
+    :sidebar_pinned?,
+    :sidebar_flyout_open?
   ]
 
   @type t :: %__MODULE__{
@@ -36,7 +37,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
           query: String.t(),
           search_active: boolean(),
           highlighted_index: non_neg_integer(),
-          sidebar_pinned?: boolean()
+          sidebar_pinned?: boolean(),
+          sidebar_flyout_open?: boolean()
         }
   @key :schedule_viewer_state
 
@@ -49,7 +51,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
       query: "",
       search_active: false,
       highlighted_index: 0,
-      sidebar_pinned?: true
+      sidebar_pinned?: true,
+      sidebar_flyout_open?: false
     })
     |> initial_setup()
   end
@@ -92,21 +95,30 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
             />
           </div>
         <% else %>
-          <div
+          <button
+            type="button"
             id="scheduling-sidebar-rail"
-            class="flex h-full w-10 flex-col items-center gap-3 rounded-lg border border-slate-800/80 bg-slate-950/55 py-3 text-slate-500"
+            phx-click="schedule-viewer:toggle_sidebar_flyout"
+            class="flex h-full w-10 cursor-pointer flex-col items-center gap-3 rounded-lg border border-slate-800/80 bg-slate-950/55 py-3 text-slate-500 transition-colors hover:text-slate-300"
             title="Search, change groups, conflicts"
+            aria-label="Open the tools pane"
+            aria-expanded={to_string(@state.sidebar_flyout_open?)}
           >
             <.icon name="hero-magnifying-glass" class="size-4" />
             <span class="text-[11px] uppercase tracking-[0.2em] [writing-mode:vertical-rl]">
               Search &amp; tools
             </span>
-          </div>
+          </button>
           <div
             id="scheduling-sidebar-flyout"
-            class="absolute left-0 top-0 z-40 hidden h-full w-80 flex-col gap-3 rounded-lg border border-slate-700 bg-slate-950 p-3 shadow-2xl shadow-black/70 group-hover:flex group-focus-within:flex"
+            phx-click-away={@state.sidebar_flyout_open? && "schedule-viewer:close_sidebar_flyout"}
+            class={[
+              "absolute left-0 top-0 z-40 h-full w-80 flex-col gap-3 rounded-lg border border-slate-700 bg-slate-950 p-3 shadow-2xl shadow-black/70",
+              @state.sidebar_flyout_open? && "flex",
+              !@state.sidebar_flyout_open? && "hidden group-hover:flex group-focus-within:flex"
+            ]}
           >
-            <.sidebar_pin pinned?={false} />
+            <.sidebar_pin pinned?={false} closable?={@state.sidebar_flyout_open?} />
             <.sidebar_contents
               state={@state}
               schedule_details_order={@schedule_details_order}
@@ -152,35 +164,49 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
   end
 
   attr :pinned?, :boolean, required: true
+  attr :closable?, :boolean, default: false
 
   defp sidebar_pin(assigns) do
     ~H"""
     <div class="flex items-center justify-between">
       <span class="text-[11px] uppercase tracking-wide text-slate-500">Tools</span>
-      <button
-        type="button"
-        id={"scheduling-sidebar-pin-#{@pinned?}"}
-        phx-click="schedule-viewer:toggle_sidebar_pin"
-        class={[
-          "rounded p-1 transition-colors hover:bg-slate-800",
-          @pinned? && "text-indigo-300",
-          !@pinned? && "text-slate-500 hover:text-slate-200"
-        ]}
-        aria-label={if @pinned?, do: "Auto-hide sidebar", else: "Pin sidebar open"}
-        title={if @pinned?, do: "Auto-hide sidebar", else: "Pin sidebar open"}
-      >
-        <svg
-          viewBox="0 0 24 24"
-          class={["size-4", !@pinned? && "rotate-45"]}
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-          stroke-linejoin="round"
+      <div class="flex items-center gap-1">
+        <button
+          type="button"
+          id={"scheduling-sidebar-pin-#{@pinned?}"}
+          phx-click="schedule-viewer:toggle_sidebar_pin"
+          class={[
+            "rounded p-1 transition-colors hover:bg-slate-800",
+            @pinned? && "text-indigo-300",
+            !@pinned? && "text-slate-500 hover:text-slate-200"
+          ]}
+          aria-label={if @pinned?, do: "Auto-hide sidebar", else: "Pin sidebar open"}
+          title={if @pinned?, do: "Auto-hide sidebar", else: "Pin sidebar open"}
         >
-          <path d="M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6zM12 14v7" />
-        </svg>
-      </button>
+          <svg
+            viewBox="0 0 24 24"
+            class={["size-4", !@pinned? && "rotate-45"]}
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6zM12 14v7" />
+          </svg>
+        </button>
+        <button
+          :if={@closable?}
+          type="button"
+          id="scheduling-sidebar-close"
+          phx-click="schedule-viewer:close_sidebar_flyout"
+          class="rounded p-1 text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-200"
+          aria-label="Close the tools pane"
+          title="Close"
+        >
+          <.icon name="hero-x-mark" class="size-4" />
+        </button>
+      </div>
     </div>
     """
   end
@@ -483,7 +509,22 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
 
   def hooked_event("schedule-viewer:toggle_sidebar_pin", _params, socket) do
     state = socket.assigns[@key]
-    {:halt, assign(socket, @key, %{state | sidebar_pinned?: !state.sidebar_pinned?})}
+
+    {:halt,
+     assign(socket, @key, %{
+       state
+       | sidebar_pinned?: !state.sidebar_pinned?,
+         sidebar_flyout_open?: false
+     })}
+  end
+
+  def hooked_event("schedule-viewer:toggle_sidebar_flyout", _params, socket) do
+    state = socket.assigns[@key]
+    {:halt, assign(socket, @key, %{state | sidebar_flyout_open?: !state.sidebar_flyout_open?})}
+  end
+
+  def hooked_event("schedule-viewer:close_sidebar_flyout", _params, socket) do
+    {:halt, assign(socket, @key, %{socket.assigns[@key] | sidebar_flyout_open?: false})}
   end
 
   def hooked_event("schedule-viewer:set_sidebar_pinned", %{"pinned" => pinned}, socket) do
