@@ -16,7 +16,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
     DiscordSync
   }
 
-  on_mount {SnowSeToolsWeb.UserAuth, :ensure_authenticated}
+  on_mount {SnowSeToolsWeb.UserAuth, {:ensure_access, :discord}}
 
   def mount(_params, _session, socket) do
     if connected?(socket) do

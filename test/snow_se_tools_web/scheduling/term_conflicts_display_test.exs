@@ -1,7 +1,6 @@
 defmodule SnowSeToolsWeb.Scheduling.TermConflictsDisplayTest do
   use SnowSeToolsWeb.ConnCase, async: false
 
-  alias SnowSeTools.Data.User
   alias SnowSeTools.Scheduling.{ScheduleOwnerDomainManager}
   alias SnowSeTools.Snow.{SnowCourseCacheDb, SnowCourseCachePubSub}
 
@@ -103,9 +102,6 @@ defmodule SnowSeToolsWeb.Scheduling.TermConflictsDisplayTest do
     flunk("expected schedule conflicts to render")
   end
 
-  defp log_in_test_user(conn) do
-    {:ok, user} = User.find_or_create("conflict-display-test@example.com")
-    user_id = Map.get(user, :id) || Map.fetch!(user, "id")
-    Plug.Test.init_test_session(conn, %{"current_user_id" => user_id})
-  end
+  defp log_in_test_user(conn),
+    do: log_in_user(conn, "conflict-display-test@example.com", ["scheduling_admin"])
 end

@@ -35,4 +35,23 @@ defmodule SnowSeToolsWeb.ConnCase do
   setup _tags do
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
+
+  @doc """
+  Creates (or finds) a user with `email`, adds them to the given access groups
+  (names such as `"discord_admin"` or `"admin"`) and logs them in.
+
+  A user with no groups is "pending approval" and can only reach `/pending`.
+  """
+  def log_in_user(conn, email, groups \\ []) do
+    alias SnowSeTools.Data.{AccessControl, User}
+
+    {:ok, user} = User.find_or_create(email)
+
+    for group_name <- groups do
+      group = Enum.find(AccessControl.list_groups(), &(&1.name == group_name))
+      :ok = AccessControl.add_user_group(user_id: user.id, group_id: group.id)
+    end
+
+    Plug.Test.init_test_session(conn, %{"current_user_id" => user.id})
+  end
 end

@@ -1,13 +1,16 @@
 defmodule SnowSeToolsWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :snow_se_tools
 
-  # The session will be stored in the cookie and signed,
-  # this means its contents can be read but not tampered with.
-  # Set :encryption_salt if you would also like to encrypt it.
+  # The session is stored in the cookie, signed AND encrypted: it carries the
+  # OIDC refresh token and userinfo claims, which must not be readable client-side.
+  # Salts are combined with SECRET_KEY_BASE, so committing them is safe.
+  # max_age bounds how long a stolen cookie stays verifiable.
   @session_options [
     store: :cookie,
     key: "_snow_se_tools_key",
     signing_salt: "hrpbGw22",
+    encryption_salt: "kQ7vX2pLm9sN4dRz",
+    max_age: 60 * 60 * 24 * 14,
     same_site: "Lax"
   ]
 

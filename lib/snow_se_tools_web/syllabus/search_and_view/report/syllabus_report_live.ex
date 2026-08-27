@@ -8,7 +8,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusReportLive do
   alias SnowSeToolsWeb.Syllabus.ReportDetail
   alias SnowSeToolsWeb.Syllabus.RequirementsButtonGroup
 
-  on_mount {SnowSeToolsWeb.UserAuth, :ensure_authenticated}
+  on_mount {SnowSeToolsWeb.UserAuth, {:ensure_access, :syllabi}}
 
   def mount(_params, _session, socket) do
     if connected?(socket), do: ReportGenerationStatus.subscribe()

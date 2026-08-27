@@ -1,7 +1,6 @@
 defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerTermPersistenceTest do
   use SnowSeToolsWeb.ConnCase, async: false
 
-  alias SnowSeTools.Data.User
   alias SnowSeTools.Scheduling.{ScheduleChangeDomainManager, ScheduleOwnerDomainManager}
   alias SnowSeTools.Snow.SnowCourseCacheDb
   alias SnowSeTools.Snow.SnowCourseCacheDomainManager
@@ -41,12 +40,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerTermPersistenceTest do
            )
   end
 
-  defp log_in_test_user(conn) do
-    {:ok, user} = User.find_or_create("schedule-viewer-term-persistence@example.com")
-    user_id = Map.get(user, :id) || Map.fetch!(user, "id")
-
-    Plug.Test.init_test_session(conn, %{"current_user_id" => user_id})
-  end
+  defp log_in_test_user(conn),
+    do: log_in_user(conn, "schedule-viewer-term-persistence@example.com", ["scheduling_admin"])
 
   defp insert_test_courses do
     spring_courses = [

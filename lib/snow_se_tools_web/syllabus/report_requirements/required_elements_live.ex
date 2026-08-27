@@ -8,7 +8,7 @@ defmodule SnowSeToolsWeb.Reports.RequiredElementsLive do
   import SnowSeToolsWeb.Reports.ElementsList
   import SnowSeToolsWeb.Reports.ElementDetail
 
-  on_mount {SnowSeToolsWeb.UserAuth, :ensure_authenticated}
+  on_mount {SnowSeToolsWeb.UserAuth, {:ensure_access, :syllabi}}
 
   def mount(_params, _session, socket) do
     socket =

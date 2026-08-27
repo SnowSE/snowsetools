@@ -2,7 +2,6 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramIntegrationTest do
   use SnowSeToolsWeb.ConnCase, async: false
 
   alias SnowSeTools.AcademicPrograms.ProgramDomainManager
-  alias SnowSeTools.Data.User
   alias SnowSeTools.Scheduling.{ScheduleChangeDomainManager, ScheduleOwnerDomainManager}
   alias SnowSeTools.Snow.SnowCourseCacheDomainManager
   alias SnowSeTools.Snow.SnowCourseCacheDb
@@ -149,12 +148,8 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramIntegrationTest do
     assert change_groups_state.active_change_group["name"] == "My Test Group"
   end
 
-  defp log_in_test_user(conn) do
-    {:ok, user} = User.find_or_create("academic-program-integration@example.com")
-    user_id = Map.get(user, :id) || Map.fetch!(user, "id")
-
-    Plug.Test.init_test_session(conn, %{"current_user_id" => user_id})
-  end
+  defp log_in_test_user(conn),
+    do: log_in_user(conn, "academic-program-integration@example.com", ["scheduling_admin"])
 
   defp insert_test_courses do
     courses = [

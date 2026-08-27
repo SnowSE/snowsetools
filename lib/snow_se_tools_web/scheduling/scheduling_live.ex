@@ -12,7 +12,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   alias SnowSeToolsWeb.Scheduling.ScheduleViewer
   alias SnowSeToolsWeb.Scheduling.WeekSchedule
 
-  on_mount {SnowSeToolsWeb.UserAuth, :ensure_authenticated}
+  on_mount {SnowSeToolsWeb.UserAuth, {:ensure_access, :scheduling}}
 
   def mount(_params, _session, socket) do
     socket =

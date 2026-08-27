@@ -8,7 +8,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditTest do
     SemesterAttrs
   }
 
-  alias SnowSeTools.Data.{DbHelpers, User}
+  alias SnowSeTools.Data.DbHelpers
   alias SnowSeTools.Scheduling.ScheduleOwnerDomainManager
   alias SnowSeTools.Snow.SnowCourseCacheDb
   alias SnowSeTools.Snow.SnowCourseCacheDomainManager
@@ -64,12 +64,8 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditTest do
     assert has_element?(view, "#academic-program-name[value='Test Program']")
   end
 
-  defp log_in_test_user(conn) do
-    {:ok, user} = User.find_or_create("academic-program-integration@example.com")
-    user_id = Map.get(user, :id) || Map.fetch!(user, "id")
-
-    Plug.Test.init_test_session(conn, %{"current_user_id" => user_id})
-  end
+  defp log_in_test_user(conn),
+    do: log_in_user(conn, "academic-program-integration@example.com", ["scheduling_admin"])
 
   defp insert_test_courses do
     courses = [

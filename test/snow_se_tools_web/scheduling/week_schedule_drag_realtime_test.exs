@@ -9,8 +9,6 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
     SemesterAttrs
   }
 
-  alias SnowSeTools.Data.User
-
   alias SnowSeTools.Scheduling.{
     ScheduleChangeDb,
     ScheduleChangeDomainManager,
@@ -395,12 +393,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
     }
   end
 
-  defp log_in_test_user(conn) do
-    {:ok, user} = User.find_or_create("week-schedule-drag-realtime@example.com")
-    user_id = Map.get(user, :id) || Map.fetch!(user, "id")
-
-    Plug.Test.init_test_session(conn, %{"current_user_id" => user_id})
-  end
+  defp log_in_test_user(conn),
+    do: log_in_user(conn, "week-schedule-drag-realtime@example.com", ["scheduling_admin"])
 
   defp insert_test_courses(term_code) do
     SnowCourseCacheDb.save_courses(

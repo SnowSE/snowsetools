@@ -1,6 +1,6 @@
 defmodule SnowSeTools.Data.AccessControl do
   require Logger
-  alias SnowSeTools.Data.{DbHelpers, Uuid}
+  alias SnowSeTools.Data.{Access, DbHelpers, Uuid}
 
   @admin_group_name "admin"
 
@@ -35,13 +35,14 @@ defmodule SnowSeTools.Data.AccessControl do
 
     DbHelpers.run_sql(sql, params)
 
+    # Seed every access group (admin, discord_admin, scheduling_admin, syllabus_admin).
     sql = """
     INSERT INTO groups (name)
-    VALUES ('admin')
+    SELECT unnest($(names)::text[])
     ON CONFLICT (name) DO NOTHING
     """
 
-    DbHelpers.run_sql(sql, params)
+    DbHelpers.run_sql(sql, %{"names" => Access.protected_group_names()})
 
     sql = """
     WITH admin_group AS (
@@ -82,9 +83,14 @@ defmodule SnowSeTools.Data.AccessControl do
       COALESCE(
         array_agg(DISTINCT ug.group_id) FILTER (WHERE ug.group_id IS NOT NULL),
         '{}'::uuid[]
-      ) AS group_ids
+      ) AS group_ids,
+      COALESCE(
+        array_agg(DISTINCT g.name) FILTER (WHERE g.name IS NOT NULL),
+        '{}'::text[]
+      ) AS group_names
     FROM users u
     LEFT JOIN user_groups ug ON ug.user_id = u.id
+    LEFT JOIN groups g ON g.id = ug.group_id
     GROUP BY u.id
     ORDER BY u.inserted_at ASC
     """
@@ -141,8 +147,8 @@ defmodule SnowSeTools.Data.AccessControl do
 
     with {:ok, _} <- validate_group_attrs(attrs),
          {:ok, current_group} <- fetch_group(group_id: group_id) do
-      if current_group.name == @admin_group_name and attrs["name"] != @admin_group_name do
-        {:error, :admin_group_locked}
+      if Access.protected_group?(current_group.name) and attrs["name"] != current_group.name do
+        {:error, :protected_group_locked}
       else
         sql = """
         UPDATE groups
@@ -167,8 +173,8 @@ defmodule SnowSeTools.Data.AccessControl do
 
   def delete_group(group_id: group_id) do
     with {:ok, group} <- fetch_group(group_id: group_id) do
-      if group.name == @admin_group_name do
-        {:error, :admin_group_locked}
+      if Access.protected_group?(group.name) do
+        {:error, :protected_group_locked}
       else
         sql = """
         DELETE FROM groups
@@ -199,7 +205,7 @@ defmodule SnowSeTools.Data.AccessControl do
       INSERT INTO users (email)
       VALUES ($(email))
       ON CONFLICT (email) DO UPDATE SET updated_at = NOW()
-      RETURNING id, email, inserted_at, updated_at, '{}'::uuid[] AS group_ids
+      RETURNING id, email, inserted_at, updated_at, '{}'::uuid[] AS group_ids, '{}'::text[] AS group_names
       """
 
       params = %{"email" => email}
@@ -359,7 +365,8 @@ defmodule SnowSeTools.Data.AccessControl do
       email: Zoi.string(),
       inserted_at: Zoi.datetime(),
       updated_at: Zoi.datetime(),
-      group_ids: Zoi.list(Zoi.uuid())
+      group_ids: Zoi.list(Zoi.uuid()),
+      group_names: Zoi.list(Zoi.string())
     })
   end
 

@@ -4,6 +4,8 @@ defmodule SnowSeToolsWeb.Router do
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
+    # Enforces OIDC token expiry server-side (refreshes or clears the session).
+    plug SnowSeToolsWeb.Plugs.RefreshToken
     plug :fetch_live_flash
     plug :put_root_layout, html: {SnowSeToolsWeb.Layouts, :root}
     plug :protect_from_forgery
@@ -22,12 +24,14 @@ defmodule SnowSeToolsWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
-    get "/ui/account-image/:id", AssetController, :account_image
   end
 
   scope "/", SnowSeToolsWeb do
     pipe_through [:browser, :require_authenticated]
 
+    get "/ui/account-image/:id", AssetController, :account_image
+
+    live "/pending", Auth.PendingLive
     live "/home", Home.HomeLive
     live "/syllabi", Syllabus.SyllabusLive, :index
     live "/scheduling", Scheduling.SchedulingLive, :index

@@ -401,7 +401,16 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
   end
 
   def handle_cast({:add_role_to_member, pid, key, member_id, role_id}, state) do
-    case discord_api().add_role_to_member(member_id: member_id, role_id: role_id) do
+    # Only roles that belong to a course channel assignment may be granted from
+    # the UI; the role id arrives from the client and must not be trusted.
+    result =
+      if course_role?(role_id) do
+        discord_api().add_role_to_member(member_id: member_id, role_id: role_id)
+      else
+        {:error, :role_not_assignable}
+      end
+
+    case result do
       {:error, reason} ->
         Logger.error(
           "Discord add role failed member_id=#{member_id} role_id=#{role_id} reason=#{inspect(reason)}"
@@ -835,4 +844,13 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
   defp discord_api do
     Application.get_env(:snow_se_tools, :discord_api_module, DiscordApi)
   end
+
+  defp course_role?(role_id) when is_binary(role_id) do
+    case DiscordDb.list_course_channel_assignments() do
+      {:error, _} -> false
+      assignments -> Enum.any?(assignments, &(&1["discord_role_id"] == role_id))
+    end
+  end
+
+  defp course_role?(_), do: false
 end

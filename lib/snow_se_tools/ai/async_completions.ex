@@ -22,6 +22,9 @@ defmodule SnowSeTools.AI.AsyncCompletions do
 
   @pubsub SnowSeTools.PubSub
   @max_concurrent 3
+  # Requests beyond this are rejected (with an error broadcast) instead of
+  # growing the queue without bound.
+  @max_queued 500
   @status_topic "async_completions:status"
 
   @type message :: %{role: String.t(), content: String.t()}
@@ -70,7 +73,13 @@ defmodule SnowSeTools.AI.AsyncCompletions do
             monitors: Map.put(state.monitors, ref, {topic, event})
         }
       else
-        %{state | queue: :queue.in({topic, event, messages, opts}, state.queue)}
+        if :queue.len(state.queue) >= @max_queued do
+          Logger.warning("Completion queue full (#{@max_queued}); rejecting topic=#{topic}")
+          Phoenix.PubSub.broadcast(@pubsub, topic, {event, {:error, :queue_full}})
+          state
+        else
+          %{state | queue: :queue.in({topic, event, messages, opts}, state.queue)}
+        end
       end
 
     broadcast_status(new_state)

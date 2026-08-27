@@ -2,9 +2,21 @@ defmodule SnowSeToolsWeb.UserAuth do
   import Phoenix.LiveView
   import Phoenix.Component
   require Logger
-  alias SnowSeTools.Data.{AccessControl, User}
+  alias SnowSeTools.Data.{Access, User}
 
-  def on_mount(:ensure_authenticated, _params, session, socket) do
+  @doc """
+  LiveView `on_mount` hooks.
+
+    * `:ensure_session` — a valid login is required; pending (unapproved) users
+      are allowed. Used only by the approval page.
+    * `:ensure_authenticated` — a valid login *and* an approved account
+      (at least one group). Pending users are sent to `/pending`.
+    * `{:ensure_access, area}` — as above, plus membership in the group for
+      `area` (`:syllabi`, `:scheduling`, `:discord`, `:admin`). Super users
+      pass every area.
+    * `:ensure_admin` — alias for `{:ensure_access, :admin}`.
+  """
+  def on_mount(:ensure_session, _params, session, socket) do
     user_result = session["current_user_id"] && User.get_by_id(session["current_user_id"])
 
     case user_result do
@@ -27,23 +39,33 @@ defmodule SnowSeToolsWeb.UserAuth do
     end
   end
 
-  def on_mount(:ensure_admin, params, session, socket) do
-    case on_mount(:ensure_authenticated, params, session, socket) do
-      {:cont, socket} ->
-        if admin_user?(socket.assigns.current_user) do
-          {:cont, socket}
-        else
-          socket =
-            socket
-            |> put_flash(:error, "You do not have access to the admin area.")
-            |> redirect(to: "/home")
-
-          {:halt, socket}
-        end
-
-      {:halt, socket} ->
-        {:halt, socket}
+  def on_mount(:ensure_authenticated, params, session, socket) do
+    with {:cont, socket} <- on_mount(:ensure_session, params, session, socket) do
+      if Access.approved?(socket.assigns.current_user) do
+        {:cont, socket}
+      else
+        {:halt, redirect(socket, to: "/pending")}
+      end
     end
+  end
+
+  def on_mount({:ensure_access, area}, params, session, socket) do
+    with {:cont, socket} <- on_mount(:ensure_authenticated, params, session, socket) do
+      if Access.can?(socket.assigns.current_user, area) do
+        {:cont, socket}
+      else
+        socket =
+          socket
+          |> put_flash(:error, "You do not have access to that area.")
+          |> redirect(to: "/home")
+
+        {:halt, socket}
+      end
+    end
+  end
+
+  def on_mount(:ensure_admin, params, session, socket) do
+    on_mount({:ensure_access, :admin}, params, session, socket)
   end
 
   # Refresh 60 seconds before expiry. Must be shorter than the token lifetime.
@@ -101,14 +123,4 @@ defmodule SnowSeToolsWeb.UserAuth do
   end
 
   defp schedule_session_refresh(socket, _session), do: socket
-
-  defp admin_user?(%{id: user_id}) when is_binary(user_id) do
-    AccessControl.user_has_group?(user_id: user_id, group_name: "admin")
-  end
-
-  defp admin_user?(%{"id" => user_id}) when is_binary(user_id) do
-    AccessControl.user_has_group?(user_id: user_id, group_name: "admin")
-  end
-
-  defp admin_user?(_), do: false
 end

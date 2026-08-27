@@ -37,6 +37,16 @@ defmodule SnowSeToolsWeb.Admin.AdminUIMessages do
       end
 
       defp format_error(reason) when is_binary(reason), do: reason
+
+      defp format_error(:protected_group_locked),
+        do: "Built-in access groups cannot be renamed or deleted."
+
+      defp format_error(:last_admin_user),
+        do: "You cannot remove the last super user."
+
+      defp format_error(:invalid_group_name), do: "Group name cannot be blank."
+      defp format_error(:invalid_email), do: "Email cannot be blank."
+      defp format_error(:not_found), do: "That record no longer exists."
       defp format_error(reason), do: inspect(reason)
     end
   end

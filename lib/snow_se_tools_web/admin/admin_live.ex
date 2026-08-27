@@ -3,11 +3,12 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
   use SnowSeToolsWeb.Admin.AdminUIMessages
   use SnowSeToolsWeb.Admin.AdminSnowCoursesUIMessages
 
+  alias SnowSeTools.Data.Access
   alias SnowSeTools.Snow.SnowCourseCacheDomainManager
   alias SnowSeTools.UserGroups.UserGroupDomainManager
   alias SnowSeToolsWeb.UserAuth
 
-  on_mount {UserAuth, :ensure_admin}
+  on_mount {UserAuth, {:ensure_access, :admin}}
 
   def mount(_params, _session, socket) do
     socket =
@@ -153,67 +154,59 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
               </div>
             </.form>
 
-            <div class="space-y-3">
-              <%= for user <- @users do %>
-                <article class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
-                  <div class="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <div class="flex items-center gap-2">
-                        <h3 class="font-medium text-slate-100">{user.email}</h3>
-                        <%= if user_in_admin_group?(@groups, user.group_ids) do %>
-                          <span class="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
-                            admin
-                          </span>
-                        <% end %>
-                      </div>
-                      <p class="mt-1 text-xs text-slate-500">User ID: {user.id}</p>
-                      <div class="mt-3 flex flex-wrap gap-2">
-                        <%= if user.group_ids == [] do %>
-                          <span class="text-sm text-slate-500">No groups assigned</span>
-                        <% else %>
-                          <%= for group <- groups_for_user(@groups, user.group_ids) do %>
-                            <span class={[
-                              "rounded-full px-2.5 py-1 text-xs font-medium",
-                              group.name == "admin" &&
-                                "bg-emerald-500/15 text-emerald-300",
-                              group.name != "admin" &&
-                                "bg-slate-800 text-slate-300"
-                            ]}>
-                              {group.name}
-                            </span>
-                          <% end %>
-                        <% end %>
-                      </div>
-                    </div>
+            <p class="mb-4 text-xs leading-5 text-slate-500">
+              New accounts start with no access and see an "awaiting approval" page.
+              Toggle the areas each person may use; <span class="text-emerald-300">Super user</span>
+              grants everything, including this page.
+            </p>
 
-                    <div class="flex flex-wrap gap-2">
-                      <%= for group <- @groups do %>
-                        <button
-                          id={"toggle-user-group-#{user.id}-#{group.id}"}
-                          type="button"
-                          phx-click={
-                            if group.id in user.group_ids,
-                              do: "remove_user_group",
-                              else: "add_user_group"
-                          }
-                          phx-value-user_id={user.id}
-                          phx-value-group_id={group.id}
-                          class={[
-                            "rounded-xl border px-3 py-2 text-xs font-semibold transition",
-                            group.id in user.group_ids &&
-                              "border-emerald-500/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20",
-                            group.id not in user.group_ids &&
-                              "border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-500 hover:bg-slate-800"
-                          ]}
-                        >
-                          <%= if group.id in user.group_ids do %>
-                            Remove {group.name}
-                          <% else %>
-                            Add {group.name}
-                          <% end %>
-                        </button>
-                      <% end %>
-                    </div>
+            <div class="space-y-3">
+              <%= for user <- sorted_users(@users) do %>
+                <article
+                  id={"admin-user-#{user.id}"}
+                  class={[
+                    "rounded-2xl border p-4",
+                    pending?(user) && "border-amber-500/40 bg-amber-500/5",
+                    !pending?(user) && "border-slate-800 bg-slate-950/50"
+                  ]}
+                >
+                  <div class="flex flex-wrap items-center gap-2">
+                    <h3 class="font-medium text-slate-100">{user.email}</h3>
+                    <%= if pending?(user) do %>
+                      <span class="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-300">
+                        awaiting approval
+                      </span>
+                    <% end %>
+                    <%= if Access.admin?(user) do %>
+                      <span class="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
+                        super user
+                      </span>
+                    <% end %>
+                    <%= if user.id == @current_user.id do %>
+                      <span class="rounded-full bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-400">
+                        you
+                      </span>
+                    <% end %>
+                  </div>
+
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <%= for area <- Access.areas(), group = group_named(@groups, area.group), group do %>
+                      <.group_toggle
+                        user={user}
+                        group={group}
+                        label={area.label}
+                        title={area.description}
+                        admin_area?={area.area == :admin}
+                      />
+                    <% end %>
+                    <%= for group <- custom_groups(@groups) do %>
+                      <.group_toggle
+                        user={user}
+                        group={group}
+                        label={group.name}
+                        title="Custom group"
+                      />
+                    <% end %>
                   </div>
                 </article>
               <% end %>
@@ -265,31 +258,34 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
                 <thead class="bg-slate-950/70 text-xs uppercase tracking-[0.2em] text-slate-400">
                   <tr>
                     <th class="px-4 py-3">Group</th>
+                    <th class="px-4 py-3">Grants</th>
                     <th class="px-4 py-3">Members</th>
-                    <th class="px-4 py-3">Access</th>
                     <th class="px-4 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-800 bg-slate-950/40">
-                  <%= for group <- @groups do %>
+                  <%= for group <- @groups, protected? = Access.protected_group?(group.name) do %>
                     <tr class="align-top">
                       <td class="px-4 py-4">
                         <div class="flex items-center gap-2">
                           <span class="font-medium text-slate-100">{group.name}</span>
-                          <%= if group.name == "admin" do %>
-                            <span class="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
-                              admin
+                          <%= if protected? do %>
+                            <span class="rounded-full bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-400">
+                              built-in
                             </span>
                           <% end %>
                         </div>
-                        <p class="mt-1 text-xs text-slate-500">ID: {group.id}</p>
+                      </td>
+                      <td class="px-4 py-4 text-slate-300">
+                        <%= case Access.area_for_group(group.name) do %>
+                          <% %{label: label, description: description} -> %>
+                            <span class="font-medium text-slate-200">{label}</span>
+                            <p class="mt-1 text-xs leading-5 text-slate-500">{description}</p>
+                          <% nil -> %>
+                            <span class="text-xs text-slate-500">Custom group — grants no built-in access</span>
+                        <% end %>
                       </td>
                       <td class="px-4 py-4 text-slate-300">{group.member_count}</td>
-                      <td class="px-4 py-4">
-                        <span class="rounded-full bg-slate-800 px-2.5 py-1 text-xs text-slate-300">
-                          {if group.name == "admin", do: "Admin", else: "Standard"}
-                        </span>
-                      </td>
                       <td class="px-4 py-4">
                         <div class="flex justify-end gap-2">
                           <button
@@ -297,8 +293,8 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
                             type="button"
                             phx-click="edit_group"
                             phx-value-id={group.id}
-                            class="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-800"
-                            disabled={group.name == "admin"}
+                            class="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                            disabled={protected?}
                           >
                             Edit
                           </button>
@@ -309,12 +305,11 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
                             phx-value-id={group.id}
                             class={[
                               "rounded-lg px-3 py-1.5 text-xs font-semibold transition",
-                              group.name == "admin" &&
-                                "cursor-not-allowed bg-slate-800 text-slate-500",
-                              group.name != "admin" &&
+                              protected? && "cursor-not-allowed bg-slate-800 text-slate-500",
+                              !protected? &&
                                 "border border-rose-500/30 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20"
                             ]}
-                            disabled={group.name == "admin"}
+                            disabled={protected?}
                           >
                             Delete
                           </button>
@@ -368,25 +363,51 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
     """
   end
 
-  defp groups_for_user(groups, group_ids) do
-    MapSet.new(group_ids)
-    |> then(fn group_id_set ->
-      Enum.filter(groups, fn group -> MapSet.member?(group_id_set, group.id) end)
-    end)
+  attr :user, :map, required: true
+  attr :group, :map, required: true
+  attr :label, :string, required: true
+  attr :title, :string, default: nil
+  attr :admin_area?, :boolean, default: false
+
+  defp group_toggle(assigns) do
+    assigns = assign(assigns, :member?, assigns.group.id in assigns.user.group_ids)
+
+    ~H"""
+    <button
+      id={"toggle-user-group-#{@user.id}-#{@group.id}"}
+      type="button"
+      title={@title}
+      phx-click={if @member?, do: "remove_user_group", else: "add_user_group"}
+      phx-value-user_id={@user.id}
+      phx-value-group_id={@group.id}
+      class={[
+        "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition",
+        @member? && @admin_area? &&
+          "border-emerald-500/40 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25",
+        @member? && !@admin_area? &&
+          "border-indigo-500/40 bg-indigo-500/15 text-indigo-200 hover:bg-indigo-500/25",
+        !@member? &&
+          "border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-500 hover:text-slate-200"
+      ]}
+    >
+      <.icon name={if @member?, do: "hero-check-circle", else: "hero-plus-circle"} class="size-4" />
+      {@label}
+    </button>
+    """
   end
+
+  defp pending?(user), do: !Access.approved?(user)
+
+  # Accounts waiting for approval first, then by sign-up order.
+  defp sorted_users(users), do: Enum.sort_by(users, &{!pending?(&1), &1.inserted_at})
+
+  defp group_named(groups, name), do: Enum.find(groups, &(&1.name == name))
+
+  defp custom_groups(groups), do: Enum.reject(groups, &Access.protected_group?(&1.name))
 
   defp reset_group_form(socket) do
     socket
     |> assign(:editing_group_id, nil)
     |> assign(:group_form, to_form(%{"name" => ""}, as: :group))
-  end
-
-  defp user_in_admin_group?(groups, group_ids) do
-    admin_group_id =
-      Enum.find_value(groups, fn group ->
-        if group.name == "admin", do: group.id, else: nil
-      end)
-
-    admin_group_id in group_ids
   end
 end

@@ -1,7 +1,7 @@
 defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
   use SnowSeToolsWeb.ConnCase, async: false
 
-  alias SnowSeTools.Data.{DbHelpers, User}
+  alias SnowSeTools.Data.DbHelpers
   alias SnowSeTools.Discord.{DiscordDb, DiscordDomainManager}
   alias SnowSeTools.Snow.{SnowCourseCacheDb, SnowCourseCacheDomainManager}
   alias SnowSeTools.TestSupport.Fakes.DiscordApi
@@ -786,12 +786,8 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
            } = student
   end
 
-  defp log_in_test_user(conn) do
-    {:ok, user} = User.find_or_create("discord-channel-assignment@example.com")
-    user_id = Map.get(user, :id) || Map.fetch!(user, "id")
-
-    Plug.Test.init_test_session(conn, %{"current_user_id" => user_id})
-  end
+  defp log_in_test_user(conn),
+    do: log_in_user(conn, "discord-channel-assignment@example.com", ["discord_admin"])
 
   defp delete_course_channel_assignments do
     case DbHelpers.run_sql("DELETE FROM course_channel_assignments", %{}) do

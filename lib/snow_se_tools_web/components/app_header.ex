@@ -1,7 +1,7 @@
 defmodule SnowSeToolsWeb.AppHeader do
   use SnowSeToolsWeb, :html
 
-  alias SnowSeTools.Data.AccessControl
+  alias SnowSeTools.Data.Access
 
   attr :current_user, :map, default: nil
   attr :current_path, :string, default: nil
@@ -30,31 +30,33 @@ defmodule SnowSeToolsWeb.AppHeader do
             Home
           </.link>
           <.link
+            :if={Access.can?(@current_user, :syllabi)}
             navigate={~p"/syllabi"}
             class={nav_link_class(@current_path, ~p"/syllabi")}
           >
             Syllabi
           </.link>
           <.link
+            :if={Access.can?(@current_user, :scheduling)}
             navigate={~p"/scheduling"}
             class={nav_link_class(@current_path, ~p"/scheduling")}
           >
             Scheduling
           </.link>
           <.link
+            :if={Access.can?(@current_user, :discord)}
             navigate={~p"/discord"}
             class={nav_link_class(@current_path, ~p"/discord")}
           >
             Discord
           </.link>
-          <%= if admin_user?(@current_user) do %>
-            <.link
-              navigate={~p"/admin"}
-              class={nav_link_class(@current_path, ~p"/admin")}
-            >
-              Admin
-            </.link>
-          <% end %>
+          <.link
+            :if={Access.admin?(@current_user)}
+            navigate={~p"/admin"}
+            class={nav_link_class(@current_path, ~p"/admin")}
+          >
+            Admin
+          </.link>
 
           <span class="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-300">
             <.icon name="hero-user-circle" class="size-4" />
@@ -92,14 +94,4 @@ defmodule SnowSeToolsWeb.AppHeader do
       )
     ]
   end
-
-  defp admin_user?(%{id: user_id}) when is_binary(user_id) do
-    AccessControl.user_has_group?(user_id: user_id, group_name: "admin")
-  end
-
-  defp admin_user?(%{"id" => user_id}) when is_binary(user_id) do
-    AccessControl.user_has_group?(user_id: user_id, group_name: "admin")
-  end
-
-  defp admin_user?(_), do: false
 end

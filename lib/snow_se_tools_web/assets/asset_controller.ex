@@ -5,7 +5,17 @@ defmodule SnowSeToolsWeb.AssetController do
 
   @upstream_base "https://snow.simplesyllabus.com"
 
+  @id_pattern ~r/^[A-Za-z0-9_-]{1,128}$/
+
   def account_image(conn, %{"id" => id}) do
+    if Regex.match?(@id_pattern, id) do
+      proxy_image(conn, id)
+    else
+      send_resp(conn, 400, "")
+    end
+  end
+
+  defp proxy_image(conn, id) do
     url = "#{@upstream_base}/ui/account-image/#{id}"
 
     case Req.get(url, receive_timeout: 8_000) do
@@ -16,6 +26,10 @@ defmodule SnowSeToolsWeb.AssetController do
             ct when is_binary(ct) -> ct
             _ -> "image/jpeg"
           end
+
+        # Only relay images; never let upstream HTML/JS render on our origin.
+        content_type =
+          if String.starts_with?(content_type, "image/"), do: content_type, else: "image/jpeg"
 
         conn
         |> put_resp_content_type(content_type)

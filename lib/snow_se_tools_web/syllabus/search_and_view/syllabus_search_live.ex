@@ -13,7 +13,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
   alias SnowSeTools.Reports.ReportGenerationStatus
   alias SnowSeTools.Reports.ReportGeneratorDomainManger
 
-  on_mount {SnowSeToolsWeb.UserAuth, :ensure_authenticated}
+  on_mount {SnowSeToolsWeb.UserAuth, {:ensure_access, :syllabi}}
 
   def mount(_params, session, socket) do
     parent_pid =

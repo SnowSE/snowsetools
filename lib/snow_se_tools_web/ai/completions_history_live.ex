@@ -5,7 +5,7 @@ defmodule SnowSeToolsWeb.AI.CompletionsHistoryLive do
   alias SnowSeTools.AI.AsyncCompletions
   import SnowSeToolsWeb.AI.CompletionDetails
 
-  on_mount {SnowSeToolsWeb.UserAuth, :ensure_authenticated}
+  on_mount {SnowSeToolsWeb.UserAuth, {:ensure_access, :syllabi}}
 
   def mount(_params, _session, socket) do
     if connected?(socket) do

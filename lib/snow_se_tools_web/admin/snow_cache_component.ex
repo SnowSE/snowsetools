@@ -141,7 +141,8 @@ defmodule SnowSeToolsWeb.Admin.SnowCacheComponent do
     jwt_token = String.trim(Map.get(attrs, "jwt_token", "") || "")
 
     if term_code in [nil, ""] do
-      {:noreply, assign(socket, :sync_error, "Choose a semester before syncing.") |> put_sync_form()}
+      {:noreply,
+       assign(socket, :sync_error, "Choose a semester before syncing.") |> put_sync_form()}
     else
       sync_classes(term_code, jwt_token, socket)
     end

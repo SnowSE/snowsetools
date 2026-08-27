@@ -24,7 +24,8 @@ defmodule SnowSeTools.Data.DbHelpers do
         error_message = extract_error_message(exception)
         Logger.error("Database error: #{error_message}")
         Logger.error("Failed SQL: #{original_sql}")
-        Logger.error("SQL params: #{inspect(original_params, pretty: true)}")
+        # Values are redacted: several tables hold student PII and credentials.
+        Logger.error("SQL param names: #{inspect(Map.keys(original_params))}")
         {:error, error_message}
     end
   end

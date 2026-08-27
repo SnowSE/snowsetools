@@ -6,7 +6,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusLive do
   alias SnowSeTools.Syllabi.SyllabusDomainManager
   alias SnowSeTools.Syllabi.AvailableTermsDb
 
-  on_mount {SnowSeToolsWeb.UserAuth, :ensure_authenticated}
+  on_mount {SnowSeToolsWeb.UserAuth, {:ensure_access, :syllabi}}
 
   def mount(_params, session, socket) do
     socket =

@@ -7,7 +7,8 @@ defmodule SnowSeTools.Data.User do
       email: Zoi.string(),
       inserted_at: Zoi.datetime(),
       updated_at: Zoi.datetime(),
-      group_ids: Zoi.list(Zoi.uuid())
+      group_ids: Zoi.list(Zoi.uuid()),
+      group_names: Zoi.list(Zoi.string())
     })
   end
 
@@ -25,9 +26,14 @@ defmodule SnowSeTools.Data.User do
       COALESCE(
         array_agg(DISTINCT ug.group_id) FILTER (WHERE ug.group_id IS NOT NULL),
         '{}'::uuid[]
-      ) AS group_ids
+      ) AS group_ids,
+      COALESCE(
+        array_agg(DISTINCT g.name) FILTER (WHERE g.name IS NOT NULL),
+        '{}'::text[]
+      ) AS group_names
     FROM users u
     LEFT JOIN user_groups ug ON ug.user_id = u.id
+    LEFT JOIN groups g ON g.id = ug.group_id
     WHERE u.id = $(user_id)
     GROUP BY u.id
     """

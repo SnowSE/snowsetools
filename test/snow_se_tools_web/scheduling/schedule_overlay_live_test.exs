@@ -1,7 +1,6 @@
 defmodule SnowSeToolsWeb.Scheduling.ScheduleOverlayLiveTest do
   use SnowSeToolsWeb.ConnCase, async: false
 
-  alias SnowSeTools.Data.User
   alias SnowSeTools.Scheduling.{ScheduleChangeDomainManager, ScheduleOwnerDomainManager}
   alias SnowSeTools.Snow.{SnowCourseCacheDb, SnowCourseCacheDomainManager}
 
@@ -325,11 +324,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOverlayLiveTest do
     render(view)
   end
 
-  defp log_in_test_user(conn) do
-    {:ok, user} = User.find_or_create("schedule-overlay-live@example.com")
-    user_id = Map.get(user, :id) || Map.fetch!(user, "id")
-    Plug.Test.init_test_session(conn, %{"current_user_id" => user_id})
-  end
+  defp log_in_test_user(conn),
+    do: log_in_user(conn, "schedule-overlay-live@example.com", ["scheduling_admin"])
 
   defp insert_test_courses(term_code) do
     SnowCourseCacheDb.save_courses(

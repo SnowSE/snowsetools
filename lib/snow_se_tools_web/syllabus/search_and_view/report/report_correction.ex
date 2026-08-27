@@ -24,12 +24,6 @@ defmodule SnowSeToolsWeb.Syllabus.ReportCorrection do
         class="flex flex-col gap-2"
       >
         <input type="hidden" name="element_id" value={@element_id} />
-        <input
-          :if={syllabus_text(@syllabus) != ""}
-          type="hidden"
-          name="syllabus_content"
-          value={syllabus_text(@syllabus)}
-        />
         <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
           Describe what's incorrect
         </p>
@@ -74,12 +68,14 @@ defmodule SnowSeToolsWeb.Syllabus.ReportCorrection do
   end
 
   def handle_save_correction(
-        %{"element_id" => element_id, "content" => content} = params,
+        %{"element_id" => element_id, "content" => content},
         socket,
         syllabus
       ) do
+    # The syllabus text is taken from server state, never from the form, so a
+    # client cannot inject arbitrary text into future prompts.
     full_content =
-      case Map.get(params, "syllabus_content", "") do
+      case syllabus_text(syllabus) do
         "" ->
           content
 

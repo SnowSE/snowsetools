@@ -7,7 +7,7 @@ defmodule SnowSeToolsWeb.Config.SimpleSyllabusConfig do
   alias SnowSeTools.Syllabi.Syncing.SyllabusScraperAgent
   alias SnowSeTools.Syllabi.Syncing.SyllabusSyncPubsub
 
-  on_mount {SnowSeToolsWeb.UserAuth, :ensure_authenticated}
+  on_mount {SnowSeToolsWeb.UserAuth, {:ensure_access, :syllabi}}
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
