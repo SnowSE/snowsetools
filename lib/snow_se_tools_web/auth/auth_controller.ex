@@ -37,17 +37,6 @@ defmodule SnowSeToolsWeb.AuthController do
 
   plug :save_return_to when action in [:authorize]
 
-  plug Oidcc.Plug.Authorize,
-       [
-         provider: SnowSeTools.OidcProvider,
-         client_id: &__MODULE__.client_id/0,
-         client_secret: :unauthenticated,
-         redirect_uri: &__MODULE__.callback_uri/1,
-         client_profile_opts: @pkce_profile_opts,
-         scopes: ["openid", "profile", "email"]
-       ]
-       when action in [:authorize]
-
   plug Oidcc.Plug.AuthorizationCallback,
        [
          provider: SnowSeTools.OidcProvider,
@@ -61,7 +50,34 @@ defmodule SnowSeToolsWeb.AuthController do
        ]
        when action in [:callback]
 
-  def authorize(conn, _params), do: conn
+  # Options are built per request instead of as compile-time plug options because
+  # `url_extension` is passed through verbatim, so the runtime-configured IdP
+  # hint cannot be a function reference the way `client_id` and `redirect_uri` can.
+  def authorize(conn, _params) do
+    authorize_opts =
+      Oidcc.Plug.Authorize.init(
+        provider: SnowSeTools.OidcProvider,
+        client_id: &__MODULE__.client_id/0,
+        client_secret: :unauthenticated,
+        redirect_uri: &__MODULE__.callback_uri/1,
+        client_profile_opts: @pkce_profile_opts,
+        scopes: ["openid", "profile", "email"],
+        url_extension: idp_hint_params()
+      )
+
+    Oidcc.Plug.Authorize.call(conn, authorize_opts)
+  end
+
+  # Skips Keycloak's provider chooser and lands the user on the upstream IdP.
+  defp idp_hint_params do
+    case Application.fetch_env!(:snow_se_tools, :oidc) |> Keyword.get(:idp_hint) do
+      hint when is_binary(hint) and hint != "" ->
+        [{"kc_idp_hint", hint}]
+
+      _ ->
+        []
+    end
+  end
 
   def callback(
         %Plug.Conn{

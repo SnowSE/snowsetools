@@ -19,7 +19,8 @@ end
 config :snow_se_tools, :oidc,
   issuer: env!("OIDC_ISSUER", :string!),
   client_id: env!("OIDC_CLIENT_ID", :string!),
-  redirect_uri: env!("OIDC_REDIRECT_URI", :string, nil)
+  redirect_uri: env!("OIDC_REDIRECT_URI", :string, nil),
+  idp_hint: env!("OIDC_IDP_HINT", :string, nil)
 
 config :snow_se_tools, :ai,
   endpoint: env!("AI_ENDPOINT", :string!),
