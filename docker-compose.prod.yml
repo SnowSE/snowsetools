@@ -1,5 +1,13 @@
 name: snow-se-tools
 
+# Shared with the otel stack so telemetry never leaves the host. Created by
+# /home/jonathan/otel/prod.sh; declared external here so this stack does not
+# own its lifetime.
+networks:
+  otel:
+    name: otel
+    external: true
+
 services:
   db:
     image: postgres:18-alpine
@@ -23,6 +31,17 @@ services:
     restart: unless-stopped
     env_file:
       - prod.env
+    environment:
+      # Traces and app events both go here. Unset this and the app stops
+      # reporting entirely -- it does not fail, it just goes quiet.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: snowse-tools
+      OTEL_ENVIRONMENT: prod
+    networks:
+      # "default" must be listed explicitly: naming any network opts the
+      # service out of joining the default one, which is how it reaches db.
+      - default
+      - otel
     # healthcheck:
     #   test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health || exit 1"]
     #   interval: 10s

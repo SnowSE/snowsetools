@@ -22,6 +22,36 @@ config :snow_se_tools, :oidc,
   redirect_uri: env!("OIDC_REDIRECT_URI", :string, nil),
   idp_hint: env!("OIDC_IDP_HINT", :string, nil)
 
+# --- OpenTelemetry ----------------------------------------------------------
+# One endpoint carries both signals: traces via the SDK's OTLP/HTTP exporter and
+# app events via SnowSeTools.Telemetry.Events. Unset (dev, test, CI) turns both
+# off entirely -- nothing is buffered and nothing is sent.
+otel_endpoint = env!("OTEL_EXPORTER_OTLP_ENDPOINT", :string, nil)
+otel_service_name = env!("OTEL_SERVICE_NAME", :string, "snowse-tools")
+otel_environment = env!("OTEL_ENVIRONMENT", :string, to_string(config_env()))
+
+config :snow_se_tools, :otel,
+  endpoint: otel_endpoint,
+  service_name: otel_service_name,
+  environment: otel_environment
+
+if otel_endpoint do
+  config :opentelemetry,
+    span_processor: :batch,
+    traces_exporter: :otlp,
+    resource: %{
+      "service.name": otel_service_name,
+      "service.namespace": "snowse",
+      "deployment.environment": otel_environment
+    }
+
+  config :opentelemetry_exporter,
+    otlp_protocol: :http_protobuf,
+    otlp_endpoint: otel_endpoint
+else
+  config :opentelemetry, traces_exporter: :none
+end
+
 config :snow_se_tools, :ai,
   endpoint: env!("AI_ENDPOINT", :string!),
   api_key: env!("AI_API_KEY", :string!),

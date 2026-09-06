@@ -19,6 +19,7 @@ defmodule SnowSeTools.AI.AsyncCompletions do
   require Logger
 
   alias SnowSeTools.AI.CompletionLog
+  alias SnowSeTools.Telemetry.Events
 
   @pubsub SnowSeTools.PubSub
   @max_concurrent 3
@@ -28,7 +29,7 @@ defmodule SnowSeTools.AI.AsyncCompletions do
   @status_topic "async_completions:status"
 
   @type message :: %{role: String.t(), content: String.t()}
-  @type option :: {:schema, map()}
+  @type option :: {:schema, map()} | {:user, String.t() | nil}
   @type result :: {:ok, String.t() | map()} | {:error, term()}
 
   def start_link(opts \\ []) do
@@ -180,11 +181,20 @@ defmodule SnowSeTools.AI.AsyncCompletions do
           thinking
         )
 
+        Events.record("ai.completion.finished",
+          user: opts[:user],
+          outcome: outcome(result),
+          attributes: %{"ai.model" => config[:model], "ai.topic" => topic}
+        )
+
         Phoenix.PubSub.broadcast(@pubsub, topic, {event, result})
       end)
 
     ref
   end
+
+  defp outcome({:ok, _}), do: :ok
+  defp outcome(_), do: :error
 
   @spec complete_sync([message()], [option()]) :: {result(), String.t() | nil}
   defp complete_sync(messages, opts) do

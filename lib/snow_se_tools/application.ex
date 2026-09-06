@@ -7,6 +7,8 @@ defmodule SnowSeTools.Application do
 
   @impl true
   def start(_type, _args) do
+    SnowSeTools.Telemetry.Otel.setup()
+
     children = base_children() ++ conditional_children()
 
     # See https://hexdocs.pm/elixir/Supervisor.html
@@ -19,6 +21,7 @@ defmodule SnowSeTools.Application do
     oidc_children() ++
       [
         SnowSeToolsWeb.Telemetry,
+        SnowSeTools.Telemetry.Events,
         {DNSCluster, query: Application.get_env(:snow_se_tools, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: SnowSeTools.PubSub},
         SnowSeToolsWeb.Endpoint

@@ -2,6 +2,7 @@ defmodule SnowSeToolsWeb.AuthController do
   use SnowSeToolsWeb, :controller
   require Logger
   alias SnowSeTools.Data.User
+  alias SnowSeTools.Telemetry.Events
 
   @doc false
   def call(conn, action) do
@@ -88,6 +89,7 @@ defmodule SnowSeToolsWeb.AuthController do
     email = Map.get(userinfo, "email")
     token_exp = Map.get(token.id.claims, "exp")
     Logger.info("User login successful email=#{email}")
+    Events.record("auth.login.succeeded", user: email)
 
     refresh_token =
       case token.refresh do
@@ -125,6 +127,11 @@ defmodule SnowSeToolsWeb.AuthController do
       ) do
     Logger.warning("User login failed reason=#{inspect(reason)}")
 
+    Events.record("auth.login.failed",
+      outcome: :error,
+      attributes: %{"failure.reason" => inspect(reason)}
+    )
+
     conn
     |> put_status(400)
     |> put_flash(:error, "Login failed: #{inspect(reason)}")
@@ -132,6 +139,8 @@ defmodule SnowSeToolsWeb.AuthController do
   end
 
   def logout(conn, _params) do
+    Events.record("auth.logout", user: logged_in_email(conn))
+
     conn
     |> clear_session()
     |> redirect(to: ~p"/")
@@ -176,6 +185,13 @@ defmodule SnowSeToolsWeb.AuthController do
         )
 
         send_resp(conn, 401, "")
+    end
+  end
+
+  defp logged_in_email(conn) do
+    case get_session(conn, "oidc_claims") do
+      %{"email" => email} -> email
+      _ -> nil
     end
   end
 

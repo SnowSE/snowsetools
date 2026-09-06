@@ -3,6 +3,7 @@ defmodule SnowSeToolsWeb.UserAuth do
   import Phoenix.Component
   require Logger
   alias SnowSeTools.Data.{Access, User}
+  alias SnowSeTools.Telemetry.Events
 
   @doc """
   LiveView `on_mount` hooks.
@@ -74,11 +75,30 @@ defmodule SnowSeToolsWeb.UserAuth do
   defp track_current_path(%{parent_pid: nil} = socket) do
     attach_hook(socket, :track_current_path, :handle_params, fn _params, url, socket ->
       %{path: path} = URI.parse(url)
+
+      # Only the connected mount, so the disconnected pre-render does not
+      # count every visit twice.
+      if connected?(socket) do
+        Events.record(page_event(path),
+          user: socket.assigns[:current_user],
+          attributes: %{"page.path" => path}
+        )
+      end
+
       {:cont, assign(socket, :current_path, path)}
     end)
   end
 
   defp track_current_path(socket), do: socket
+
+  # The leading path segment is the feature bucket the usage dashboard groups
+  # by, so /syllabi/report and /syllabi both land under "syllabi".
+  defp page_event(path) do
+    case String.split(path, "/", trim: true) do
+      [] -> "home.page.viewed"
+      [section | _] -> "#{section}.page.viewed"
+    end
+  end
 
   defp schedule_session_refresh(socket, %{"session_expires_at" => exp}) when is_integer(exp) do
     now = System.system_time(:second)

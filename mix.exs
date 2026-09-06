@@ -21,7 +21,7 @@ defmodule SnowSeTools.MixProject do
   def application do
     [
       mod: {SnowSeTools.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      extra_applications: [:logger, :runtime_tools, :inets, :ssl]
     ]
   end
 
@@ -68,6 +68,12 @@ defmodule SnowSeTools.MixProject do
       {:zoi, "~> 0.18"},
       {:dotenvy, "~> 1.1.1"},
       {:oidcc_plug, "~> 0.5"},
+      {:opentelemetry, "~> 1.7"},
+      {:opentelemetry_api, "~> 1.5"},
+      {:opentelemetry_exporter, "~> 1.10"},
+      {:opentelemetry_phoenix, "~> 2.0"},
+      {:opentelemetry_bandit, "~> 0.3"},
+      {:opentelemetry_ecto, "~> 1.2"},
       {:dialyxir, "~> 1.4", only: :test, runtime: false},
       {:live_debugger, "~> 1.0.1", only: :dev}
     ]
