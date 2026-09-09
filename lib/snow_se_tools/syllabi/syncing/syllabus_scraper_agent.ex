@@ -2,6 +2,7 @@ defmodule SnowSeTools.Syllabi.Syncing.SyllabusScraperAgent do
   use GenServer
   require Logger
 
+  alias SnowSeTools.Telemetry.Events
   alias SnowSeTools.Syllabi.SyncWorker
   alias SnowSeTools.Syllabi.Syncing.SyllabusSyncPubsub
 
@@ -116,11 +117,21 @@ defmodule SnowSeTools.Syllabi.Syncing.SyllabusScraperAgent do
   def handle_info({:term_list_sync_done, result}, state) do
     case result do
       {:ok, term_count} ->
+        Events.record("syllabi.sync.finished",
+          attributes: %{"sync.kind" => "term_list", "term.count" => term_count}
+        )
+
         Logger.info("SyllabusScraperAgent term list sync completed term_count=#{term_count}")
         SyllabusSyncPubsub.broadcast_sync_complete(nil)
 
       {:error, reason} ->
         error_msg = to_string(reason)
+
+        Events.record("syllabi.sync.finished",
+          outcome: :error,
+          attributes: %{"sync.kind" => "term_list", "failure.reason" => error_msg}
+        )
+
         Logger.error("SyllabusScraperAgent term list sync failed reason=#{error_msg}")
         SyllabusSyncPubsub.broadcast_sync_error(nil, error_msg)
     end
@@ -131,11 +142,19 @@ defmodule SnowSeTools.Syllabi.Syncing.SyllabusScraperAgent do
   def handle_info({:syllabus_sync_done, result}, state) do
     case result do
       :ok ->
+        Events.record("syllabi.sync.finished", attributes: %{"sync.kind" => "syllabi"})
+
         Logger.info("SyllabusScraperAgent syllabus sync completed")
         SyllabusSyncPubsub.broadcast_sync_complete(nil)
 
       {:error, reason} ->
         error_msg = to_string(reason)
+
+        Events.record("syllabi.sync.finished",
+          outcome: :error,
+          attributes: %{"sync.kind" => "syllabi", "failure.reason" => error_msg}
+        )
+
         Logger.error("SyllabusScraperAgent syllabus sync failed reason=#{error_msg}")
         SyllabusSyncPubsub.broadcast_sync_error(nil, error_msg)
     end

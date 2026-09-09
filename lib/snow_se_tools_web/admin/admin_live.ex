@@ -5,6 +5,7 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
 
   alias SnowSeTools.Data.Access
   alias SnowSeTools.Snow.SnowCourseCacheDomainManager
+  alias SnowSeTools.Telemetry.Events
   alias SnowSeTools.UserGroups.UserGroupDomainManager
   alias SnowSeToolsWeb.UserAuth
 
@@ -31,11 +32,22 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
   end
 
   def handle_event("create_user", %{"user" => user_params}, socket) do
+    Events.record("admin.user.created",
+      user: socket.assigns.current_user,
+      attributes: %{"target.email" => user_params["email"] || "unknown"}
+    )
+
     UserGroupDomainManager.create_user(pid: self(), user_params: user_params)
     {:noreply, socket}
   end
 
   def handle_event("save_group", %{"group" => group_params}, socket) do
+    Events.record(
+      if(socket.assigns.editing_group_id, do: "admin.group.updated", else: "admin.group.created"),
+      user: socket.assigns.current_user,
+      attributes: %{"group.name" => group_params["name"] || "unknown"}
+    )
+
     if socket.assigns.editing_group_id do
       UserGroupDomainManager.update_group(
         pid: self(),
@@ -85,7 +97,12 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
 
   def handle_event("confirm_delete", _params, socket) do
     case socket.assigns.pending_delete do
-      %{kind: :group, id: group_id} ->
+      %{kind: :group, id: group_id} = pending ->
+        Events.record("admin.group.deleted",
+          user: socket.assigns.current_user,
+          attributes: %{"group.name" => pending[:label] || group_id}
+        )
+
         UserGroupDomainManager.delete_group(pid: self(), group_id: group_id)
 
       _ ->
@@ -96,16 +113,48 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
   end
 
   def handle_event("add_user_group", %{"user_id" => user_id, "group_id" => group_id}, socket) do
+    Events.record("admin.group.assigned",
+      user: socket.assigns.current_user,
+      attributes: %{
+        "target.email" => user_email(socket, user_id),
+        "group.name" => group_name(socket, group_id)
+      }
+    )
+
     UserGroupDomainManager.add_user_group(pid: self(), user_id: user_id, group_id: group_id)
     {:noreply, socket}
   end
 
   def handle_event("remove_user_group", %{"user_id" => user_id, "group_id" => group_id}, socket) do
+    Events.record("admin.group.removed",
+      user: socket.assigns.current_user,
+      attributes: %{
+        "target.email" => user_email(socket, user_id),
+        "group.name" => group_name(socket, group_id)
+      }
+    )
+
     UserGroupDomainManager.remove_user_group(pid: self(), user_id: user_id, group_id: group_id)
     {:noreply, socket}
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  # Access changes are recorded with names, not ids: "granted syllabi to
+  # someone@snow.edu" is worth reading a month later, a pair of uuids is not.
+  defp group_name(socket, group_id) do
+    case Enum.find(socket.assigns.groups, &(&1.id == group_id)) do
+      %{name: name} -> name
+      _ -> group_id
+    end
+  end
+
+  defp user_email(socket, user_id) do
+    case Enum.find(socket.assigns.users, &(&1.id == user_id)) do
+      %{email: email} -> email
+      _ -> user_id
+    end
+  end
 
   def render(assigns) do
     ~H"""

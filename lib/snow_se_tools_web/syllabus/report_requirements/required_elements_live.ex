@@ -1,6 +1,7 @@
 defmodule SnowSeToolsWeb.Reports.RequiredElementsLive do
   use SnowSeToolsWeb, :live_view
 
+  alias SnowSeTools.Telemetry.Events
   alias SnowSeTools.Reports.RequiredElementDB
   alias SnowSeTools.Reports.ReportInstructionDB
   alias SnowSeTools.Reports.ReportGeneratorDomainManger
@@ -32,6 +33,17 @@ defmodule SnowSeToolsWeb.Reports.RequiredElementsLive do
     case RequiredElementDB.get(element_id) do
       {:ok, element} ->
         all_codes = ReportGeneratorDomainManger.get_syllabi_codes()
+
+        Events.record("syllabi.report.requested",
+          user: socket.assigns.current_user,
+          attributes: %{
+            "element.name" => element["name"] || element["id"],
+            "element.id" => element["id"],
+            "report.scope" => "missing",
+            "syllabi.count" => length(all_codes)
+          }
+        )
+
         ReportGeneratorDomainManger.generate_async_all_missing(element, all_codes)
         {:noreply, put_flash(socket, :info, "Queued generation for missing syllabi.")}
 
@@ -43,6 +55,15 @@ defmodule SnowSeToolsWeb.Reports.RequiredElementsLive do
   def handle_event("regenerate_unmet_for_element", %{"id" => element_id}, socket) do
     case RequiredElementDB.get(element_id) do
       {:ok, element} ->
+        Events.record("syllabi.report.requested",
+          user: socket.assigns.current_user,
+          attributes: %{
+            "element.name" => element["name"] || element["id"],
+            "element.id" => element["id"],
+            "report.scope" => "unmet"
+          }
+        )
+
         ReportGeneratorDomainManger.generate_async_all_unmet(element, nil)
 
         {:noreply,

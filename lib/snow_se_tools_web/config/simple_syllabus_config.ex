@@ -54,6 +54,7 @@ defmodule SnowSeToolsWeb.Config.SimpleSyllabusConfig do
         id="sync-status"
         terms={@terms}
         sync_status={@sync_status}
+        current_user={@current_user}
       />
     </div>
     """

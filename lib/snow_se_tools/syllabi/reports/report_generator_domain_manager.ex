@@ -2,6 +2,7 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
   use GenServer
   require Logger
 
+  alias SnowSeTools.Telemetry.Events
   alias SnowSeTools.AI.AsyncCompletions
   alias SnowSeTools.Reports.GeneratedReportDB
   alias SnowSeTools.Reports.GeneratedReportItemDB
@@ -421,6 +422,16 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
   end
 
   def handle_info({:generation_failed, code, element_id, reason}, state) do
+    Events.record("syllabi.report.failed",
+      outcome: :error,
+      attributes: %{
+        "element.id" => element_id,
+        "syllabus.code" => to_string(code),
+        "failure.stage" => "prepare",
+        "failure.reason" => inspect(reason)
+      }
+    )
+
     Logger.error(
       "ReportGeneratorDomainManger prepare failed element_id=#{element_id} reason=#{inspect(reason)}"
     )
@@ -433,9 +444,23 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
     {result, state} =
       case GeneratedReportItemDB.upsert(report_id, element_id, ai_result) do
         {:ok, _item} = ok ->
+          Events.record("syllabi.report.generated",
+            attributes: %{"element.id" => element_id, "syllabus.code" => to_string(code)}
+          )
+
           {ok, refresh_coverage(state, element_id)}
 
         {:error, reason} = err ->
+          Events.record("syllabi.report.failed",
+            outcome: :error,
+            attributes: %{
+              "element.id" => element_id,
+              "syllabus.code" => to_string(code),
+              "failure.stage" => "save",
+              "failure.reason" => inspect(reason)
+            }
+          )
+
           Logger.error(
             "ReportGeneratorDomainManger upsert failed element_id=#{element_id} reason=#{inspect(reason)}"
           )
@@ -448,6 +473,16 @@ defmodule SnowSeTools.Reports.ReportGeneratorDomainManger do
   end
 
   def handle_info({{code, element_id, _report_id}, {:error, reason}}, state) do
+    Events.record("syllabi.report.failed",
+      outcome: :error,
+      attributes: %{
+        "element.id" => element_id,
+        "syllabus.code" => to_string(code),
+        "failure.stage" => "ai",
+        "failure.reason" => inspect(reason)
+      }
+    )
+
     Logger.error(
       "ReportGeneratorDomainManger AI failed element_id=#{element_id} reason=#{inspect(reason)}"
     )

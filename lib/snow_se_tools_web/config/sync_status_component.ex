@@ -1,6 +1,7 @@
 defmodule SnowSeToolsWeb.Config.SyncStatusComponent do
   use SnowSeToolsWeb, :live_component
 
+  alias SnowSeTools.Telemetry.Events
   alias SnowSeTools.Syllabi.Syncing.SyllabusScraperAgent
 
   def update(%{sync_message: msg} = assigns, socket) do
@@ -24,6 +25,11 @@ defmodule SnowSeToolsWeb.Config.SyncStatusComponent do
   end
 
   def handle_event("sync_term", %{"term-id" => term_id}, socket) do
+    Events.record("syllabi.sync.requested",
+      user: socket.assigns[:current_user],
+      attributes: %{"sync.kind" => "term", "term.id" => to_string(term_id)}
+    )
+
     case SyllabusScraperAgent.sync_term(term_id) do
       :ok ->
         {:noreply,
@@ -45,6 +51,11 @@ defmodule SnowSeToolsWeb.Config.SyncStatusComponent do
   end
 
   def handle_event("sync_term_list", _params, socket) do
+    Events.record("syllabi.sync.requested",
+      user: socket.assigns[:current_user],
+      attributes: %{"sync.kind" => "term_list"}
+    )
+
     case SyllabusScraperAgent.sync_term_list() do
       :ok ->
         {:noreply,
