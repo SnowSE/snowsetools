@@ -8,6 +8,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   alias SnowSeToolsWeb.Scheduling.CourseListForTerm
   alias SnowSeToolsWeb.Scheduling.ScheduleChangeGroups
   alias SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder
+  alias SnowSeToolsWeb.Scheduling.ScheduleLayouts
   alias SnowSeToolsWeb.Scheduling.ScheduleTermConflicts
   alias SnowSeToolsWeb.Scheduling.ScheduleViewer
   alias SnowSeToolsWeb.Scheduling.WeekSchedule
@@ -30,6 +31,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
      |> ScheduleViewer.assign_component()
      |> CourseListForTerm.assign_component()
      |> ScheduleDetailsOrder.assign_component()
+     |> ScheduleLayouts.assign_component()
      |> AcademicProgramEditor.assign_component(:academic_program_editor)
      |> AcademicProgramCoursePicker.assign_component(:academic_program_course_picker,
        editor_key: :academic_program_editor
@@ -65,7 +67,8 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
        to:
          scheduling_path(
            mode: mode_atom,
-           term: socket.assigns.schedule_viewer_state.selected_term_code
+           term: socket.assigns.schedule_viewer_state.selected_term_code,
+           layout: ScheduleLayouts.loaded_name(socket.assigns.schedule_layouts)
          )
      )}
   end
@@ -124,6 +127,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
                 courses={CourseListForTerm.courses(@scheduling_course_data)}
                 schedule_change_groups_state={@schedule_change_groups_state}
                 schedule_term_conflicts_state={@schedule_term_conflicts_state}
+                schedule_layouts={@schedule_layouts}
                 academic_programs={@academic_programs}
               />
             <% :programs -> %>
@@ -169,9 +173,21 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
     socket
   end
 
-  defp scheduling_path(mode: mode_atom, term: nil), do: "/scheduling?mode=#{mode_atom}"
+  @doc """
+  The scheduling URL. `layout` names the saved layout on screen so the page can
+  be bookmarked and shared; blank values are left out rather than written as
+  empty query params.
+  """
+  def scheduling_path(opts) do
+    query =
+      [
+        {"mode", to_string(Keyword.fetch!(opts, :mode))},
+        {"term", Keyword.get(opts, :term)},
+        {"layout", Keyword.get(opts, :layout)}
+      ]
+      |> Enum.reject(fn {_key, value} -> value in [nil, ""] end)
+      |> URI.encode_query()
 
-  defp scheduling_path(mode: mode_atom, term: term_code) when is_binary(term_code) do
-    "/scheduling?mode=#{mode_atom}&term=#{term_code}"
+    "/scheduling?" <> query
   end
 end

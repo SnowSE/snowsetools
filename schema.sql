@@ -304,3 +304,18 @@ CREATE TABLE schedule_changes (
 
 CREATE INDEX idx_schedule_changes_group_id ON schedule_changes(group_id);
 CREATE INDEX idx_schedule_changes_crn_term ON schedule_changes(crn, term);
+
+CREATE TABLE schedule_layouts (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        TEXT        NOT NULL,
+  scope       TEXT        NOT NULL DEFAULT 'user' CHECK (scope IN ('user', 'shared')),
+  user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  term_code   TEXT,
+  entries     JSONB       NOT NULL DEFAULT '[]'::jsonb,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  inserted_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_schedule_layouts_user_id ON schedule_layouts(user_id);
+CREATE INDEX idx_schedule_layouts_scope ON schedule_layouts(scope);

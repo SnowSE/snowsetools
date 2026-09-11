@@ -4,6 +4,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
 
   alias Phoenix.LiveView
   alias SnowSeToolsWeb.Scheduling.OverlayGroup
+  alias SnowSeToolsWeb.Scheduling.ScheduleLayouts
   alias SnowSeToolsWeb.Scheduling.ScheduleOrder
   alias SnowSeToolsWeb.Scheduling.ScheduleOverlays
   alias SnowSeToolsWeb.Scheduling.WeekSchedule
@@ -74,6 +75,157 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
     end
   end
 
+  # -- Saved layouts --
+
+  @doc """
+  The canvas as a portable list of entries: what is open, in what order, which
+  cards are grouped onto one grid, and how each was sized.
+
+  Overlay group keys are minted per process with `:erlang.unique_integer/1`, so
+  a group is stored as its ordered member keys and given a fresh key when the
+  layout is applied.
+  """
+  def to_layout_entries(%__MODULE__{} = state) do
+    state.selected_schedule_order
+    |> ScheduleOrder.to_list()
+    |> Enum.map(fn key ->
+      size = encode_card_size(card_size(state, key))
+
+      if ScheduleOverlays.group_key?(key) do
+        %{
+          "kind" => "overlay",
+          "members" => ScheduleOverlays.members(overlays: state.overlays, group_key: key),
+          "size" => size
+        }
+      else
+        %{"kind" => "owner", "key" => key, "size" => size}
+      end
+    end)
+  end
+
+  @doc """
+  Replaces the canvas with `entries`. Owners the current term does not have are
+  dropped rather than loaded as permanently empty cards, and reported back so
+  the caller can say what did not land.
+
+  Returns `{socket, %{applied: count, missing: [owner_key]}}`.
+  """
+  def apply_layout_entries(socket, entries: entries, available_owner_keys: available_owner_keys)
+      when is_list(entries) do
+    term_code = socket.assigns.schedule_viewer_state.selected_term_code
+    {resolved, missing} = resolve_layout_entries(entries, available_owner_keys)
+
+    {order, overlays, card_sizes, owner_keys} =
+      Enum.reduce(
+        resolved,
+        {ScheduleOrder.new(), ScheduleOverlays.new(), %{}, []},
+        fn
+          {:owner, key, size}, {order, overlays, sizes, keys} ->
+            {ScheduleOrder.put(order: order, key: key), overlays, Map.put(sizes, key, size),
+             keys ++ [key]}
+
+          {:overlay, members, size}, {order, overlays, sizes, keys} ->
+            {group_key, overlays} =
+              ScheduleOverlays.create(overlays: overlays, owner_keys: members)
+
+            {ScheduleOrder.put(order: order, key: group_key), overlays,
+             Map.put(sizes, group_key, size), keys ++ members}
+        end
+      )
+
+    socket =
+      owner_keys
+      |> Enum.reduce(WeekSchedule.clear_owners(socket), fn owner_key, acc ->
+        WeekSchedule.assign_owner(acc, owner_key: owner_key, selected_term_code: term_code)
+      end)
+
+    socket =
+      assign(socket, @key, %{
+        socket.assigns[@key]
+        | selected_schedule_order: order,
+          overlays: overlays,
+          card_sizes: card_sizes,
+          open_overlay_menu_key: nil
+      })
+
+    {socket, %{applied: length(owner_keys), missing: missing}}
+  end
+
+  @doc "One human-readable line per card, for the layout naming prompt."
+  def card_labels(%__MODULE__{} = state, week_schedules) do
+    state.selected_schedule_order
+    |> ScheduleOrder.to_list()
+    |> Enum.map(fn key ->
+      label = entry_label(state, week_schedules, key)
+
+      if ScheduleOverlays.group_key?(key) do
+        members = ScheduleOverlays.members(overlays: state.overlays, group_key: key)
+        "Overlay group of #{length(members)} drawn on one grid: #{label}"
+      else
+        "#{owner_kind_label(owner_key_type(key))}: #{label}"
+      end
+    end)
+  end
+
+  defp owner_kind_label(:professor), do: "Professor"
+  defp owner_kind_label(:room), do: "Room"
+  defp owner_kind_label(:academic_program_semester), do: "Program semester"
+  defp owner_kind_label(_type), do: "Schedule"
+
+  defp encode_card_size(%{width: width, scale: scale}),
+    do: %{"width" => encode_card_width(width), "scale" => scale}
+
+  defp encode_card_width(:full), do: "full"
+  defp encode_card_width(width) when is_integer(width), do: width
+  defp encode_card_width(_width), do: nil
+
+  defp decode_card_size(%{"width" => width, "scale" => scale}),
+    do: %{width: normalize_width(width), scale: clamp_scale(scale)}
+
+  defp decode_card_size(_size), do: @default_card_size
+
+  defp resolve_layout_entries(entries, available_owner_keys) do
+    Enum.reduce(entries, {[], []}, fn entry, {resolved, missing} ->
+      case resolve_layout_entry(entry, available_owner_keys) do
+        {:ok, resolved_entry, dropped} -> {resolved ++ [resolved_entry], missing ++ dropped}
+        {:dropped, dropped} -> {resolved, missing ++ dropped}
+      end
+    end)
+  end
+
+  defp resolve_layout_entry(%{"kind" => "owner", "key" => key} = entry, available_owner_keys)
+       when is_binary(key) do
+    if owner_available?(key, available_owner_keys) do
+      {:ok, {:owner, key, decode_card_size(entry["size"])}, []}
+    else
+      {:dropped, [key]}
+    end
+  end
+
+  defp resolve_layout_entry(%{"kind" => "overlay", "members" => members} = entry, available)
+       when is_list(members) do
+    {kept, dropped} = Enum.split_with(members, &owner_available?(&1, available))
+
+    case kept do
+      [] -> {:dropped, dropped}
+      [only_survivor] -> {:ok, {:owner, only_survivor, decode_card_size(entry["size"])}, dropped}
+      _members -> {:ok, {:overlay, kept, decode_card_size(entry["size"])}, dropped}
+    end
+  end
+
+  defp resolve_layout_entry(entry, _available_owner_keys) do
+    Logger.warning("Ignored unrecognised saved layout entry #{inspect(entry)}")
+    {:dropped, []}
+  end
+
+  # The term's owner metadata has not arrived yet, so nothing can be checked
+  # against it. Keys of a known kind are accepted and the usual term-replacement
+  # path prunes any that turn out not to exist.
+  defp owner_available?(key, nil), do: owner_key_type(key) != nil
+
+  defp owner_available?(key, available_owner_keys),
+    do: MapSet.member?(available_owner_keys, key)
+
   attr :state, __MODULE__, required: true
   attr :week_schedules, :map, required: true
   attr :week_schedule_edit_course_modal, :map, default: nil
@@ -81,26 +233,27 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
   attr :conflicted_course_crns, :any, default: MapSet.new()
   attr :active_conflicted_course_crns, :any, default: MapSet.new()
   attr :schedule_owners_metadata, :list, default: []
+  attr :schedule_layouts, :any, required: true
 
   def render(assigns) do
     ~H"""
     <section class="min-w-0 flex-1 overflow-y-auto">
-      <div
-        :if={ScheduleOrder.size(@state.selected_schedule_order) > 0}
-        class="flex items-center justify-end"
-      >
-        <button
-          id="clear-selected-schedules"
-          type="button"
-          phx-click="schedule-details-order:clear_selected"
-          class={[
-            "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition",
-            "bg-red-950/50 text-red-300 hover:bg-red-900/70 hover:text-red-100"
-          ]}
-        >
-          <.icon name="hero-x-mark" class="size-3" /> Clear Selection
-        </button>
-      </div>
+      <ScheduleLayouts.render state={@schedule_layouts} schedule_details_order={@state}>
+        <:leading>
+          <button
+            :if={ScheduleOrder.size(@state.selected_schedule_order) > 0}
+            id="clear-selected-schedules"
+            type="button"
+            phx-click="schedule-details-order:clear_selected"
+            class={[
+              "inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs transition",
+              "bg-red-950/50 text-red-300 hover:bg-red-900/70 hover:text-red-100"
+            ]}
+          >
+            <.icon name="hero-x-mark" class="size-3" /> Clear Selection
+          </button>
+        </:leading>
+      </ScheduleLayouts.render>
 
       <div
         :if={ScheduleOrder.size(@state.selected_schedule_order) == 0}

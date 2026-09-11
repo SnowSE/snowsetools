@@ -14,6 +14,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
     CourseListForTerm,
     ScheduleChangeGroups,
     ScheduleDetailsOrder,
+    ScheduleLayouts,
     ScheduleTermConflicts
   }
 
@@ -63,6 +64,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
   attr :week_schedule_edit_course_modal, :map, default: nil
   attr :schedule_change_groups_state, :any, required: true
   attr :schedule_term_conflicts_state, :any, required: true
+  attr :schedule_layouts, :any, required: true
   attr :academic_programs, :list, default: []
   attr :courses, :list, default: []
 
@@ -147,6 +149,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
       </script>
 
       <ScheduleDetailsOrder.render
+        schedule_layouts={@schedule_layouts}
         state={@schedule_details_order}
         week_schedules={@week_schedules}
         week_schedule_edit_course_modal={@week_schedule_edit_course_modal}
@@ -270,6 +273,24 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
     Map.get(state.schedule_owners_metadata_by_term, state.selected_term_code, [])
   end
 
+  @doc """
+  Owner keys that exist in the selected term, or nil when that term's metadata
+  has not arrived yet and nothing can be checked against it.
+  """
+  def available_owner_keys(%__MODULE__{} = state) do
+    case Map.get(state.schedule_owners_metadata_by_term, state.selected_term_code) do
+      nil -> nil
+      schedule_owners -> MapSet.new(schedule_owners, & &1.key)
+    end
+  end
+
+  @doc "The selected term's display name, for prompts and saved layout labels."
+  def selected_term_name(%__MODULE__{} = state) do
+    Enum.find_value(state.terms, fn term ->
+      if term["term_code"] == state.selected_term_code, do: term["term_name"]
+    end)
+  end
+
   defp initial_setup(socket) do
     socket
     |> maybe_attach_hooks()
@@ -341,7 +362,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
              term_code,
              schedule_owners
            )
-     })}
+     })
+     # A layout named in the URL waits for this: until the term's owners are
+     # known there is no way to tell which of its cards this term actually has.
+     |> ScheduleLayouts.maybe_apply_pending_layout()}
   end
 
   def hooked_info(
