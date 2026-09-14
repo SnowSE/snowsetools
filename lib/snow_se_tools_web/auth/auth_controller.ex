@@ -103,6 +103,8 @@ defmodule SnowSeToolsWeb.AuthController do
 
         conn
         |> configure_session(renew: true)
+        # Anything queued before the login round-trip is stale now that it worked.
+        |> clear_flash()
         |> delete_session("return_to")
         |> put_session("oidc_claims", userinfo)
         |> put_session("current_user_id", user.id)

@@ -60,12 +60,15 @@ defmodule SnowSeToolsWeb.Router do
     end
   end
 
+  # No flash on the way out: this redirect lands on the IdP, which never renders
+  # a page to show it, so the message would sit in the session and pop up on the
+  # first page *after* a successful login. A login that actually fails gets its
+  # own flash from AuthController.
   defp require_authenticated_user(conn, _opts) do
     if get_session(conn, "current_user_id") do
       conn
     else
       conn
-      |> Phoenix.Controller.put_flash(:error, "You must be logged in to access this page.")
       |> Phoenix.Controller.redirect(to: "/auth/login?return_to=#{conn.request_path}")
       |> halt()
     end
