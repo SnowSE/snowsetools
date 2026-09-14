@@ -28,6 +28,11 @@ defmodule SnowSeToolsWeb.Endpoint do
     from: :snow_se_tools,
     gzip: not code_reloading?,
     only: SnowSeToolsWeb.static_paths(),
+    # `only` matches whole path segments, so the digested names phx.digest
+    # produces for the root-level icons (favicon-<hash>.ico) would not match and
+    # would fall through to the router as a 404. Folder assets escape this
+    # because their first segment is just "assets".
+    only_matching: ~w(favicon apple-touch-icon),
     raise_on_missing_only: code_reloading?
 
   # Code reloading can be explicitly enabled under the
