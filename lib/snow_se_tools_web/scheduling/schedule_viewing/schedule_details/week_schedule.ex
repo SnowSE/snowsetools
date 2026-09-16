@@ -145,6 +145,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
             conflicted_course_crns={@conflicted_course_crns}
             active_conflicted_course_crns={@active_conflicted_course_crns}
             minute_scale={@size.scale}
+            single_owner_grid={true}
           />
         <% end %>
       </div>

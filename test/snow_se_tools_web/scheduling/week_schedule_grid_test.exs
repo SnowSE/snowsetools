@@ -19,6 +19,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
       render_component(&WeekScheduleGrid.schedule_grid/1,
         schedule_owner: schedule_owner,
         owner_key: "academic_program_semester:cs-fall2024",
+        single_owner_grid: true,
         selected_term_code: "202501",
         active_change_group: nil
       )
@@ -43,6 +44,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
       render_component(&WeekScheduleGrid.schedule_grid/1,
         schedule_owner: schedule_owner,
         owner_key: "academic_program_semester:cs-fall2024",
+        single_owner_grid: true,
         selected_term_code: "202501",
         active_change_group: nil,
         minute_scale: 2.0
@@ -68,6 +70,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
       render_component(&WeekScheduleGrid.schedule_grid/1,
         schedule_owner: schedule_owner,
         owner_key: "academic_program_semester:cs-fall2024",
+        single_owner_grid: true,
         selected_term_code: "202501",
         active_change_group: nil
       )
@@ -110,6 +113,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
       render_component(&WeekScheduleGrid.schedule_grid/1,
         schedule_owner: schedule_owner,
         owner_key: "academic_program_semester:math-fall2024",
+        single_owner_grid: true,
         selected_term_code: "202501",
         active_change_group: nil
       )
@@ -156,6 +160,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
       render_component(&WeekScheduleGrid.schedule_grid/1,
         schedule_owner: schedule_owner,
         owner_key: "academic_program_semester:math-fall2024",
+        single_owner_grid: true,
         selected_term_code: "202501",
         active_change_group: nil,
         conflicted_course_crns: MapSet.new(["21002"]),
@@ -208,6 +213,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
       render_component(&WeekScheduleGrid.schedule_grid/1,
         schedule_owner: schedule_owner,
         owner_key: "academic_program_semester:bio-fall2024",
+        single_owner_grid: true,
         selected_term_code: "202501",
         active_change_group: nil
       )
@@ -243,6 +249,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
       render_component(&WeekScheduleGrid.schedule_grid/1,
         schedule_owner: schedule_owner,
         owner_key: "academic_program_semester:eng-fall2024",
+        single_owner_grid: true,
         selected_term_code: "202501",
         active_change_group: nil
       )
@@ -255,6 +262,37 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
            |> length() == 1
 
     assert LazyHTML.text(document) =~ "2 CRNs: 40001, 40002"
+  end
+
+  test "only a single-owner grid advertises itself as a drop target for another owner's course" do
+    schedule_owner =
+      ScheduleUtils.build_week_schedule(
+        type: :professor,
+        name: "Dr. Smith",
+        courses: [build_course("50001", "Operating Systems", ["Monday"], "09:00", "10:00")]
+      )
+
+    solo_html =
+      render_component(&WeekScheduleGrid.schedule_grid/1,
+        schedule_owner: schedule_owner,
+        owner_key: "professor:Dr. Smith",
+        single_owner_grid: true,
+        selected_term_code: "202501",
+        active_change_group: nil
+      )
+
+    overlay_html =
+      render_component(&WeekScheduleGrid.schedule_grid/1,
+        schedule_owner: schedule_owner,
+        owner_key: "overlay:professor:Dr. Smith",
+        single_owner_grid: false,
+        selected_term_code: "202501",
+        active_change_group: nil
+      )
+
+    assert solo_html =~ ~s(data-single-owner-grid="true")
+    assert solo_html =~ ~s(data-owner-name="Dr. Smith")
+    assert overlay_html =~ ~s(data-single-owner-grid="false")
   end
 
   defp build_course(crn, name, days, start_time, end_time, opts \\ []) do

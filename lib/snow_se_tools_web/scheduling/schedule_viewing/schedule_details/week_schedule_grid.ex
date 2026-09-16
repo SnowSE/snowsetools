@@ -10,6 +10,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
   attr :conflicted_course_crns, :any, default: MapSet.new()
   attr :active_conflicted_course_crns, :any, default: MapSet.new()
   attr :minute_scale, :float, default: 1.0
+  attr :single_owner_grid, :boolean, required: true
 
   def schedule_grid(assigns) do
     ~H"""
@@ -23,6 +24,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
       data-start-minutes={@schedule_owner.start_minutes}
       data-end-minutes={@schedule_owner.end_minutes}
       data-minute-scale={@minute_scale}
+      data-single-owner-grid={to_string(@single_owner_grid)}
     >
       <div class="w-14 pt-[2.05rem]">
         <div
@@ -180,32 +182,41 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
     </.expandable>
 
     <script :type={Phoenix.LiveView.ColocatedHook} name=".WeekScheduleGridDrag">
+      // A course dragged out of one card has to stay visible to the card it is
+      // dropped on, so the in-flight course lives at module scope rather than on
+      // a single hook instance.
+      let draggedCourse = null;
+      const COURSE_DRAG_TYPE = "application/x-week-schedule-course";
+
       export default {
         mounted() {
-          this.dragPayload = null;
           this.hoverIndicator = null;
+          this.reassignBadge = null;
           this.menu = null;
+          this.card = this.el.closest("[data-schedule-card]");
+          this.dropZone = this.card || this.el;
 
           this.onDragStart = (event) => {
             const card = event.target.closest("[data-week-schedule-course]");
             if (!card || !this.el.contains(card)) return;
 
             event.stopPropagation();
-            this.dragPayload = { ...this.coursePayload(card), ...this.ownerFor(card) };
+            draggedCourse = { ...this.coursePayload(card), ...this.ownerFor(card) };
 
             if (event.dataTransfer) {
               event.dataTransfer.effectAllowed = "move";
-              event.dataTransfer.setData("application/json", JSON.stringify(this.dragPayload));
+              event.dataTransfer.setData(COURSE_DRAG_TYPE, "1");
+              event.dataTransfer.setData("application/json", JSON.stringify(draggedCourse));
               event.dataTransfer.setData("text/plain", "week-schedule-course");
             }
           };
 
           this.onDragOver = (event) => {
-            const payload = this.currentDragPayload(event);
-            if (!payload) return;
+            if (!this.courseDragInFlight(event)) return;
 
-            const dayColumn = event.target.closest("[data-week-schedule-day]");
-            if (!dayColumn || !this.el.contains(dayColumn)) return;
+            const dayColumn = this.dayColumnFor(event);
+            const reassign = this.reassignTarget(draggedCourse);
+            if (!dayColumn && !reassign) return;
 
             event.preventDefault();
             event.stopPropagation();
@@ -214,40 +225,52 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
               event.dataTransfer.dropEffect = "move";
             }
 
-            const drop = this.dropDetails(event, dayColumn);
-            this.showHoverIndicator(dayColumn, drop.top, drop.time);
+            if (dayColumn) {
+              const drop = this.dropDetails(event, dayColumn);
+              this.showHoverIndicator(dayColumn, drop.top, drop.time);
+            } else {
+              this.clearHoverIndicator();
+            }
+
+            this.updateReassignBadge(reassign);
           };
 
           this.onDragLeave = (event) => {
-            if (!this.el.contains(event.relatedTarget)) {
-              this.clearHoverIndicator();
+            if (!this.dropZone.contains(event.relatedTarget)) {
+              this.clearDropFeedback();
             }
           };
 
           this.onDrop = (event) => {
-            const dayColumn = event.target.closest("[data-week-schedule-day]");
-            const payload = this.currentDragPayload(event);
-            if (!payload || !dayColumn || !this.el.contains(dayColumn)) return;
+            const course = this.currentDragPayload(event);
+            if (!course) return;
+
+            const dayColumn = this.dayColumnFor(event);
+            const owner = this.dropOwner(course);
+            const target = dayColumn
+              ? { day: dayColumn.dataset.weekScheduleDay, time: this.dropDetails(event, dayColumn).time }
+              : this.originalSlot(course);
+
+            if (!target.day || !target.time) return;
+            if (!dayColumn && !this.reassignTarget(course)) return;
 
             event.preventDefault();
             event.stopPropagation();
 
-            const drop = this.dropDetails(event, dayColumn);
-
             this.pushEvent("week-schedule-grid:move_course", {
-              ...this.ownerFor(null),
-              ...payload,
-              target_day: dayColumn.dataset.weekScheduleDay,
-              target_time: drop.time,
+              ...course,
+              ...owner,
+              target_day: target.day,
+              target_time: target.time,
             });
 
-            this.dragPayload = null;
-            this.clearHoverIndicator();
+            draggedCourse = null;
+            this.clearDropFeedback();
           };
 
           this.onDragEnd = () => {
-            this.dragPayload = null;
-            this.clearHoverIndicator();
+            draggedCourse = null;
+            this.clearDropFeedback();
           };
 
           this.onContextMenu = (event) => {
@@ -266,29 +289,30 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
           };
 
           this.el.addEventListener("dragstart", this.onDragStart);
-          this.el.addEventListener("dragover", this.onDragOver);
-          this.el.addEventListener("dragleave", this.onDragLeave);
-          this.el.addEventListener("drop", this.onDrop);
-          this.el.addEventListener("dragend", this.onDragEnd);
           this.el.addEventListener("contextmenu", this.onContextMenu);
+          this.dropZone.addEventListener("dragover", this.onDragOver);
+          this.dropZone.addEventListener("dragleave", this.onDragLeave);
+          this.dropZone.addEventListener("drop", this.onDrop);
+          document.addEventListener("dragend", this.onDragEnd);
           document.addEventListener("click", this.onDocumentClick);
         },
 
         destroyed() {
           this.el.removeEventListener("dragstart", this.onDragStart);
-          this.el.removeEventListener("dragover", this.onDragOver);
-          this.el.removeEventListener("dragleave", this.onDragLeave);
-          this.el.removeEventListener("drop", this.onDrop);
-          this.el.removeEventListener("dragend", this.onDragEnd);
           this.el.removeEventListener("contextmenu", this.onContextMenu);
+          this.dropZone.removeEventListener("dragover", this.onDragOver);
+          this.dropZone.removeEventListener("dragleave", this.onDragLeave);
+          this.dropZone.removeEventListener("drop", this.onDrop);
+          document.removeEventListener("dragend", this.onDragEnd);
           document.removeEventListener("click", this.onDocumentClick);
-          this.clearHoverIndicator();
+          this.clearDropFeedback();
           this.closeMenu();
         },
 
         coursePayload(card) {
           return JSON.parse(card.dataset.coursePayload);
         },
+
         ownerFor(card) {
           const source = card && card.dataset.ownerKey ? card.dataset : this.el.dataset;
           return {
@@ -298,8 +322,52 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
           };
         },
 
+        // Only a card that draws a single professor or room can claim a dropped
+        // course; an overlay card draws several, so the course keeps its owner
+        // and only its day and time change.
+        dropOwner(course) {
+          if (this.el.dataset.singleOwnerGrid !== "true") {
+            return {
+              owner_key: course.owner_key,
+              owner_type: course.owner_type,
+              owner_name: course.owner_name,
+            };
+          }
+
+          return this.ownerFor(null);
+        },
+
+        // Only a professor or a room can take a course over; a program semester
+        // card shows courses it does not own.
+        reassignTarget(course) {
+          if (!course) return null;
+
+          const owner = this.dropOwner(course);
+          if (owner.owner_key === course.owner_key) return null;
+
+          return owner.owner_type === "professor" || owner.owner_type === "room" ? owner : null;
+        },
+
+        originalSlot(course) {
+          const meeting = course.meeting || {};
+          const days = meeting.days || [];
+          const startTime = meeting.start_time || course.start_time || "";
+          return { day: days[0], time: startTime.slice(0, 5) };
+        },
+
+        dayColumnFor(event) {
+          const dayColumn = event.target.closest("[data-week-schedule-day]");
+          return dayColumn && this.el.contains(dayColumn) ? dayColumn : null;
+        },
+
+        courseDragInFlight(event) {
+          if (draggedCourse) return true;
+
+          return Boolean(event.dataTransfer && event.dataTransfer.types.includes(COURSE_DRAG_TYPE));
+        },
+
         currentDragPayload(event) {
-          if (this.dragPayload) return this.dragPayload;
+          if (draggedCourse) return draggedCourse;
 
           if (!event.dataTransfer) return null;
 
@@ -350,6 +418,39 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
           if (this.hoverIndicator) {
             this.hoverIndicator.remove();
           }
+        },
+
+        updateReassignBadge(owner) {
+          if (!owner) return this.clearReassignBadge();
+          if (!this.card) return;
+
+          this.card.classList.add("ring-2", "ring-indigo-400/70", "rounded-xl");
+
+          if (!this.reassignBadge) {
+            this.reassignBadge = document.createElement("div");
+            this.reassignBadge.className =
+              "pointer-events-none absolute left-1/2 top-4 z-50 -translate-x-1/2 rounded-full bg-indigo-500 px-2.5 py-1 text-[11px] font-medium text-white shadow-lg";
+            this.card.appendChild(this.reassignBadge);
+          }
+
+          this.reassignBadge.textContent =
+            owner.owner_type === "professor" ? `Assign to ${owner.owner_name}` : `Move to ${owner.owner_name}`;
+        },
+
+        clearReassignBadge() {
+          if (this.card) {
+            this.card.classList.remove("ring-2", "ring-indigo-400/70", "rounded-xl");
+          }
+
+          if (this.reassignBadge) {
+            this.reassignBadge.remove();
+            this.reassignBadge = null;
+          }
+        },
+
+        clearDropFeedback() {
+          this.clearHoverIndicator();
+          this.clearReassignBadge();
         },
 
         openMenu(event, payload) {

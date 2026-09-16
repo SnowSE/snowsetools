@@ -22,6 +22,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
   @source_room "Source Building 101"
   @target_room "Target Building 202"
   @conflict_course_name "Target Room Conflict"
+  @source_professor "Professor Example"
+  @target_professor "Professor Alternate"
 
   setup do
     delete_realtime_test_groups()
@@ -136,6 +138,44 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
     refute has_element?(view, "#schedule-change-groups", @course_name)
     assert has_element?(view, course_card_selector("room:#{@source_room}", @course_crn))
     refute has_element?(view, course_card_selector("room:#{@target_room}", @course_crn))
+  end
+
+  test "dragging a course onto another professor's schedule reassigns it and keeps its room",
+       %{conn: conn, term_code: term_code} do
+    conn = log_in_test_user(conn)
+
+    {:ok, view, _html} = live(conn, ~p"/scheduling?mode=viewer&term=#{term_code}")
+
+    wait_for_schedule_metadata(view)
+    create_change_group(view)
+    select_schedule_owner(view, "professor:#{@source_professor}")
+    select_schedule_owner(view, "professor:#{@target_professor}")
+    wait_for_week_schedules(view)
+
+    assert has_element?(
+             view,
+             course_card_selector("professor:#{@source_professor}", @course_crn)
+           )
+
+    render_hook(view, "week-schedule-grid:move_course", professor_move_payload(term_code))
+    wait_for_change_group_refresh(view)
+
+    refute has_element?(
+             view,
+             course_card_selector("professor:#{@source_professor}", @course_crn)
+           )
+
+    assert has_element?(
+             view,
+             course_card_selector("professor:#{@target_professor}", @course_crn)
+           )
+
+    change = active_change(view)
+
+    assert change["target_professor"] == @target_professor
+
+    assert %{"building" => "Source Building", "room" => "101", "start_time" => "09:00"} =
+             List.first(change["meet_info"])
   end
 
   test "change list can open related room schedule from the active change group",
@@ -324,13 +364,14 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
     render(view)
   end
 
-  defp active_change_id(view) do
+  defp active_change_id(view), do: view |> active_change() |> Map.fetch!("id")
+
+  defp active_change(view) do
     state = :sys.get_state(view.pid)
 
     state.socket.assigns.schedule_change_groups_state.active_change_group
     |> Map.fetch!("changes")
     |> List.first()
-    |> Map.fetch!("id")
   end
 
   defp move_payload(term_code) do
@@ -359,6 +400,38 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
       "subject_code" => "TEST",
       "target_day" => "Wednesday",
       "target_time" => "10:30",
+      "term" => term_code
+    }
+  end
+
+  # A course dropped on another card outside its day columns keeps its own day
+  # and time; only the owner changes.
+  defp professor_move_payload(term_code) do
+    meeting = %{
+      "building" => "Source Building",
+      "building_code" => "SRC",
+      "days" => ["Monday", "Wednesday"],
+      "end_time" => "09:50:00",
+      "room" => "101",
+      "start_time" => "09:00:00"
+    }
+
+    %{
+      "course_name" => @course_name,
+      "course_number" => "1130",
+      "credit_hours" => 2,
+      "crn" => @course_crn,
+      "end_time" => "09:50:00",
+      "instructors" => [@source_professor],
+      "meet_info" => [meeting],
+      "meeting" => meeting,
+      "owner_key" => "professor:#{@target_professor}",
+      "owner_name" => @target_professor,
+      "owner_type" => "professor",
+      "start_time" => "09:00:00",
+      "subject_code" => "TEST",
+      "target_day" => "Monday",
+      "target_time" => "09:00",
       "term" => term_code
     }
   end
