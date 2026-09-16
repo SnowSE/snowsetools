@@ -22,10 +22,43 @@ defmodule SnowSeToolsWeb.Auth.AccessTest do
       refute Access.approved?(nobody)
     end
 
+    test "scheduling has a read-only tier below its editor group" do
+      viewer = %{group_names: ["scheduling_view"]}
+      editor = %{group_names: ["scheduling_admin"]}
+      admin = %{group_names: ["admin"]}
+
+      assert Access.can?(viewer, :scheduling)
+      refute Access.can_edit?(viewer, :scheduling)
+      refute Access.can?(viewer, :syllabi)
+
+      assert Access.can?(editor, :scheduling)
+      assert Access.can_edit?(editor, :scheduling)
+
+      assert Access.can_edit?(admin, :scheduling)
+      assert Access.approved?(viewer)
+    end
+
+    test "areas with no read-only tier are all-or-nothing" do
+      for area <- [:syllabi, :discord, :admin] do
+        holder = %{group_names: [Access.edit_group_for(area)]}
+
+        assert Access.can?(holder, area)
+        assert Access.can_edit?(holder, area)
+      end
+    end
+
+    test "a scheduling viewer sees the area once, at the level they hold" do
+      viewer = %{group_names: ["scheduling_view"]}
+      both = %{group_names: ["scheduling_view", "scheduling_admin"]}
+
+      assert [%{area: :scheduling, level: :view}] = Access.accessible_areas(viewer)
+      assert [%{area: :scheduling, level: :edit}] = Access.accessible_areas(both)
+    end
+
     test "built-in groups are seeded and cannot be renamed or deleted" do
       names = Enum.map(AccessControl.list_groups(), & &1.name)
 
-      for name <- ~w(admin discord_admin scheduling_admin syllabus_admin) do
+      for name <- ~w(admin discord_admin scheduling_admin scheduling_view syllabus_admin) do
         assert name in names
         group = Enum.find(AccessControl.list_groups(), &(&1.name == name))
         assert {:error, :protected_group_locked} = AccessControl.delete_group(group_id: group.id)

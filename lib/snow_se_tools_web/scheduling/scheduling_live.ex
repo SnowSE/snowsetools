@@ -14,10 +14,11 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   alias SnowSeToolsWeb.Scheduling.WeekSchedule
 
   on_mount {SnowSeToolsWeb.UserAuth, {:ensure_access, :scheduling}}
+  on_mount SnowSeToolsWeb.Scheduling.SchedulingAccess
 
   def mount(_params, _session, socket) do
     socket =
-      if connected?(socket) do
+      if connected?(socket) and socket.assigns.scheduling_editor? do
         ScheduleChangePubSub.subscribe()
         ScheduleChangeDomainManager.list_groups(pid: self())
         socket
@@ -129,6 +130,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
                 schedule_term_conflicts_state={@schedule_term_conflicts_state}
                 schedule_layouts={@schedule_layouts}
                 academic_programs={@academic_programs}
+                editor?={@scheduling_editor?}
               />
             <% :programs -> %>
               <AcademicProgramsPanel.render
@@ -136,6 +138,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
                 state={@academic_programs_panel}
                 editor_state={@academic_program_editor}
                 picker_state={@academic_program_course_picker}
+                editor?={@scheduling_editor?}
               />
           <% end %>
         </div>

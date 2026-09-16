@@ -67,6 +67,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
   attr :schedule_layouts, :any, required: true
   attr :academic_programs, :list, default: []
   attr :courses, :list, default: []
+  attr :editor?, :boolean, required: true
 
   def render(assigns) do
     ~H"""
@@ -94,6 +95,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
               courses={@courses}
               academic_programs={@academic_programs}
               schedule_term_conflicts_state={@schedule_term_conflicts_state}
+              editor?={@editor?}
             />
           </div>
         <% else %>
@@ -128,6 +130,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
               courses={@courses}
               academic_programs={@academic_programs}
               schedule_term_conflicts_state={@schedule_term_conflicts_state}
+              editor?={@editor?}
             />
           </div>
         <% end %>
@@ -161,6 +164,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
           ScheduleChangeGroups.active_conflicted_course_crns(@schedule_change_groups_state)
         }
         schedule_owners_metadata={selected_term_schedule_owners(@state)}
+        editor?={@editor?}
       />
     </div>
     """
@@ -220,6 +224,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
   attr :courses, :list, required: true
   attr :academic_programs, :list, required: true
   attr :schedule_term_conflicts_state, :any, required: true
+  attr :editor?, :boolean, required: true
 
   defp sidebar_contents(assigns) do
     ~H"""
@@ -228,6 +233,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
       selected_schedule_order={ScheduleDetailsOrder.selected_owner_order(@schedule_details_order)}
     />
     <ScheduleChangeGroups.render
+      :if={@editor?}
       state={@schedule_change_groups_state}
       courses={@courses}
       academic_programs={@academic_programs}

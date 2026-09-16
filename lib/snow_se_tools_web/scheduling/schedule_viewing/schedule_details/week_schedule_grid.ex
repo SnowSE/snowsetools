@@ -11,6 +11,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
   attr :active_conflicted_course_crns, :any, default: MapSet.new()
   attr :minute_scale, :float, default: 1.0
   attr :single_owner_grid, :boolean, required: true
+  attr :editor?, :boolean, required: true
 
   def schedule_grid(assigns) do
     ~H"""
@@ -25,6 +26,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
       data-end-minutes={@schedule_owner.end_minutes}
       data-minute-scale={@minute_scale}
       data-single-owner-grid={to_string(@single_owner_grid)}
+      data-editor={to_string(@editor?)}
     >
       <div class="w-14 pt-[2.05rem]">
         <div
@@ -72,14 +74,15 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
                 <% overlay_color = Map.get(meeting, :overlay_color) %>
                 <div
                   class={[
-                    "absolute z-10 rounded px-1.5 py-1 leading-tight shadow-sm shadow-black cursor-move transition-colors hover:bg-slate-800",
+                    "absolute z-10 rounded px-1.5 py-1 leading-tight shadow-sm shadow-black transition-colors hover:bg-slate-800",
+                    @editor? && "cursor-move",
                     conflicted? && "bg-rose-950/40 ring-1 ring-rose-500/50",
                     !conflicted? && source == :added && "bg-emerald-950/60 ring-1 ring-emerald-500/50",
                     !conflicted? && source == :updated && "bg-amber-950/40 ring-1 ring-amber-500/50",
                     !conflicted? && source == :base && is_nil(overlay_color) && "bg-slate-900",
                     !conflicted? && source == :base && overlay_color && overlay_color.block
                   ]}
-                  draggable="true"
+                  draggable={to_string(@editor?)}
                   data-week-schedule-course
                   data-week-schedule-conflicted={to_string(conflicted?)}
                   data-owner-key={Map.get(meeting, :overlay_owner_key)}
@@ -190,6 +193,10 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
 
       export default {
         mounted() {
+          // A view-only user gets no drag handlers and no course menu at all.
+          this.editable = this.el.dataset.editor === "true";
+          if (!this.editable) return;
+
           this.hoverIndicator = null;
           this.reassignBadge = null;
           this.menu = null;
@@ -298,6 +305,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
         },
 
         destroyed() {
+          if (!this.editable) return;
+
           this.el.removeEventListener("dragstart", this.onDragStart);
           this.el.removeEventListener("contextmenu", this.onContextMenu);
           this.dropZone.removeEventListener("dragover", this.onDragOver);

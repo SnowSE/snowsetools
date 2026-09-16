@@ -239,13 +239,13 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
                   </div>
 
                   <div class="mt-3 flex flex-wrap gap-2">
-                    <%= for area <- Access.areas(), group = group_named(@groups, area.group), group do %>
+                    <%= for role <- Access.roles(), group = group_named(@groups, role.group), group do %>
                       <.group_toggle
                         user={user}
                         group={group}
-                        label={area.label}
-                        title={area.description}
-                        admin_area?={area.area == :admin}
+                        label={role.label}
+                        title={role.description}
+                        admin_area?={role.area == :admin}
                       />
                     <% end %>
                     <%= for group <- custom_groups(@groups) do %>

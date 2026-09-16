@@ -20,6 +20,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
         schedule_owner: schedule_owner,
         owner_key: "academic_program_semester:cs-fall2024",
         single_owner_grid: true,
+        editor?: true,
         selected_term_code: "202501",
         active_change_group: nil
       )
@@ -45,6 +46,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
         schedule_owner: schedule_owner,
         owner_key: "academic_program_semester:cs-fall2024",
         single_owner_grid: true,
+        editor?: true,
         selected_term_code: "202501",
         active_change_group: nil,
         minute_scale: 2.0
@@ -71,6 +73,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
         schedule_owner: schedule_owner,
         owner_key: "academic_program_semester:cs-fall2024",
         single_owner_grid: true,
+        editor?: true,
         selected_term_code: "202501",
         active_change_group: nil
       )
@@ -114,6 +117,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
         schedule_owner: schedule_owner,
         owner_key: "academic_program_semester:math-fall2024",
         single_owner_grid: true,
+        editor?: true,
         selected_term_code: "202501",
         active_change_group: nil
       )
@@ -161,6 +165,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
         schedule_owner: schedule_owner,
         owner_key: "academic_program_semester:math-fall2024",
         single_owner_grid: true,
+        editor?: true,
         selected_term_code: "202501",
         active_change_group: nil,
         conflicted_course_crns: MapSet.new(["21002"]),
@@ -214,6 +219,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
         schedule_owner: schedule_owner,
         owner_key: "academic_program_semester:bio-fall2024",
         single_owner_grid: true,
+        editor?: true,
         selected_term_code: "202501",
         active_change_group: nil
       )
@@ -250,6 +256,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
         schedule_owner: schedule_owner,
         owner_key: "academic_program_semester:eng-fall2024",
         single_owner_grid: true,
+        editor?: true,
         selected_term_code: "202501",
         active_change_group: nil
       )
@@ -277,6 +284,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
         schedule_owner: schedule_owner,
         owner_key: "professor:Dr. Smith",
         single_owner_grid: true,
+        editor?: true,
         selected_term_code: "202501",
         active_change_group: nil
       )
@@ -286,6 +294,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
         schedule_owner: schedule_owner,
         owner_key: "overlay:professor:Dr. Smith",
         single_owner_grid: false,
+        editor?: true,
         selected_term_code: "202501",
         active_change_group: nil
       )

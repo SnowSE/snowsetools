@@ -21,6 +21,7 @@ defmodule SnowSeToolsWeb.Scheduling.OverlayGroup do
   attr :overlay_targets, :list, default: []
   attr :overlay_menu_open?, :boolean, default: false
   attr :size, :map, default: %{width: nil, scale: 1.0}
+  attr :editor?, :boolean, required: true
 
   def render(assigns) do
     members =
@@ -155,6 +156,7 @@ defmodule SnowSeToolsWeb.Scheduling.OverlayGroup do
           active_conflicted_course_crns={@active_conflicted_course_crns}
           minute_scale={@size.scale}
           single_owner_grid={false}
+          editor?={@editor?}
         />
       </div>
     </section>

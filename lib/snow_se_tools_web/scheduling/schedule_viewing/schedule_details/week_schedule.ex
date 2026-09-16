@@ -92,6 +92,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
   attr :overlay_targets, :list, default: []
   attr :overlay_menu_open?, :boolean, default: false
   attr :size, :map, default: %{width: nil, scale: 1.0}
+  attr :editor?, :boolean, required: true
 
   def render(assigns) do
     assigns = assign(assigns, :width_attrs, OverlayControls.card_width_attrs(assigns.size))
@@ -146,13 +147,14 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
             active_conflicted_course_crns={@active_conflicted_course_crns}
             minute_scale={@size.scale}
             single_owner_grid={true}
+            editor?={@editor?}
           />
         <% end %>
       </div>
     </section>
 
     <.edit_course_modal
-      :if={edit_course_modal_for_owner?(@edit_course_modal, @state.owner_key)}
+      :if={@editor? and edit_course_modal_for_owner?(@edit_course_modal, @state.owner_key)}
       modal={@edit_course_modal}
       professor_options={schedule_owner_names(@schedule_owners_metadata, :professor)}
       room_options={schedule_owner_names(@schedule_owners_metadata, :room)}

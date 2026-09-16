@@ -143,6 +143,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
 
   attr :state, __MODULE__, required: true
   attr :schedule_details_order, :any, required: true
+  attr :editor?, :boolean, required: true
   slot :leading, doc: "Controls shown at the start of the layout toolbar row."
 
   def render(assigns) do
@@ -322,7 +323,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
     </div>
 
     <.undo_toast :if={@show_undo?} undo={@state.undo} />
-    <.save_dialog :if={@state.dialog} dialog={@state.dialog} />
+    <.save_dialog :if={@state.dialog} dialog={@state.dialog} editor?={@editor?} />
 
     <script :type={Phoenix.LiveView.ColocatedHook} name=".ScheduleLayoutsStore">
       // Browser-scoped layouts never reach the server, so the component holds a
@@ -539,11 +540,12 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
   end
 
   attr :dialog, :map, required: true
+  attr :editor?, :boolean, required: true
 
   defp save_dialog(assigns) do
     assigns =
       assigns
-      |> assign(:scope_choices, scope_choices())
+      |> assign(:scope_choices, scope_choices(editor?: assigns.editor?))
       |> assign(:max_name_length, @max_name_length)
 
     ~H"""
@@ -1260,6 +1262,23 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
   end
 
   defp commit_save(socket, dialog) do
+    if dialog.scope == "shared" and not editor?(socket) do
+      Logger.info("Refused a shared layout save for a view-only user")
+
+      LiveView.put_flash(
+        socket,
+        :error,
+        "Only schedule editors can share a layout with everyone."
+      )
+    else
+      write_save(socket, dialog)
+    end
+  end
+
+  # A missing flag means the page never declared one, so treat it as view-only.
+  defp editor?(socket), do: socket.assigns[:scheduling_editor?] == true
+
+  defp write_save(socket, dialog) do
     state = socket.assigns[@key]
     name = String.trim(dialog.name)
 
@@ -1569,8 +1588,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
 
   defp scope_style(scope), do: Map.get(@scopes, scope, @scopes["local"])
 
-  defp scope_choices do
-    Enum.map(@scope_order, fn scope -> Map.put(@scopes[scope], :scope, scope) end)
+  defp scope_choices(editor?: editor?) do
+    @scope_order
+    |> Enum.filter(&(editor? or &1 != "shared"))
+    |> Enum.map(fn scope -> Map.put(@scopes[scope], :scope, scope) end)
   end
 
   defp scope_groups(layouts) do

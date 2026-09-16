@@ -234,11 +234,16 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
   attr :active_conflicted_course_crns, :any, default: MapSet.new()
   attr :schedule_owners_metadata, :list, default: []
   attr :schedule_layouts, :any, required: true
+  attr :editor?, :boolean, required: true
 
   def render(assigns) do
     ~H"""
     <section class="min-w-0 flex-1 overflow-y-auto">
-      <ScheduleLayouts.render state={@schedule_layouts} schedule_details_order={@state}>
+      <ScheduleLayouts.render
+        state={@schedule_layouts}
+        schedule_details_order={@state}
+        editor?={@editor?}
+      >
         <:leading>
           <button
             :if={ScheduleOrder.size(@state.selected_schedule_order) > 0}
@@ -283,6 +288,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
                 overlay_targets={overlay_targets(@state, @week_schedules, key)}
                 overlay_menu_open?={@state.open_overlay_menu_key == key}
                 size={card_size(@state, key)}
+                editor?={@editor?}
               />
             <% week_schedule = @week_schedules[key] -> %>
               <WeekSchedule.render
@@ -297,6 +303,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
                 overlay_targets={overlay_targets(@state, @week_schedules, key)}
                 overlay_menu_open?={@state.open_overlay_menu_key == key}
                 size={card_size(@state, key)}
+                editor?={@editor?}
               />
             <% true -> %>
               <div

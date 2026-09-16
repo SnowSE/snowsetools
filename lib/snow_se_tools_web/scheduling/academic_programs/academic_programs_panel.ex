@@ -43,6 +43,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
         </div>
 
         <button
+          :if={@editor?}
           id="new-program-from-list"
           type="button"
           phx-click="academic-programs:new"
@@ -74,7 +75,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
         />
       </div>
 
-      <.program_display :if={!@state.editing?} program={@selected_program} />
+      <.program_display :if={!@state.editing?} program={@selected_program} editor?={@editor?} />
     </div>
     """
   end
@@ -283,6 +284,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
   end
 
   attr :program, :map, default: nil
+  attr :editor?, :boolean, required: true
 
   defp program_display(assigns) do
     ~H"""
@@ -302,6 +304,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
             </div>
 
             <button
+              :if={@editor?}
               id="edit-academic-program"
               type="button"
               phx-click="academic-programs:edit"

@@ -19,7 +19,8 @@ defmodule SnowSeToolsWeb.Scheduling.OverlayGroupTest do
         week_schedules: week_schedules,
         position: 0,
         total_count: 1,
-        overlay_targets: []
+        overlay_targets: [],
+        editor?: true
       )
 
     assert html =~ "Hall 101, Hall 202"
