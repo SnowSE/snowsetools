@@ -225,7 +225,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
     <div
       id="syllabus-search-panel"
       phx-hook=".SyllabusState"
-      class="mx-auto flex h-full min-h-0 w-full max-w-[2000px] flex-col p-3 sm:p-4"
+      class="mx-auto flex w-full max-w-[2000px] flex-col p-3 sm:p-4 lg:h-full lg:min-h-0"
     >
       <SearchQuickNavigation.render state={@quick_nav} />
       <SyllabusSearchForm.search_form
@@ -244,7 +244,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchLive do
         </div>
       <% end %>
 
-      <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto lg:flex-row lg:gap-6 lg:overflow-hidden">
+      <div class="flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:flex-row lg:gap-6 lg:overflow-hidden">
         <.live_component
           module={SyllabusSearchResultsList}
           id="search-results"

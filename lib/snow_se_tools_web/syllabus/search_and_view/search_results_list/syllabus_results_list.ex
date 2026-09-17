@@ -334,7 +334,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchResultsList do
       <div
         id="syllabi-list"
         phx-hook=".ProfessorExpansion"
-        class={["overflow-y-auto flex-1 min-h-0", @loading_search && "hidden"]}
+        class={["lg:min-h-0 lg:flex-1 lg:overflow-y-auto", @loading_search && "hidden"]}
       >
         <div id="professor-groups" phx-update="stream">
           <div :for={{dom_id, group} <- @streams.professor_groups} id={dom_id}>

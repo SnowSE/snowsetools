@@ -28,7 +28,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusDetail do
     ~H"""
     <div
       id="detail-panel"
-      class="flex min-h-[18rem] flex-1 flex-col gap-2 overflow-hidden lg:min-h-0"
+      class="flex min-h-[18rem] flex-col gap-2 lg:min-h-0 lg:flex-1 lg:overflow-hidden"
     >
       <div class="flex items-center gap-3 min-w-0 shrink-0">
         <div class="flex-1 flex items-baseline gap-2 min-w-0">
@@ -160,7 +160,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusDetail do
               <% end %>
             </div>
             <%!-- Skeleton report items --%>
-            <div class="flex flex-col gap-4 overflow-y-auto flex-1 min-h-0">
+            <div class="flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
               <%= for _ <- 1..4 do %>
                 <div class="flex flex-col gap-2 rounded-xl bg-slate-900/60 px-4 py-4 animate-pulse">
                   <div class="flex items-center justify-between gap-3">
@@ -181,7 +181,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusDetail do
           <% else %>
             <div
               id="detail-content"
-              class="flex flex-col flex-1 overflow-y-auto min-h-0 gap-3"
+              class="flex flex-col gap-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
             >
               <ReportDetail.report_detail
                 selected_element_id={@selected_element_id}

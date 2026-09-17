@@ -20,7 +20,7 @@ defmodule SnowSeToolsWeb.PageSnapshotDumpTest do
     SemesterAttrs
   }
 
-  alias SnowSeTools.Discord.DiscordDomainManager
+  alias SnowSeTools.Discord.{DiscordDb, DiscordDomainManager}
   alias SnowSeTools.Scheduling.{ScheduleChangeDomainManager, ScheduleOwnerDomainManager}
   alias SnowSeTools.Snow.{SnowCourseCacheDb, SnowCourseCacheDomainManager}
   alias SnowSeTools.UserGroups.UserGroupDomainManager
@@ -35,6 +35,7 @@ defmodule SnowSeToolsWeb.PageSnapshotDumpTest do
     term_code = "202610"
     seed_courses(term_code)
     seed_program()
+    seed_discord()
 
     start_supervised!(ProgramDomainManager)
     start_supervised!(SnowCourseCacheDomainManager)
@@ -84,12 +85,17 @@ defmodule SnowSeToolsWeb.PageSnapshotDumpTest do
     settle(view)
   end
 
+  # Pages load through their domain managers, so a render before those have
+  # answered is a picture of an empty page.
   defp settle(view) do
-    :ok = ScheduleOwnerDomainManager.await_idle()
-    _ = :sys.get_state(view.pid)
-    render(view)
-    :ok = ScheduleOwnerDomainManager.await_idle()
-    _ = :sys.get_state(view.pid)
+    for _pass <- 1..3 do
+      :ok = ScheduleOwnerDomainManager.await_idle()
+      _ = :sys.get_state(DiscordDomainManager)
+      _ = :sys.get_state(ProgramDomainManager)
+      _ = :sys.get_state(view.pid)
+      render(view)
+    end
+
     render(view)
   end
 
@@ -155,6 +161,70 @@ defmodule SnowSeToolsWeb.PageSnapshotDumpTest do
         }
       ]
     }
+  end
+
+  # An empty Discord page hides every layout problem the real one has.
+  defp seed_discord do
+    :ok =
+      DiscordDb.save_channels(
+        channels: [
+          %{"id" => "cat-1", "name" => "Courses", "type" => 4, "position" => 1},
+          %{
+            "id" => "chan-1",
+            "name" => "cs-2420-data-structures-fall",
+            "type" => 0,
+            "parent_id" => "cat-1",
+            "position" => 1
+          },
+          %{
+            "id" => "chan-2",
+            "name" => "cs-3550-operating-systems-fall",
+            "type" => 0,
+            "parent_id" => "cat-1",
+            "position" => 2
+          },
+          %{
+            "id" => "chan-3",
+            "name" => "cs-3200-database-design-fall",
+            "type" => 0,
+            "parent_id" => "cat-1",
+            "position" => 3
+          },
+          %{"id" => "cat-2", "name" => "class of 2030(MAY)", "type" => 4, "position" => 2},
+          %{
+            "id" => "chan-4",
+            "name" => "general-discussion",
+            "type" => 0,
+            "parent_id" => "cat-2",
+            "position" => 1
+          }
+        ]
+      )
+
+    :ok =
+      DiscordDb.save_roles(
+        roles: [
+          %{"id" => "guild-id", "name" => "@everyone", "position" => 0},
+          %{"id" => "role-cs2420", "name" => "CS 2420", "position" => 10},
+          %{"id" => "role-may30", "name" => "may_30", "position" => 11}
+        ]
+      )
+
+    :ok =
+      DiscordDb.save_members(
+        members: [
+          %{
+            "user" => %{"id" => "u1", "username" => "ada", "global_name" => "Ada Lovelace"},
+            "nick" => "Ada",
+            "roles" => ["role-cs2420"]
+          },
+          %{
+            "user" => %{"id" => "u2", "username" => "grace", "global_name" => "Grace Hopper"},
+            "nick" => nil,
+            "roles" => []
+          }
+        ]
+      )
   end
 
   defp seed_program do
