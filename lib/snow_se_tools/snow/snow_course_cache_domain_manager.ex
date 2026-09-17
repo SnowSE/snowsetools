@@ -361,7 +361,7 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
                 {:error, reason} ->
                   {:error, reason}
 
-                courses ->
+                {:ok, courses} ->
                   {:ok, Map.put(term, "courses", courses)}
               end
             end,

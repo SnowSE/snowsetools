@@ -378,6 +378,13 @@ Domain managers load in the background, so `:sys.get_state/1` is not a
 synchronisation point for them. `ScheduleOwnerDomainManager.await_idle/0`
 returns once nothing is loading.
 
+`page_smoke_test.exs` renders every page **with data in it** and asserts the
+data reached the markup. A page rendered before its domain manager answers
+shows only its empty state and passes a "does it render" check while hiding a
+crash in the branch that draws the data — which is exactly how a tuple reaching
+`for course <- term["courses"]` shipped. When you add a page, add it there, seed
+it, and assert on something only the loaded state contains.
+
 ## Looking at the pages
 
 Do not guess at layout. `./screenshots.sh` renders every page as it really

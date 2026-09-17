@@ -74,6 +74,29 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManagerTest do
     assert List.last(term_codes) in cached
   end
 
+  test "a change that lands mid-build is not overwritten by the build" do
+    term_code = seed_term()
+
+    # Start a build, then change the world underneath it before it lands.
+    ScheduleOwnerDomainManager.request_schedule_owners_metadata(
+      pid: self(),
+      term_code: term_code
+    )
+
+    send(
+      ScheduleOwnerDomainManager,
+      {:academic_programs, {:program_deleted, Ecto.UUID.generate()}}
+    )
+
+    :ok = ScheduleOwnerDomainManager.await_idle()
+
+    assert_receive {:schedule_owners, %{term_code: ^term_code, schedule_owners: owners}}, 5_000
+    assert Enum.any?(owners, &(&1.key == "room:Manager Hall 101"))
+
+    state = :sys.get_state(ScheduleOwnerDomainManager)
+    assert state.loading == %{}, "a discarded build must not leave a waiter stranded"
+  end
+
   test "a request for a term with nothing in it still answers" do
     term_code = "empty-#{System.unique_integer([:positive])}"
 

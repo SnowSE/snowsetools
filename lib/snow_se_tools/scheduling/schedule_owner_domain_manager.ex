@@ -74,7 +74,8 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
        academic_programs: academic_programs,
        loading: %{},
        recent_terms: [],
-       idle_waiters: []
+       idle_waiters: [],
+       epoch: 0
      }}
   end
 
@@ -123,17 +124,30 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
     end
   end
 
-  def handle_info({:term_built, term_code, term}, state) do
-    waiters = Map.get(state.loading, term_code, [])
+  def handle_info({:term_built, term_code, epoch, term}, state) do
+    if epoch == state.epoch do
+      waiters = Map.get(state.loading, term_code, [])
 
-    state =
-      state
-      |> Map.put(:loading, Map.delete(state.loading, term_code))
-      |> cache_term(term_code: term_code, term: term)
+      state =
+        state
+        |> Map.put(:loading, Map.delete(state.loading, term_code))
+        |> cache_term(term_code: term_code, term: term)
 
-    Enum.each(Enum.reverse(waiters), &answer_waiter(&1, term_code, term))
+      Enum.each(Enum.reverse(waiters), &answer_waiter(&1, term_code, term))
 
-    {:noreply, flush_idle_waiters(state)}
+      {:noreply, flush_idle_waiters(state)}
+    else
+      # Built against a world that has since changed; build it again for whoever
+      # is still waiting rather than caching what is already out of date.
+      Logger.info("Discarding a stale schedule owner build term=#{term_code}")
+
+      if Map.has_key?(state.loading, term_code) do
+        start_term_build(state, term_code)
+        {:noreply, state}
+      else
+        {:noreply, flush_idle_waiters(state)}
+      end
+    end
   end
 
   def handle_info({:term_build_failed, term_code, reason}, state) do
@@ -198,7 +212,7 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
         end)
       end)
 
-    {:noreply, state}
+    {:noreply, invalidated(state)}
   end
 
   def handle_info({:academic_programs, {:program_updated, program}}, state) do
@@ -274,7 +288,7 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
         end)
       end)
 
-    {:noreply, state}
+    {:noreply, invalidated(state)}
   end
 
   def handle_info({:academic_programs, {:program_deleted, program_id}}, state) do
@@ -321,7 +335,7 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
         )
       end)
 
-    {:noreply, state}
+    {:noreply, invalidated(state)}
   end
 
   def handle_info(
@@ -414,7 +428,7 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
         state
       end
 
-    {:noreply, state}
+    {:noreply, invalidated(state)}
   end
 
   def handle_info({:snow_course_cache, {:course_cache_deleted, term_code}}, state) do
@@ -426,7 +440,7 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
 
     ScheduleOwnerPubSub.broadcast_terms_changed(state.terms)
     ScheduleOwnerPubSub.broadcast_term_deleted(term_code)
-    {:noreply, state}
+    {:noreply, invalidated(state)}
   end
 
   def handle_info(msg, state) do
@@ -450,11 +464,12 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
   defp start_term_build(state, term_code) do
     manager = self()
     academic_programs = state.academic_programs
+    epoch = state.epoch
 
     Task.Supervisor.start_child(SnowSeTools.TaskSupervisor, fn ->
       message =
         try do
-          {:term_built, term_code,
+          {:term_built, term_code, epoch,
            build_term(term_code: term_code, academic_programs: academic_programs)}
         rescue
           exception -> {:term_build_failed, term_code, Exception.message(exception)}
@@ -463,6 +478,13 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
       send(manager, message)
     end)
   end
+
+  @doc false
+  # Something changed underneath the cache, so any build already reading the
+  # database is reading the old world. Bumping the epoch makes its result
+  # unusable when it lands; loading was synchronous before, so this could not
+  # happen.
+  defp invalidated(state), do: %{state | epoch: state.epoch + 1}
 
   defp build_term(term_code: term_code, academic_programs: academic_programs) do
     courses = load_course_data(term_code)
