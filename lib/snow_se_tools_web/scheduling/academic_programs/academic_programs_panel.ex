@@ -32,7 +32,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
     ~H"""
     <div
       id="academic-programs-panel"
-      class="mx-auto grid h-full min-h-0 w-full max-w-[1600px] grid-cols-[22rem_1fr] gap-4 p-4"
+      class="mx-auto grid h-full min-h-0 w-full max-w-[1600px] grid-cols-1 gap-4 p-3 sm:p-4 lg:grid-cols-[22rem_1fr]"
     >
       <aside class="flex min-h-0 flex-col gap-3">
         <div class="flex items-center justify-between gap-2">
@@ -314,7 +314,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
             </button>
           </div>
 
-          <div class="space-y-3 grid grid-cols-2">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <%= for {semester, semester_index} <- Enum.with_index(@program["semesters"]) do %>
               <div class="rounded-lg border border-slate-800 bg-slate-900/35 p-3">
                 <div class="mb-2 flex items-center justify-between">

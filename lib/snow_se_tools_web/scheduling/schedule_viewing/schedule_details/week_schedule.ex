@@ -173,7 +173,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
     <.modal
       id="week-schedule-edit-course-modal"
       on_close="week-schedule-grid:close_edit_course"
-      panel_class="relative w-full max-w-xl rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl shadow-slate-950/60"
+      panel_class="relative max-h-full w-full max-w-xl overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-2xl shadow-slate-950/60 sm:p-5"
     >
       <div class="mb-4 flex items-start justify-between gap-4">
         <div class="min-w-0">

@@ -252,7 +252,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusSearchResultsList do
 
   def render(assigns) do
     ~H"""
-    <div class="flex flex-col min-h-0 w-[400px] shrink-0">
+    <div class="flex min-h-[20rem] w-full flex-col lg:min-h-0 lg:w-[400px] lg:shrink-0">
       <%= if @search_error do %>
         <div
           id="search-error"

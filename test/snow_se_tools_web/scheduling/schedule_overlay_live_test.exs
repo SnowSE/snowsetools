@@ -218,7 +218,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOverlayLiveTest do
     wait_for_week_schedules(view)
 
     card = "[data-schedule-key='#{@room_a}']"
-    assert has_element?(view, "#{card}.w-\\[700px\\]")
+    # Full width on a phone, the roomier default once there is space for it.
+    assert has_element?(view, "#{card}.w-full")
+    assert has_element?(view, "#{card}.lg\\:w-\\[700px\\]")
     assert has_element?(view, "#{card} [data-resize-grip].cursor-nwse-resize")
     assert has_element?(view, "#{card} [data-minute-scale='1.0']")
 
@@ -248,7 +250,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOverlayLiveTest do
     |> element("#{card} button[phx-click='schedule-details-order:restore_size']")
     |> render_click()
 
-    assert has_element?(view, "#{card}.w-\\[700px\\]")
+    assert has_element?(view, "#{card}.lg\\:w-\\[700px\\]")
     assert has_element?(view, "#{card} [data-minute-scale='1.0']")
   end
 

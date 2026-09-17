@@ -56,7 +56,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
     >
       <main
         id="discord-page"
-        class="mx-auto flex h-full min-h-0 w-full max-w-[1800px] flex-col gap-5 p-4"
+        class="mx-auto flex h-full min-h-0 w-full max-w-[1800px] flex-col gap-4 p-3 sm:gap-5 sm:p-4"
       >
         <section class="shrink-0 ">
           <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -68,8 +68,8 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
           </div>
         </section>
 
-        <section class=" flex-1 gap-4 flex flex-row min-h-0">
-          <div class="flex min-h-0 flex-1 flex-col pr-1">
+        <section class="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
+          <div class="flex min-h-0 flex-1 flex-col lg:pr-1">
             <div id="discord-view-tabs" class="mb-3 flex flex-wrap gap-2">
               <button
                 :for={
@@ -96,7 +96,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
               </button>
             </div>
 
-            <div class="min-h-0 flex-1 overflow-y-auto">
+            <div class="min-h-[20rem] flex-1 overflow-y-auto lg:min-h-0">
               <%= case @active_view do %>
                 <% :channels -> %>
                   <DiscordChannels.render
@@ -122,7 +122,8 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
           </div>
 
           <aside class={[
-            "flex min-h-0 flex-col gap-4 overflow-y-auto border-t border-slate-800 pt-4"
+            "flex min-h-0 shrink-0 flex-col gap-4 overflow-y-auto border-t border-slate-800 pt-4",
+            "lg:w-80"
           ]}>
             <DiscordServerStatus.render state={@discord_server_status} />
             <DiscordInvites.side_panel state={@discord_invites} />

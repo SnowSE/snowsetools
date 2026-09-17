@@ -174,7 +174,7 @@ defmodule SnowSeToolsWeb.Config.SyncStatusComponent do
       <% end %>
 
       <div id="term-sync-list" class="overflow-hidden rounded-lg border border-slate-700">
-        <div class="grid grid-cols-[1fr_auto_auto] gap-3 bg-slate-900/70 px-4 py-2 text-xs font-medium uppercase text-slate-500">
+        <div class="grid grid-cols-[1fr_auto_auto] gap-2 bg-slate-900/70 px-3 py-2 text-xs font-medium uppercase text-slate-500 sm:gap-3 sm:px-4">
           <span>Term</span>
           <span class="hidden text-right sm:block">Last Synced</span>
           <span class="text-right">Action</span>

@@ -36,7 +36,7 @@ defmodule SnowSeToolsWeb.ModalComponents do
   end
 
   defp modal_container_class(x: nil, y: nil),
-    do: "fixed inset-0 z-50 flex items-center justify-center px-4 py-6"
+    do: "fixed inset-0 z-50 flex items-center justify-center px-3 py-4 sm:px-4 sm:py-6"
 
   defp modal_container_class(x: x, y: y) when is_integer(x) and is_integer(y),
     do: "fixed inset-0 z-50"
@@ -46,7 +46,7 @@ defmodule SnowSeToolsWeb.ModalComponents do
 
   defp panel_class(panel_class: nil, x: nil, y: nil),
     do:
-      "relative w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl shadow-slate-950/60"
+      "relative max-h-full w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-2xl shadow-slate-950/60 sm:p-6"
 
   defp panel_class(panel_class: nil, x: x, y: y) when is_integer(x) and is_integer(y),
     do: "fixed rounded-md border border-slate-700 bg-slate-950 shadow-2xl shadow-slate-950/60"

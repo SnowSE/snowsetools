@@ -73,20 +73,20 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
     ~H"""
     <div
       id="scheduling-page"
-      class="mx-auto flex h-full min-h-0 w-full max-w-full gap-4 p-4"
+      class="mx-auto flex h-full min-h-0 w-full max-w-full flex-col gap-3 p-3 lg:flex-row lg:gap-4 lg:p-4"
     >
       <aside
         id="scheduling-sidebar"
         phx-hook=".SchedulingSidebar"
         data-pinned={to_string(@state.sidebar_pinned?)}
         class={[
-          "relative shrink-0 min-h-0",
-          @state.sidebar_pinned? && "w-80 pr-2",
-          !@state.sidebar_pinned? && "group w-10"
+          "relative min-h-0 lg:shrink-0",
+          @state.sidebar_pinned? && "w-full shrink-0 lg:w-80 lg:pr-2",
+          !@state.sidebar_pinned? && "group w-full shrink-0 lg:w-10"
         ]}
       >
         <%= if @state.sidebar_pinned? do %>
-          <div class="flex h-full flex-col gap-3">
+          <div class="flex max-h-[60vh] flex-col gap-3 lg:max-h-none lg:h-full">
             <.sidebar_pin pinned?={true} />
             <.sidebar_contents
               state={@state}
@@ -103,13 +103,13 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
             type="button"
             id="scheduling-sidebar-rail"
             phx-click="schedule-viewer:toggle_sidebar_flyout"
-            class="flex h-full w-10 cursor-pointer flex-col items-center gap-3 rounded-lg border border-slate-800/80 bg-slate-950/55 py-3 text-slate-500 transition-colors hover:text-slate-300"
+            class="flex w-full cursor-pointer flex-row items-center justify-center gap-2 rounded-lg border border-slate-800/80 bg-slate-950/55 px-3 py-2 text-slate-500 transition-colors hover:text-slate-300 lg:h-full lg:w-10 lg:flex-col lg:gap-3 lg:px-0 lg:py-3"
             title="Search, change groups, conflicts"
             aria-label="Open the tools pane"
             aria-expanded={to_string(@state.sidebar_flyout_open?)}
           >
             <.icon name="hero-magnifying-glass" class="size-4" />
-            <span class="text-[11px] uppercase tracking-[0.2em] [writing-mode:vertical-rl]">
+            <span class="text-[11px] uppercase tracking-[0.2em] lg:[writing-mode:vertical-rl]">
               Search &amp; tools
             </span>
           </button>
@@ -117,7 +117,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
             id="scheduling-sidebar-flyout"
             phx-click-away={@state.sidebar_flyout_open? && "schedule-viewer:close_sidebar_flyout"}
             class={[
-              "absolute left-0 top-0 z-40 h-full w-80 flex-col gap-3 rounded-lg border border-slate-700 bg-slate-950 p-3 shadow-2xl shadow-black/70",
+              "absolute left-0 top-full z-40 mt-2 h-[60vh] w-[min(20rem,calc(100vw-1.5rem))] flex-col gap-3 rounded-lg border border-slate-700 bg-slate-950 p-3 shadow-2xl shadow-black/70",
+              "lg:top-0 lg:mt-0 lg:h-full",
               @state.sidebar_flyout_open? && "flex",
               !@state.sidebar_flyout_open? && "hidden group-hover:flex group-focus-within:flex"
             ]}

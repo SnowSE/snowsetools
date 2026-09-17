@@ -169,7 +169,7 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
       socket={@socket}
       current_path={@current_path}
     >
-      <div class="mx-auto max-w-[1800px] px-4 py-6">
+      <div class="mx-auto max-w-[1800px] px-3 py-6 sm:px-4">
         <div class="mb-6 flex items-end justify-between gap-4">
           <div class="space-y-2">
             <h1 class="text-3xl font-semibold text-slate-100">User and group management</h1>
@@ -307,8 +307,8 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
               </div>
             </.form>
 
-            <div class="overflow-hidden rounded-2xl border border-slate-800">
-              <table class="min-w-full divide-y divide-slate-800 text-left text-sm">
+            <div class="overflow-x-auto rounded-2xl border border-slate-800">
+              <table class="min-w-[36rem] divide-y divide-slate-800 text-left text-sm">
                 <thead class="bg-slate-950/70 text-xs uppercase tracking-[0.2em] text-slate-400">
                   <tr>
                     <th class="px-4 py-3">Group</th>

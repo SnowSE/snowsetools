@@ -17,147 +17,152 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
 
   def schedule_grid(assigns) do
     ~H"""
-    <div
-      id={schedule_grid_id(@owner_key)}
-      class="flex gap-2"
-      phx-hook=".WeekScheduleGridDrag"
-      data-owner-key={@owner_key}
-      data-owner-type={@schedule_owner.type}
-      data-owner-name={@schedule_owner.name}
-      data-start-minutes={@schedule_owner.start_minutes}
-      data-end-minutes={@schedule_owner.end_minutes}
-      data-minute-scale={@minute_scale}
-      data-single-owner-grid={to_string(@single_owner_grid)}
-      data-editor={to_string(@editor?)}
-    >
-      <div class="w-14 pt-[2.05rem]">
-        <div
-          class="relative"
-          style={"height: #{grid_height(start_minutes: @schedule_owner.start_minutes, end_minutes: @schedule_owner.end_minutes, scale: @minute_scale)}px"}
-        >
-          <%= for label <- time_labels(start_minutes: @schedule_owner.start_minutes, end_minutes: @schedule_owner.end_minutes, scale: @minute_scale) do %>
-            <div
-              class="absolute right-1  text-[11px] text-slate-500 text-end"
-              style={"top: #{label.offset}px"}
-            >
-              {label.time}
+    <%!-- Five days never fit a phone legibly, so the week scrolls sideways
+    inside the card rather than squeezing each day to nothing. --%>
+    <div class="-mx-1 overflow-x-auto px-1">
+      <div
+        id={schedule_grid_id(@owner_key)}
+        class="flex min-w-[32rem] gap-2 lg:min-w-0"
+        phx-hook=".WeekScheduleGridDrag"
+        data-owner-key={@owner_key}
+        data-owner-type={@schedule_owner.type}
+        data-owner-name={@schedule_owner.name}
+        data-start-minutes={@schedule_owner.start_minutes}
+        data-end-minutes={@schedule_owner.end_minutes}
+        data-minute-scale={@minute_scale}
+        data-single-owner-grid={to_string(@single_owner_grid)}
+        data-editor={to_string(@editor?)}
+      >
+        <div class="w-11 shrink-0 pt-[2.05rem] sm:w-14">
+          <div
+            class="relative"
+            style={"height: #{grid_height(start_minutes: @schedule_owner.start_minutes, end_minutes: @schedule_owner.end_minutes, scale: @minute_scale)}px"}
+          >
+            <%= for label <- time_labels(start_minutes: @schedule_owner.start_minutes, end_minutes: @schedule_owner.end_minutes, scale: @minute_scale) do %>
+              <div
+                class="absolute right-1  text-[11px] text-slate-500 text-end"
+                style={"top: #{label.offset}px"}
+              >
+                {label.time}
+              </div>
+            <% end %>
+          </div>
+        </div>
+        <div class="grid min-w-0 flex-1 grid-cols-5 gap-1">
+          <%= for day <- TimeOfDay.week_days() do %>
+            <div class="min-w-0">
+              <div class="py-2 text-center tracking-wide text-slate-500">
+                {String.slice(day, 0, 3)}
+              </div>
+              <div
+                class="relative bg-slate-950/20"
+                data-week-schedule-day={day}
+                style={"height: #{grid_height(start_minutes: @schedule_owner.start_minutes, end_minutes: @schedule_owner.end_minutes, scale: @minute_scale)}px"}
+              >
+                <%= for line <- grid_lines(start_minutes: @schedule_owner.start_minutes, end_minutes: @schedule_owner.end_minutes, scale: @minute_scale) do %>
+                  <div
+                    class="absolute left-0 right-0 border-t border-slate-800/55 "
+                    style={"top: #{line}px"}
+                  />
+                <% end %>
+
+                <%= for meeting <- positioned_meetings(
+                meetings: Map.get(@schedule_owner.meetings_by_day, day, [])
+              ) do %>
+                  <% source = Map.get(meeting, "__source", :base) %>
+                  <% conflicted? =
+                    meeting_conflicted?(
+                      meeting: meeting,
+                      conflicted_course_crns: @conflicted_course_crns,
+                      active_conflicted_course_crns: @active_conflicted_course_crns
+                    ) %>
+                  <% overlay_color = Map.get(meeting, :overlay_color) %>
+                  <div
+                    class={[
+                      "absolute z-10 rounded px-1.5 py-1 leading-tight shadow-sm shadow-black transition-colors hover:bg-slate-800",
+                      @editor? && "cursor-move",
+                      conflicted? && "bg-rose-950/40 ring-1 ring-rose-500/50",
+                      !conflicted? && source == :added &&
+                        "bg-emerald-950/60 ring-1 ring-emerald-500/50",
+                      !conflicted? && source == :updated && "bg-amber-950/40 ring-1 ring-amber-500/50",
+                      !conflicted? && source == :base && is_nil(overlay_color) && "bg-slate-900",
+                      !conflicted? && source == :base && overlay_color && overlay_color.block
+                    ]}
+                    draggable={to_string(@editor?)}
+                    data-week-schedule-course
+                    data-week-schedule-conflicted={to_string(conflicted?)}
+                    data-owner-key={Map.get(meeting, :overlay_owner_key)}
+                    data-owner-type={Map.get(meeting, :overlay_owner_type)}
+                    data-owner-name={Map.get(meeting, :overlay_owner_name)}
+                    data-course-payload={
+                      course_payload_json(
+                        meeting: meeting,
+                        selected_term_code: @selected_term_code
+                      )
+                    }
+                    style={
+                      meeting_style(
+                        meeting: meeting,
+                        schedule_start_minutes: @schedule_owner.start_minutes,
+                        scale: @minute_scale
+                      )
+                    }
+                  >
+                    <.hover_tooltip id={
+                      "hover-tooltip-#{:erlang.phash2({@owner_key, day, meeting.crn, meeting.start_minutes, meeting.end_minutes})}"
+                    }>
+                      <:label>
+                        <div class="overflow-hidden cursor-default">
+                          <div class="truncate text-slate-300">{meeting.course_name}</div>
+                          <div class="truncate text-slate-400 text-xs">
+                            {meeting.subject_code} {meeting.course_number}
+                          </div>
+                        </div>
+                      </:label>
+                      <:body>
+                        <div class="space-y-1.5">
+                          <div class="text-xs font-semibold text-slate-100 truncate">
+                            {meeting.course_name}
+                          </div>
+                          <div class="text-[11px] text-slate-300">
+                            {meeting.subject_code} {meeting.course_number}
+                          </div>
+                          <div
+                            :if={Map.get(meeting, :overlay_owner_name)}
+                            class="flex items-center gap-1.5 text-[11px] text-slate-300"
+                          >
+                            <span class={["size-2 rounded-full", overlay_color && overlay_color.dot]} />
+                            {Map.get(meeting, :overlay_owner_name)}
+                          </div>
+                          <div
+                            :if={length(grouped_crns(meeting: meeting)) > 1}
+                            class="text-[11px] text-slate-300"
+                          >
+                            {length(grouped_crns(meeting: meeting))} CRNs: {Enum.join(
+                              grouped_crns(meeting: meeting),
+                              ", "
+                            )}
+                          </div>
+                          <div class="text-[11px] text-slate-400">
+                            {format_minutes(meeting.start_minutes)} – {format_minutes(
+                              meeting.end_minutes
+                            )}
+                          </div>
+                          <div :if={meeting.room} class="text-[11px] text-slate-400">
+                            {meeting.room}
+                          </div>
+                          <div :if={meeting.instructors != []} class="text-[11px] text-slate-500">
+                            {Enum.join(meeting.instructors, ", ")}
+                          </div>
+                        </div>
+                      </:body>
+                    </.hover_tooltip>
+                  </div>
+                <% end %>
+              </div>
             </div>
           <% end %>
         </div>
-      </div>
-      <div class="grid min-w-0 flex-1 grid-cols-5 gap-1">
-        <%= for day <- TimeOfDay.week_days() do %>
-          <div class="min-w-0">
-            <div class="py-2 text-center tracking-wide text-slate-500">
-              {String.slice(day, 0, 3)}
-            </div>
-            <div
-              class="relative bg-slate-950/20"
-              data-week-schedule-day={day}
-              style={"height: #{grid_height(start_minutes: @schedule_owner.start_minutes, end_minutes: @schedule_owner.end_minutes, scale: @minute_scale)}px"}
-            >
-              <%= for line <- grid_lines(start_minutes: @schedule_owner.start_minutes, end_minutes: @schedule_owner.end_minutes, scale: @minute_scale) do %>
-                <div
-                  class="absolute left-0 right-0 border-t border-slate-800/55 "
-                  style={"top: #{line}px"}
-                />
-              <% end %>
-
-              <%= for meeting <- positioned_meetings(
-                meetings: Map.get(@schedule_owner.meetings_by_day, day, [])
-              ) do %>
-                <% source = Map.get(meeting, "__source", :base) %>
-                <% conflicted? =
-                  meeting_conflicted?(
-                    meeting: meeting,
-                    conflicted_course_crns: @conflicted_course_crns,
-                    active_conflicted_course_crns: @active_conflicted_course_crns
-                  ) %>
-                <% overlay_color = Map.get(meeting, :overlay_color) %>
-                <div
-                  class={[
-                    "absolute z-10 rounded px-1.5 py-1 leading-tight shadow-sm shadow-black transition-colors hover:bg-slate-800",
-                    @editor? && "cursor-move",
-                    conflicted? && "bg-rose-950/40 ring-1 ring-rose-500/50",
-                    !conflicted? && source == :added && "bg-emerald-950/60 ring-1 ring-emerald-500/50",
-                    !conflicted? && source == :updated && "bg-amber-950/40 ring-1 ring-amber-500/50",
-                    !conflicted? && source == :base && is_nil(overlay_color) && "bg-slate-900",
-                    !conflicted? && source == :base && overlay_color && overlay_color.block
-                  ]}
-                  draggable={to_string(@editor?)}
-                  data-week-schedule-course
-                  data-week-schedule-conflicted={to_string(conflicted?)}
-                  data-owner-key={Map.get(meeting, :overlay_owner_key)}
-                  data-owner-type={Map.get(meeting, :overlay_owner_type)}
-                  data-owner-name={Map.get(meeting, :overlay_owner_name)}
-                  data-course-payload={
-                    course_payload_json(
-                      meeting: meeting,
-                      selected_term_code: @selected_term_code
-                    )
-                  }
-                  style={
-                    meeting_style(
-                      meeting: meeting,
-                      schedule_start_minutes: @schedule_owner.start_minutes,
-                      scale: @minute_scale
-                    )
-                  }
-                >
-                  <.hover_tooltip id={
-                      "hover-tooltip-#{:erlang.phash2({@owner_key, day, meeting.crn, meeting.start_minutes, meeting.end_minutes})}"
-                    }>
-                    <:label>
-                      <div class="overflow-hidden cursor-default">
-                        <div class="truncate text-slate-300">{meeting.course_name}</div>
-                        <div class="truncate text-slate-400 text-xs">
-                          {meeting.subject_code} {meeting.course_number}
-                        </div>
-                      </div>
-                    </:label>
-                    <:body>
-                      <div class="space-y-1.5">
-                        <div class="text-xs font-semibold text-slate-100 truncate">
-                          {meeting.course_name}
-                        </div>
-                        <div class="text-[11px] text-slate-300">
-                          {meeting.subject_code} {meeting.course_number}
-                        </div>
-                        <div
-                          :if={Map.get(meeting, :overlay_owner_name)}
-                          class="flex items-center gap-1.5 text-[11px] text-slate-300"
-                        >
-                          <span class={["size-2 rounded-full", overlay_color && overlay_color.dot]} />
-                          {Map.get(meeting, :overlay_owner_name)}
-                        </div>
-                        <div
-                          :if={length(grouped_crns(meeting: meeting)) > 1}
-                          class="text-[11px] text-slate-300"
-                        >
-                          {length(grouped_crns(meeting: meeting))} CRNs: {Enum.join(
-                            grouped_crns(meeting: meeting),
-                            ", "
-                          )}
-                        </div>
-                        <div class="text-[11px] text-slate-400">
-                          {format_minutes(meeting.start_minutes)} – {format_minutes(
-                            meeting.end_minutes
-                          )}
-                        </div>
-                        <div :if={meeting.room} class="text-[11px] text-slate-400">
-                          {meeting.room}
-                        </div>
-                        <div :if={meeting.instructors != []} class="text-[11px] text-slate-500">
-                          {Enum.join(meeting.instructors, ", ")}
-                        </div>
-                      </div>
-                    </:body>
-                  </.hover_tooltip>
-                </div>
-              <% end %>
-            </div>
-          </div>
-        <% end %>
       </div>
     </div>
 

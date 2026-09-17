@@ -9,19 +9,22 @@ defmodule SnowSeToolsWeb.AppHeader do
 
   def header(assigns) do
     ~H"""
-    <header class="shrink-0 flex justify-between px-3 h-10 border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm">
-      <div class="flex items-center">
+    <header class="shrink-0 flex items-center justify-between gap-2 px-3 h-10 border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm">
+      <div class="flex shrink-0 items-center">
         <.link
           navigate={if @current_user, do: ~p"/home", else: ~p"/"}
           class="text-sm font-semibold text-slate-200 hover:text-white transition-colors"
         >
-          Snow SE Tools
+          <span class="hidden sm:inline">Snow SE Tools</span>
+          <span class="sm:hidden">SE Tools</span>
         </.link>
       </div>
 
-      {render_slot(@center)}
+      <div class="hidden min-w-0 md:flex md:items-center">
+        {render_slot(@center)}
+      </div>
 
-      <nav class="flex items-center gap-2 justify-end">
+      <nav class="flex min-w-0 flex-1 items-center gap-1 justify-end overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-2">
         <%= if @current_user do %>
           <.link
             navigate={~p"/home"}
@@ -58,15 +61,20 @@ defmodule SnowSeToolsWeb.AppHeader do
             Admin
           </.link>
 
-          <span class="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-300">
+          <span
+            class="hidden shrink-0 items-center gap-2 px-3 py-1.5 text-sm text-slate-300 lg:flex"
+            title={@current_user.email}
+          >
             <.icon name="hero-user-circle" class="size-4" />
-            {@current_user.email}
+            <span class="max-w-[16rem] truncate">{@current_user.email}</span>
           </span>
           <.link
             href={~p"/auth/logout"}
-            class="rounded-lg px-3 py-1.5 text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-all"
+            class="shrink-0 rounded-lg px-2 py-1.5 text-sm text-slate-400 transition-all hover:bg-slate-800 hover:text-white sm:px-3"
+            title={@current_user.email}
           >
-            Logout
+            <span class="hidden sm:inline">Logout</span>
+            <.icon name="hero-arrow-right-start-on-rectangle" class="size-4 sm:hidden" />
           </.link>
         <% else %>
           <.link
@@ -87,7 +95,7 @@ defmodule SnowSeToolsWeb.AppHeader do
         (current_path == path or String.starts_with?(current_path, path <> "/"))
 
     [
-      " px-3 py-1.5 transition-all",
+      "shrink-0 whitespace-nowrap px-2 py-1.5 text-sm transition-all sm:px-3",
       if(active,
         do: "text-purple-300 border-purple-500 border-b-2",
         else: "text-slate-400 hover:bg-slate-800 hover:text-white"

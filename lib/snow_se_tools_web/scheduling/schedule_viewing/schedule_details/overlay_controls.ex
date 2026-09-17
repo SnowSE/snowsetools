@@ -11,10 +11,12 @@ defmodule SnowSeToolsWeb.Scheduling.OverlayControls do
   @doc "Classes/style for a card wrapper given its size (`%{width: nil | px | :full}`)."
   def card_width_attrs(%{width: :full}), do: %{class: "w-full", style: nil}
 
+  # A width someone dragged to is a desktop measurement, so it is capped rather
+  # than allowed to hang off the side of a phone.
   def card_width_attrs(%{width: width}) when is_integer(width),
-    do: %{class: nil, style: "width: #{width}px"}
+    do: %{class: "max-w-full", style: "width: #{width}px"}
 
-  def card_width_attrs(_size), do: %{class: "w-[700px]", style: nil}
+  def card_width_attrs(_size), do: %{class: "w-full max-w-full lg:w-[700px]", style: nil}
 
   attr :entry_key, :string, required: true
   attr :size, :map, required: true
@@ -55,7 +57,7 @@ defmodule SnowSeToolsWeb.Scheduling.OverlayControls do
     <div
       data-resize-grip
       title="Drag to resize"
-      class="absolute bottom-1.5 right-1.5 z-20 flex size-5 cursor-nwse-resize items-end justify-end text-slate-600 transition-colors hover:text-indigo-300"
+      class="absolute bottom-1.5 right-1.5 z-20 hidden size-5 cursor-nwse-resize items-end justify-end text-slate-600 transition-colors hover:text-indigo-300 lg:flex"
     >
       <svg
         viewBox="0 0 12 12"

@@ -254,7 +254,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
             <% true -> %>
               <div
                 id={"selected-schedule-placeholder-#{key}"}
-                class="w-[700px] rounded-lg border border-dashed border-slate-800/80 bg-slate-950/35 p-3 text-sm text-slate-500"
+                class="w-full max-w-full rounded-lg border border-dashed border-slate-800/80 bg-slate-950/35 p-3 text-sm text-slate-500 lg:w-[700px]"
               >
                 Loading schedule...
               </div>
@@ -516,7 +516,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
           spacer.setAttribute("data-schedule-card", "true");
           spacer.setAttribute("data-drop-spacer", "true");
           spacer.className =
-            "w-[700px] rounded-lg border border-dashed border-indigo-400/35 bg-indigo-950/20 shadow-sm shadow-indigo-950/10 transition-[height,opacity,transform] duration-200 ease-out";
+            "w-full max-w-full lg:w-[700px] rounded-lg border border-dashed border-indigo-400/35 bg-indigo-950/20 shadow-sm shadow-indigo-950/10 transition-[height,opacity,transform] duration-200 ease-out";
           spacer.style.height = `${Math.max(rect.height, 160)}px`;
 
           card.before(spacer);

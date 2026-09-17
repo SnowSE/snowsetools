@@ -28,7 +28,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusDetail do
     ~H"""
     <div
       id="detail-panel"
-      class="flex flex-col flex-1 min-h-0 overflow-hidden gap-2"
+      class="flex min-h-[24rem] flex-1 flex-col gap-2 overflow-hidden lg:min-h-0"
     >
       <div class="flex items-center gap-3 min-w-0 shrink-0">
         <div class="flex-1 flex items-baseline gap-2 min-w-0">

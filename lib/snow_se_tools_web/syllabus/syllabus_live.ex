@@ -116,7 +116,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusLive do
     >
       <div class="flex flex-col h-full min-h-0">
         <div class="border-b border-slate-700/60 shrink-0">
-          <div class="max-w-[2000px] mx-auto w-full flex items-center gap-1 px-4">
+          <div class="mx-auto flex w-full max-w-[2000px] items-center gap-1 overflow-x-auto px-3 sm:px-4">
             <%= for {mode_key, label} <- @modes do %>
               <button
                 id={"tab-#{mode_key}"}
