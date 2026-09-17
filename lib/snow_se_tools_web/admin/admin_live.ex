@@ -182,7 +182,7 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
               {@last_action_message}
             </div>
           <% end %>
-          <section class="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-slate-950/20">
+          <section class="min-w-0 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 shadow-xl shadow-slate-950/20 sm:p-5">
             <div class="mb-4 flex items-center justify-between">
               <h2 class="text-lg font-semibold text-slate-100">Users</h2>
             </div>
@@ -267,7 +267,7 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
             </div>
           </section>
 
-          <section class="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-slate-950/20">
+          <section class="min-w-0 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 shadow-xl shadow-slate-950/20 sm:p-5">
             <div class="mb-4 flex items-center justify-between">
               <h2 class="text-lg font-semibold text-slate-100">Groups</h2>
             </div>

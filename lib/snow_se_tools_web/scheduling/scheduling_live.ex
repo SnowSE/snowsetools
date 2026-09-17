@@ -105,7 +105,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
     >
       <div class="flex h-full min-h-0 flex-col">
         <div class="shrink-0 border-b border-slate-700/60">
-          <div class="mx-auto flex w-full max-w-[2000px] items-center gap-1 overflow-x-auto px-3 sm:px-4">
+          <div class="mx-auto flex w-full max-w-[2000px] items-center gap-1 overflow-x-auto whitespace-nowrap px-3 sm:px-4">
             <%= for {mode_key, label} <- @modes do %>
               <button
                 id={"scheduling-tab-#{mode_key}"}

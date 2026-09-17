@@ -21,3 +21,6 @@ npm-debug.log
 tmp.json
 
 backups/
+
+# scratch output from the page screenshot dump (see page_snapshot_dump_test.exs)
+/tmp/

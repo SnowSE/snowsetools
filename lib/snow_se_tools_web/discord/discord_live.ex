@@ -96,7 +96,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordLive do
               </button>
             </div>
 
-            <div class="min-h-[20rem] flex-1 overflow-y-auto lg:min-h-0">
+            <div class="flex-1 overflow-y-auto lg:min-h-0">
               <%= case @active_view do %>
                 <% :channels -> %>
                   <DiscordChannels.render

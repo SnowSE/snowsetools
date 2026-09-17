@@ -25,8 +25,9 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGridTest do
         active_change_group: nil
       )
 
-    assert html =~ "8:30 AM"
-    assert html =~ "9:30 AM"
+    # The meridiem is its own element so a narrow gutter can drop it.
+    assert html =~ "8:30<span class=\"hidden sm:inline\">&nbsp;AM</span>"
+    assert html =~ "9:30<span class=\"hidden sm:inline\">&nbsp;AM</span>"
     assert html =~ "top: 60px; height: 90px"
     assert html =~ "top: 180px; height: 60px"
     assert html =~ "data-week-schedule-course"

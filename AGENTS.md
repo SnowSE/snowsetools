@@ -378,6 +378,25 @@ Domain managers load in the background, so `:sys.get_state/1` is not a
 synchronisation point for them. `ScheduleOwnerDomainManager.await_idle/0`
 returns once nothing is loading.
 
+## Looking at the pages
+
+Do not guess at layout. `./screenshots.sh` renders every page as it really
+renders — logged in, with seeded data and the freshly built stylesheet — and
+screenshots it in headless Chrome:
+
+    ./screenshots.sh                 # a phone, 390x900
+    W=820  H=1000 ./screenshots.sh   # a tablet
+    W=1440 H=900  SUFFIX=-wide ./screenshots.sh
+
+Images land in `tmp/screens/`. The page HTML comes from
+`test/snow_se_tools_web/page_snapshot_dump_test.exs`, tagged `:snapshot` and
+excluded from the suite; add a page there when you add a page.
+
+Two things this catches that reading Tailwind classes does not: a class that
+never generated (an arbitrary variant with a typo silently produces nothing),
+and a flex child that collapses or overflows its parent. Both have shipped here
+before.
+
 ## Getting feedback
 
 you can read current logs with `docker logs snow-se-tools-dev-app-1` be sure to use bash to filter for only the logs you care about.

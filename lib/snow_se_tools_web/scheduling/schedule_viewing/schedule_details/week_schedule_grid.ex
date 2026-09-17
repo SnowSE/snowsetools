@@ -40,10 +40,10 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
           >
             <%= for label <- time_labels(start_minutes: @schedule_owner.start_minutes, end_minutes: @schedule_owner.end_minutes, scale: @minute_scale) do %>
               <div
-                class="absolute right-1  text-[11px] text-slate-500 text-end"
+                class="absolute right-1 whitespace-nowrap text-end text-[10px] text-slate-500 sm:text-[11px]"
                 style={"top: #{label.offset}px"}
               >
-                {label.time}
+                {label.clock}<span class="hidden sm:inline">&nbsp;{label.meridiem}</span>
               </div>
             <% end %>
           </div>
@@ -520,7 +520,9 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
     |> Stream.iterate(&(&1 + 60))
     |> Enum.take_while(&(&1 <= end_minutes))
     |> Enum.map(fn minutes ->
-      %{time: format_minutes(minutes), offset: px(minutes - start_minutes, scale)}
+      [clock, meridiem] = minutes |> format_minutes() |> String.split(" ")
+
+      %{clock: clock, meridiem: meridiem, offset: px(minutes - start_minutes, scale)}
     end)
   end
 

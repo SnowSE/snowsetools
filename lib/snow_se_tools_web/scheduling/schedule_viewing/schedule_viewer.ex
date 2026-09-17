@@ -86,7 +86,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
         ]}
       >
         <%= if @state.sidebar_pinned? do %>
-          <div class="flex max-h-[60vh] flex-col gap-3 lg:max-h-none lg:h-full">
+          <div class="block max-h-[42vh] space-y-3 overflow-y-auto pr-1 lg:flex lg:h-full lg:max-h-none lg:flex-col lg:gap-3 lg:space-y-0 lg:overflow-visible lg:pr-0">
             <.sidebar_pin pinned?={true} />
             <.sidebar_contents
               state={@state}

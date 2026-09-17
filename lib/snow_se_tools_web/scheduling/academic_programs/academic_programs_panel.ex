@@ -32,7 +32,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
     ~H"""
     <div
       id="academic-programs-panel"
-      class="mx-auto grid h-full min-h-0 w-full max-w-[1600px] grid-cols-1 gap-4 p-3 sm:p-4 lg:grid-cols-[22rem_1fr]"
+      class="mx-auto grid w-full max-w-[1600px] grid-cols-1 content-start gap-4 p-3 sm:p-4 lg:h-full lg:min-h-0 lg:grid-cols-[22rem_1fr]"
     >
       <aside class="flex min-h-0 flex-col gap-3">
         <div class="flex items-center justify-between gap-2">
