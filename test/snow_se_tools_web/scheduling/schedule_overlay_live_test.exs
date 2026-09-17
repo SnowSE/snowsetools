@@ -254,6 +254,27 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleOverlayLiveTest do
     assert has_element?(view, "#{card} [data-minute-scale='1.0']")
   end
 
+  test "the tools panel starts collapsed and opens on demand", %{
+    conn: conn,
+    term_code: term_code
+  } do
+    {:ok, view, _html} =
+      live(log_in_test_user(conn), ~p"/scheduling?mode=viewer&term=#{term_code}")
+
+    # `hidden lg:flex`: out of the way on a phone, always open beside the cards.
+    assert has_element?(view, "#scheduling-tools.hidden")
+    assert has_element?(view, "#scheduling-tools-toggle[aria-expanded='false']")
+
+    view |> element("#scheduling-tools-toggle") |> render_click()
+
+    refute has_element?(view, "#scheduling-tools.hidden")
+    assert has_element?(view, "#scheduling-tools-toggle[aria-expanded='true']")
+    assert has_element?(view, "#scheduling-tools #scheduling-search-input")
+
+    view |> element("#scheduling-tools-toggle") |> render_click()
+    assert has_element?(view, "#scheduling-tools.hidden")
+  end
+
   test "the sidebar can be unpinned to an auto-hide rail", %{conn: conn, term_code: term_code} do
     {:ok, view, _html} =
       live(log_in_test_user(conn), ~p"/scheduling?mode=viewer&term=#{term_code}")

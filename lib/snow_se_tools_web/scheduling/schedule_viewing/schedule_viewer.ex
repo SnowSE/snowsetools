@@ -28,7 +28,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
     :search_active,
     :highlighted_index,
     :sidebar_pinned?,
-    :sidebar_flyout_open?
+    :sidebar_flyout_open?,
+    :tools_open?
   ]
 
   @type t :: %__MODULE__{
@@ -39,7 +40,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
           search_active: boolean(),
           highlighted_index: non_neg_integer(),
           sidebar_pinned?: boolean(),
-          sidebar_flyout_open?: boolean()
+          sidebar_flyout_open?: boolean(),
+          tools_open?: boolean()
         }
   @key :schedule_viewer_state
 
@@ -53,7 +55,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
       search_active: false,
       highlighted_index: 0,
       sidebar_pinned?: true,
-      sidebar_flyout_open?: false
+      sidebar_flyout_open?: false,
+      tools_open?: false
     })
     |> initial_setup()
   end
@@ -86,7 +89,29 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
         ]}
       >
         <%= if @state.sidebar_pinned? do %>
-          <div class="block max-h-[42vh] space-y-3 overflow-y-auto pr-1 lg:flex lg:h-full lg:max-h-none lg:flex-col lg:gap-3 lg:space-y-0 lg:overflow-visible lg:pr-0">
+          <button
+            type="button"
+            id="scheduling-tools-toggle"
+            phx-click="schedule-viewer:toggle_tools"
+            aria-expanded={to_string(@state.tools_open?)}
+            aria-controls="scheduling-tools"
+            class="mb-2 flex w-full items-center justify-between gap-2 rounded-lg border border-slate-800/80 bg-slate-950/55 px-3 py-2 text-slate-400 transition-colors hover:text-slate-200 lg:hidden"
+          >
+            <span class="flex items-center gap-2 text-xs uppercase tracking-[0.15em]">
+              <.icon name="hero-magnifying-glass" class="size-4" /> Search &amp; tools
+            </span>
+            <.icon
+              name={if @state.tools_open?, do: "hero-chevron-up", else: "hero-chevron-down"}
+              class="size-4"
+            />
+          </button>
+          <div
+            id="scheduling-tools"
+            class={[
+              "space-y-3 lg:flex lg:h-full lg:flex-col lg:gap-3 lg:space-y-0",
+              !@state.tools_open? && "hidden lg:flex"
+            ]}
+          >
             <.sidebar_pin pinned?={true} />
             <.sidebar_contents
               state={@state}
@@ -536,6 +561,12 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
          search_active: true,
          highlighted_index: 0
      })}
+  end
+
+  def hooked_event("schedule-viewer:toggle_tools", _params, socket) do
+    state = socket.assigns[@key]
+
+    {:halt, assign(socket, @key, %{state | tools_open?: !state.tools_open?})}
   end
 
   def hooked_event("schedule-viewer:toggle_sidebar_pin", _params, socket) do

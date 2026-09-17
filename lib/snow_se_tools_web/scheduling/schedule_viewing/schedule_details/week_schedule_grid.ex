@@ -22,7 +22,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
     <div class="-mx-1 overflow-x-auto px-1">
       <div
         id={schedule_grid_id(@owner_key)}
-        class="flex min-w-[32rem] gap-2 lg:min-w-0"
+        class="flex min-w-[38rem] gap-2 lg:min-w-0"
         phx-hook=".WeekScheduleGridDrag"
         data-owner-key={@owner_key}
         data-owner-type={@schedule_owner.type}
