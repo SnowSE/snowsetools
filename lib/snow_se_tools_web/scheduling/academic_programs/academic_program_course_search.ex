@@ -1,4 +1,5 @@
 defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCourseSearch do
+  alias SnowSeTools.Data.Text
   @moduledoc false
 
   @max_suggestions 8
@@ -115,7 +116,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramCourseSearch do
 
   defp normalize(_value), do: ""
 
-  defp blank?(value), do: not is_binary(value) or String.trim(value) == ""
+  defp blank?(value), do: Text.blank_string?(value)
 
   defp flatten_input_value(%{} = value) do
     value

@@ -485,14 +485,14 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayoutsTest do
   end
 
   defp wait_for_schedule_metadata(view) do
-    _ = :sys.get_state(ScheduleOwnerDomainManager)
+    :ok = ScheduleOwnerDomainManager.await_idle()
     render(view)
   end
 
   defp wait_for_week_schedules(view) do
-    _ = :sys.get_state(ScheduleOwnerDomainManager)
+    :ok = ScheduleOwnerDomainManager.await_idle()
     render(view)
-    _ = :sys.get_state(ScheduleOwnerDomainManager)
+    :ok = ScheduleOwnerDomainManager.await_idle()
     render(view)
   end
 
@@ -515,7 +515,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayoutsTest do
     alias SnowSeTools.Data.AccessControl
 
     {:ok, user} = User.find_or_create("layout-admin@example.com")
-    group = Enum.find(AccessControl.list_groups(), &(&1.name == "admin"))
+    {:ok, groups} = AccessControl.list_groups()
+    group = Enum.find(groups, &(&1.name == "admin"))
     :ok = AccessControl.add_user_group(user_id: user.id, group_id: group.id)
     User.get_by_id(user.id)
   end

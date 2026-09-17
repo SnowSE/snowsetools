@@ -4,8 +4,33 @@ defmodule SnowSeTools.Data.AccessControl do
 
   @admin_group_name "admin"
 
+  @doc """
+  Creates the access-control tables and seeds the built-in groups. Each step
+  has to land before the next is worth running, so the first failure stops the
+  run and is reported rather than logged and stepped over.
+  """
   def bootstrap_access_control do
-    sql = """
+    [
+      {"create groups table", groups_table_sql(), %{}},
+      {"create user_groups table", user_groups_table_sql(), %{}},
+      {"drop legacy is_admin column", "ALTER TABLE groups DROP COLUMN IF EXISTS is_admin", %{}},
+      {"seed built-in groups", seed_groups_sql(), %{"names" => Access.protected_group_names()}},
+      {"grant admin to the first user", first_user_admin_sql(), %{}}
+    ]
+    |> Enum.reduce_while(:ok, fn {step, sql, params}, :ok ->
+      case DbHelpers.query(sql, params) do
+        {:ok, _rows} ->
+          {:cont, :ok}
+
+        {:error, reason} ->
+          Logger.error("Access control bootstrap failed step=#{step} reason=#{inspect(reason)}")
+          {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp groups_table_sql do
+    """
     CREATE TABLE IF NOT EXISTS groups (
       id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
       name        TEXT        NOT NULL UNIQUE,
@@ -13,11 +38,10 @@ defmodule SnowSeTools.Data.AccessControl do
       updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
     """
+  end
 
-    params = %{}
-    DbHelpers.run_sql(sql, params)
-
-    sql = """
+  defp user_groups_table_sql do
+    """
     CREATE TABLE IF NOT EXISTS user_groups (
       user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       group_id    UUID        NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
@@ -26,25 +50,20 @@ defmodule SnowSeTools.Data.AccessControl do
       PRIMARY KEY (user_id, group_id)
     )
     """
+  end
 
-    DbHelpers.run_sql(sql, params)
-
-    sql = """
-    ALTER TABLE groups DROP COLUMN IF EXISTS is_admin
+  defp seed_groups_sql do
     """
-
-    DbHelpers.run_sql(sql, params)
-
-    # Seed every access group (admin, discord_admin, scheduling_admin, syllabus_admin).
-    sql = """
     INSERT INTO groups (name)
     SELECT unnest($(names)::text[])
     ON CONFLICT (name) DO NOTHING
     """
+  end
 
-    DbHelpers.run_sql(sql, %{"names" => Access.protected_group_names()})
-
-    sql = """
+  # The first account to exist becomes the super user, so a fresh deployment
+  # has somebody who can approve everyone else.
+  defp first_user_admin_sql do
+    """
     WITH admin_group AS (
       SELECT id
       FROM groups
@@ -69,8 +88,6 @@ defmodule SnowSeTools.Data.AccessControl do
     CROSS JOIN admin_group
     ON CONFLICT (user_id, group_id) DO NOTHING
     """
-
-    DbHelpers.run_sql(sql, params)
   end
 
   def list_users_with_groups do
@@ -96,7 +113,7 @@ defmodule SnowSeTools.Data.AccessControl do
     """
 
     params = %{}
-    DbHelpers.run_sql(sql, params, user_schema())
+    DbHelpers.query(sql, params, user_schema())
   end
 
   def list_groups do
@@ -118,7 +135,7 @@ defmodule SnowSeTools.Data.AccessControl do
     """
 
     params = %{}
-    DbHelpers.run_sql(sql, params, group_schema())
+    DbHelpers.query(sql, params, group_schema())
   end
 
   def create_group(group_params) when is_map(group_params) do
@@ -133,9 +150,9 @@ defmodule SnowSeTools.Data.AccessControl do
 
       params = %{"name" => attrs["name"]}
 
-      case DbHelpers.run_sql(sql, params, group_schema()) do
+      case DbHelpers.query(sql, params, group_schema()) do
         {:error, reason} -> {:error, reason}
-        [group | _] -> {:ok, group}
+        {:ok, [group | _]} -> {:ok, group}
       end
     else
       error -> error
@@ -160,10 +177,10 @@ defmodule SnowSeTools.Data.AccessControl do
 
         params = Map.merge(attrs, %{"group_id" => Uuid.to_binary(group_id)})
 
-        case DbHelpers.run_sql(sql, params, group_schema()) do
+        case DbHelpers.query(sql, params, group_schema()) do
           {:error, reason} -> {:error, reason}
-          [] -> {:error, :not_found}
-          [group | _] -> {:ok, group}
+          {:ok, []} -> {:error, :not_found}
+          {:ok, [group | _]} -> {:ok, group}
         end
       end
     else
@@ -184,10 +201,10 @@ defmodule SnowSeTools.Data.AccessControl do
 
         params = %{"group_id" => Uuid.to_binary(group_id)}
 
-        case DbHelpers.run_sql(sql, params, group_id_schema()) do
+        case DbHelpers.query(sql, params, group_id_schema()) do
           {:error, reason} -> {:error, reason}
-          [] -> {:error, :not_found}
-          [_ | _] -> :ok
+          {:ok, []} -> {:error, :not_found}
+          {:ok, [_ | _]} -> :ok
         end
       end
     else
@@ -210,11 +227,11 @@ defmodule SnowSeTools.Data.AccessControl do
 
       params = %{"email" => email}
 
-      case DbHelpers.run_sql(sql, params, user_schema()) do
+      case DbHelpers.query(sql, params, user_schema()) do
         {:error, reason} ->
           {:error, reason}
 
-        [user | _] ->
+        {:ok, [user | _]} ->
           bootstrap_access_control()
           {:ok, user}
       end
@@ -257,11 +274,11 @@ defmodule SnowSeTools.Data.AccessControl do
       "group_name" => group_name
     }
 
-    case DbHelpers.run_sql(sql, params, existence_schema()) do
-      [_ | _] ->
+    case DbHelpers.query(sql, params, existence_schema()) do
+      {:ok, [_ | _]} ->
         true
 
-      [] ->
+      {:ok, []} ->
         false
 
       {:error, reason} ->
@@ -280,9 +297,9 @@ defmodule SnowSeTools.Data.AccessControl do
 
     params = %{"user_id" => Uuid.to_binary(user_id)}
 
-    case DbHelpers.run_sql(sql, params, user_group_schema()) do
+    case DbHelpers.query(sql, params, user_group_schema()) do
       {:error, reason} -> {:error, reason}
-      rows -> {:ok, Enum.map(rows, & &1.group_id)}
+      {:ok, rows} -> {:ok, Enum.map(rows, & &1.group_id)}
     end
   end
 
@@ -306,9 +323,9 @@ defmodule SnowSeTools.Data.AccessControl do
 
     params = %{"group_id" => Uuid.to_binary(group_id)}
 
-    case DbHelpers.run_sql(sql, params, group_schema()) do
-      [group | _] -> {:ok, group}
-      [] -> {:error, :not_found}
+    case DbHelpers.query(sql, params, group_schema()) do
+      {:ok, [group | _]} -> {:ok, group}
+      {:ok, []} -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
     end
   end
@@ -326,9 +343,9 @@ defmodule SnowSeTools.Data.AccessControl do
       "group_id" => Uuid.to_binary(group_id)
     }
 
-    case DbHelpers.run_sql(sql, params, existence_schema()) do
+    case DbHelpers.query(sql, params, existence_schema()) do
       {:error, reason} -> {:error, reason}
-      _ -> :ok
+      {:ok, _} -> :ok
     end
   end
 
@@ -344,9 +361,9 @@ defmodule SnowSeTools.Data.AccessControl do
       "group_id" => Uuid.to_binary(group_id)
     }
 
-    case DbHelpers.run_sql(sql, params, existence_schema()) do
+    case DbHelpers.query(sql, params, existence_schema()) do
       {:error, reason} -> {:error, reason}
-      _ -> :ok
+      {:ok, _} -> :ok
     end
   end
 

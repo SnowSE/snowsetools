@@ -30,9 +30,9 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
     ORDER BY re.name ASC
     """
 
-    case DbHelpers.run_sql(sql, %{"generated_report_id" => Uuid.to_binary(generated_report_id)}) do
+    case DbHelpers.query(sql, %{"generated_report_id" => Uuid.to_binary(generated_report_id)}) do
       {:error, _} = err -> err
-      rows -> {:ok, rows}
+      {:ok, rows} -> {:ok, rows}
     end
   end
 
@@ -53,10 +53,10 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
     WHERE id = $(id)
     """
 
-    case DbHelpers.run_sql(sql, %{"id" => Uuid.to_binary(id)}) do
+    case DbHelpers.query(sql, %{"id" => Uuid.to_binary(id)}) do
       {:error, _} = err -> err
-      [row | _] -> {:ok, row}
-      [] -> {:error, :not_found}
+      {:ok, [row | _]} -> {:ok, row}
+      {:ok, []} -> {:error, :not_found}
     end
   end
 
@@ -68,13 +68,13 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
       AND required_element_id = $(required_element_id)
     """
 
-    case DbHelpers.run_sql(sql, %{
+    case DbHelpers.query(sql, %{
            "generated_report_id" => Uuid.to_binary(generated_report_id),
            "required_element_id" => Uuid.to_binary(required_element_id)
          }) do
       {:error, _} = err -> err
-      [row | _] -> {:ok, row}
-      [] -> {:error, :not_found}
+      {:ok, [row | _]} -> {:ok, row}
+      {:ok, []} -> {:error, :not_found}
     end
   end
 
@@ -95,7 +95,7 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
         RETURNING id, generated_report_id, required_element_id, status, description, evidence, additional_considerations
         """
 
-        case DbHelpers.run_sql(sql, %{
+        case DbHelpers.query(sql, %{
                "generated_report_id" => Uuid.to_binary(generated_report_id),
                "required_element_id" => Uuid.to_binary(required_element_id),
                "status" => d["status"],
@@ -104,8 +104,8 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
                "additional_considerations" => d["additional_considerations"]
              }) do
           {:error, _} = err -> err
-          [row | _] -> {:ok, row}
-          [] -> {:error, :not_found}
+          {:ok, [row | _]} -> {:ok, row}
+          {:ok, []} -> {:error, :not_found}
         end
 
       {:error, errors} ->
@@ -116,9 +116,9 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
   def delete(id) do
     sql = "DELETE FROM syllabus_generated_report_items WHERE id = $(id)"
 
-    case DbHelpers.run_sql(sql, %{"id" => Uuid.to_binary(id)}) do
+    case DbHelpers.query(sql, %{"id" => Uuid.to_binary(id)}) do
       {:error, _} = err -> err
-      _ -> :ok
+      {:ok, _} -> :ok
     end
   end
 
@@ -148,11 +148,11 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
     GROUP BY lr.syllabus_code
     """
 
-    case DbHelpers.run_sql(sql, %{"codes" => codes, "term_id" => term_id}) do
+    case DbHelpers.query(sql, %{"codes" => codes, "term_id" => term_id}) do
       {:error, _} = err ->
         err
 
-      rows ->
+      {:ok, rows} ->
         {:ok,
          Map.new(rows, fn r ->
            {r["syllabus_code"],
@@ -184,14 +184,14 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
       AND gri.required_element_id = $(element_id)
     """
 
-    case DbHelpers.run_sql(sql, %{"element_id" => Uuid.to_binary(element_id)}) do
+    case DbHelpers.query(sql, %{"element_id" => Uuid.to_binary(element_id)}) do
       {:error, _} = err ->
         err
 
-      [row] ->
+      {:ok, [row]} ->
         {:ok, row}
 
-      [] ->
+      {:ok, []} ->
         {:ok, %{"met" => 0, "not_met" => 0, "partially_met" => 0, "total_syllabi" => 0}}
     end
   end
@@ -220,9 +220,9 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
     GROUP BY gri.required_element_id, total.total_syllabi
     """
 
-    case DbHelpers.run_sql(sql, %{}) do
+    case DbHelpers.query(sql, %{}) do
       {:error, _} = err -> err
-      rows -> {:ok, rows}
+      {:ok, rows} -> {:ok, rows}
     end
   end
 
@@ -298,9 +298,9 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
     LEFT JOIN not_published_by_school npbs ON npbs.org_id = so.org_id
     """
 
-    case DbHelpers.run_sql(sql, %{"term_id" => term_id}) do
+    case DbHelpers.query(sql, %{"term_id" => term_id}) do
       {:error, _} = err -> err
-      rows -> {:ok, rows}
+      {:ok, rows} -> {:ok, rows}
     end
   end
 
@@ -320,9 +320,9 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
     ORDER BY gr.inserted_at ASC
     """
 
-    case DbHelpers.run_sql(sql, %{"required_element_id" => Uuid.to_binary(required_element_id)}) do
+    case DbHelpers.query(sql, %{"required_element_id" => Uuid.to_binary(required_element_id)}) do
       {:error, _} = err -> err
-      rows -> {:ok, rows}
+      {:ok, rows} -> {:ok, rows}
     end
   end
 
@@ -347,12 +347,12 @@ defmodule SnowSeTools.Reports.GeneratedReportItemDB do
     WHERE code NOT IN (SELECT syllabus_code FROM covered)
     """
 
-    case DbHelpers.run_sql(sql, %{
+    case DbHelpers.query(sql, %{
            "element_id" => Uuid.to_binary(element_id),
            "codes" => all_codes
          }) do
       {:error, _} = err -> err
-      rows -> {:ok, Enum.map(rows, & &1["code"])}
+      {:ok, rows} -> {:ok, Enum.map(rows, & &1["code"])}
     end
   end
 end

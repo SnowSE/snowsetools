@@ -1,4 +1,6 @@
 defmodule SnowSeToolsWeb.Scheduling.ScheduleConflictDetail do
+  alias SnowSeTools.Data.Text
+  alias SnowSeTools.Scheduling.TimeOfDay
   use SnowSeToolsWeb, :html
 
   @default_event "schedule-change-groups:view_schedule"
@@ -199,26 +201,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleConflictDetail do
   defp day_sort("Sunday"), do: 7
   defp day_sort(_day), do: 8
 
-  defp time_minutes(time) when is_binary(time) do
-    case String.split(time, ":") do
-      [hour, minute | _] ->
-        with {h, ""} <- Integer.parse(hour),
-             {m, ""} <- Integer.parse(minute) do
-          h * 60 + m
-        else
-          _other -> 0
-        end
+  defp time_minutes(time), do: TimeOfDay.minutes(time, 0)
 
-      _other ->
-        0
-    end
-  end
-
-  defp time_minutes(_time), do: 0
-
-  defp blank?(nil), do: true
-  defp blank?(""), do: true
-  defp blank?(_value), do: false
+  defp blank?(value), do: Text.blank?(value)
 
   defp schedule_target_button_class(:room) do
     "border-cyan-400/25 bg-cyan-500/10 text-cyan-100 hover:border-cyan-300/45 hover:bg-cyan-500/20"

@@ -57,7 +57,7 @@ defmodule SnowSeToolsWeb.Scheduling.TermConflictsDisplayTest do
     )
 
     SnowCourseCachePubSub.broadcast_course_cache_updated(@term_code, "Conflict Test Term")
-    _ = :sys.get_state(ScheduleOwnerDomainManager)
+    :ok = ScheduleOwnerDomainManager.await_idle()
 
     {:ok, term_code: @term_code}
   end
@@ -87,7 +87,7 @@ defmodule SnowSeToolsWeb.Scheduling.TermConflictsDisplayTest do
   end
 
   defp wait_for_conflicts(view, attempts_remaining) when attempts_remaining > 0 do
-    _ = :sys.get_state(ScheduleOwnerDomainManager)
+    :ok = ScheduleOwnerDomainManager.await_idle()
     _ = :sys.get_state(view.pid)
     render(view)
 

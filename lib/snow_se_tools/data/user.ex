@@ -40,11 +40,11 @@ defmodule SnowSeTools.Data.User do
 
     params = %{"user_id" => Uuid.to_binary(user_id)}
 
-    case DbHelpers.run_sql(sql, params, schema()) do
-      [user | _] ->
+    case DbHelpers.query(sql, params, schema()) do
+      {:ok, [user | _]} ->
         {:ok, user}
 
-      [] ->
+      {:ok, []} ->
         {:error, :not_found}
 
       {:error, reason} ->

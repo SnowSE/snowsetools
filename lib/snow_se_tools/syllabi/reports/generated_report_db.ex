@@ -25,9 +25,9 @@ defmodule SnowSeTools.Reports.GeneratedReportDB do
     ORDER BY gr.inserted_at DESC
     """
 
-    case DbHelpers.run_sql(sql, %{}) do
+    case DbHelpers.query(sql, %{}) do
       {:error, _} = err -> err
-      rows -> {:ok, rows}
+      {:ok, rows} -> {:ok, rows}
     end
   end
 
@@ -38,10 +38,10 @@ defmodule SnowSeTools.Reports.GeneratedReportDB do
     WHERE id = $(id)
     """
 
-    case DbHelpers.run_sql(sql, %{"id" => Uuid.to_binary(id)}) do
+    case DbHelpers.query(sql, %{"id" => Uuid.to_binary(id)}) do
       {:error, _} = err -> err
-      [row | _] -> {:ok, row}
-      [] -> {:error, :not_found}
+      {:ok, [row | _]} -> {:ok, row}
+      {:ok, []} -> {:error, :not_found}
     end
   end
 
@@ -54,15 +54,15 @@ defmodule SnowSeTools.Reports.GeneratedReportDB do
         RETURNING id, syllabus_code, syllabus_title, instructor_name, status, inserted_at
         """
 
-        case DbHelpers.run_sql(sql, %{
+        case DbHelpers.query(sql, %{
                "syllabus_code" => d["syllabus_code"],
                "syllabus_title" => d["syllabus_title"],
                "instructor_name" => d["instructor_name"],
                "status" => d["status"]
              }) do
           {:error, _} = err -> err
-          [row | _] -> {:ok, row}
-          [] -> {:error, :not_found}
+          {:ok, [row | _]} -> {:ok, row}
+          {:ok, []} -> {:error, :not_found}
         end
 
       {:error, errors} ->
@@ -79,10 +79,10 @@ defmodule SnowSeTools.Reports.GeneratedReportDB do
     RETURNING id, syllabus_code, syllabus_title, instructor_name, status
     """
 
-    case DbHelpers.run_sql(sql, %{"id" => Uuid.to_binary(id), "status" => status}) do
+    case DbHelpers.query(sql, %{"id" => Uuid.to_binary(id), "status" => status}) do
       {:error, _} = err -> err
-      [row | _] -> {:ok, row}
-      [] -> {:error, :not_found}
+      {:ok, [row | _]} -> {:ok, row}
+      {:ok, []} -> {:error, :not_found}
     end
   end
 
@@ -101,10 +101,10 @@ defmodule SnowSeTools.Reports.GeneratedReportDB do
     LIMIT 1
     """
 
-    case DbHelpers.run_sql(sql, %{"syllabus_code" => syllabus_code, "term_id" => term_id}) do
+    case DbHelpers.query(sql, %{"syllabus_code" => syllabus_code, "term_id" => term_id}) do
       {:error, _} = err -> err
-      [row | _] -> {:ok, row}
-      [] -> {:error, :not_found}
+      {:ok, [row | _]} -> {:ok, row}
+      {:ok, []} -> {:error, :not_found}
     end
   end
 
@@ -137,9 +137,9 @@ defmodule SnowSeTools.Reports.GeneratedReportDB do
   def delete(id) do
     sql = "DELETE FROM syllabus_generated_reports WHERE id = $(id)"
 
-    case DbHelpers.run_sql(sql, %{"id" => id}) do
+    case DbHelpers.query(sql, %{"id" => id}) do
       {:error, _} = err -> err
-      _ -> :ok
+      {:ok, _} -> :ok
     end
   end
 
@@ -162,9 +162,9 @@ defmodule SnowSeTools.Reports.GeneratedReportDB do
     ORDER BY gr.inserted_at ASC
     """
 
-    case DbHelpers.run_sql(sql, %{}) do
+    case DbHelpers.query(sql, %{}) do
       {:error, _} = err -> err
-      rows -> {:ok, rows}
+      {:ok, rows} -> {:ok, rows}
     end
   end
 end

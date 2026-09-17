@@ -82,9 +82,9 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
     ]
 
     Enum.reduce_while(statements, :ok, fn sql, :ok ->
-      case DbHelpers.run_sql(sql, %{}) do
+      case DbHelpers.query(sql, %{}) do
         {:error, reason} -> {:halt, {:error, reason}}
-        _rows -> {:cont, :ok}
+        {:ok, _rows} -> {:cont, :ok}
       end
     end)
   end
@@ -100,11 +100,11 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
     ORDER BY created_at DESC
     """
 
-    case DbHelpers.run_sql(sql, %{}, @group_schema) do
+    case DbHelpers.query(sql, %{}, @group_schema) do
       {:error, _reason} = error ->
         error
 
-      groups ->
+      {:ok, groups} ->
         {:ok, groups}
     end
   end
@@ -118,19 +118,19 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
       to_char(inserted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS inserted_at
     """
 
-    case DbHelpers.run_sql(sql, %{"name" => name}, @group_schema) do
-      [group] -> {:ok, group}
+    case DbHelpers.query(sql, %{"name" => name}, @group_schema) do
+      {:ok, [group]} -> {:ok, group}
       {:error, reason} -> {:error, reason}
-      other -> {:error, {:unexpected_insert_result, other}}
+      {:ok, other} -> {:error, {:unexpected_insert_result, other}}
     end
   end
 
   def delete_group(group_id) do
     sql = "DELETE FROM schedule_change_groups WHERE id = $(id)"
 
-    case DbHelpers.run_sql(sql, %{"id" => Uuid.to_binary(group_id)}) do
+    case DbHelpers.query(sql, %{"id" => Uuid.to_binary(group_id)}) do
       {:error, _reason} = error -> error
-      _rows -> :ok
+      {:ok, _rows} -> :ok
     end
   end
 
@@ -144,13 +144,13 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
       to_char(inserted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS inserted_at
     """
 
-    case DbHelpers.run_sql(
+    case DbHelpers.query(
            sql,
            %{"id" => Uuid.to_binary(group_id), "name" => new_name},
            @group_schema
          ) do
-      [group] -> {:ok, group}
-      [] -> {:error, :not_found}
+      {:ok, [group]} -> {:ok, group}
+      {:ok, []} -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
     end
   end
@@ -175,11 +175,11 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
     ORDER BY crn
     """
 
-    case DbHelpers.run_sql(sql, %{"group_id" => Uuid.to_binary(group_id)}, @change_schema) do
+    case DbHelpers.query(sql, %{"group_id" => Uuid.to_binary(group_id)}, @change_schema) do
       {:error, _reason} = error ->
         error
 
-      changes ->
+      {:ok, changes} ->
         {:ok, changes}
     end
   end
@@ -204,9 +204,9 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
   def remove_change(change_id) do
     sql = "DELETE FROM schedule_changes WHERE id = $(id)"
 
-    case DbHelpers.run_sql(sql, %{"id" => Uuid.to_binary(change_id)}) do
+    case DbHelpers.query(sql, %{"id" => Uuid.to_binary(change_id)}) do
       {:error, _reason} = error -> error
-      _rows -> :ok
+      {:ok, _rows} -> :ok
     end
   end
 
@@ -218,9 +218,9 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
     LIMIT 1
     """
 
-    case DbHelpers.run_sql(sql, %{"group_id" => group_id, "crn" => crn}) do
-      [%{"id" => id}] -> %{"id" => id}
-      [] -> nil
+    case DbHelpers.query(sql, %{"group_id" => group_id, "crn" => crn}) do
+      {:ok, [%{"id" => id}]} -> %{"id" => id}
+      {:ok, []} -> nil
       {:error, reason} -> {:error, reason}
     end
   end
@@ -266,10 +266,10 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
       "operation" => attrs["operation"] || attrs[:operation] || "update"
     }
 
-    case DbHelpers.run_sql(sql, params, @change_schema) do
-      [change] -> {:ok, change}
+    case DbHelpers.query(sql, params, @change_schema) do
+      {:ok, [change]} -> {:ok, change}
       {:error, reason} -> {:error, reason}
-      other -> {:error, {:unexpected_insert_result, other}}
+      {:ok, other} -> {:error, {:unexpected_insert_result, other}}
     end
   end
 
@@ -301,9 +301,9 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
       "operation" => attrs["operation"] || attrs[:operation]
     }
 
-    case DbHelpers.run_sql(sql, params, @change_schema) do
-      [change] -> {:ok, change}
-      [] -> {:error, :not_found}
+    case DbHelpers.query(sql, params, @change_schema) do
+      {:ok, [change]} -> {:ok, change}
+      {:ok, []} -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
     end
   end

@@ -1,4 +1,5 @@
 defmodule SnowSeToolsWeb.Syllabus.SyllabusDetail do
+  alias SnowSeTools.Data.Text
   use SnowSeToolsWeb, :html
 
   import Phoenix.HTML, only: [raw: 1]
@@ -276,8 +277,7 @@ defmodule SnowSeToolsWeb.Syllabus.SyllabusDetail do
 
   defp blank_fallback(_value), do: "Not cached"
 
-  defp blank?(value) when is_binary(value), do: String.trim(value) == ""
-  defp blank?(_value), do: true
+  defp blank?(value), do: Text.blank_string?(value)
 
   def detail_panel_placeholder(assigns) do
     ~H"""

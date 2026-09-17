@@ -184,7 +184,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingViewOnlyTest do
   defp live_scheduling(_conn, logged_in_conn, term_code) do
     {:ok, view, _html} = live(logged_in_conn, ~p"/scheduling?mode=viewer&term=#{term_code}")
 
-    _ = :sys.get_state(ScheduleOwnerDomainManager)
+    :ok = ScheduleOwnerDomainManager.await_idle()
     render(view)
 
     view
@@ -203,9 +203,9 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingViewOnlyTest do
   end
 
   defp wait_for_week_schedules(view) do
-    _ = :sys.get_state(ScheduleOwnerDomainManager)
+    :ok = ScheduleOwnerDomainManager.await_idle()
     render(view)
-    _ = :sys.get_state(ScheduleOwnerDomainManager)
+    :ok = ScheduleOwnerDomainManager.await_idle()
     render(view)
   end
 

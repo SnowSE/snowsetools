@@ -324,7 +324,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
 
     assert {:rename_channel, %{channel_id: "channel-100", new_name: "survey"}} in DiscordApi.calls()
 
-    assert Enum.any?(DiscordDb.list_channels(), fn channel ->
+    assert Enum.any?(rows!(DiscordDb.list_channels()), fn channel ->
              channel["id"] == "channel-100" and channel["name"] == "survey"
            end)
 
@@ -394,12 +394,12 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
         }
       )
 
-    case DbHelpers.run_sql(
+    case DbHelpers.query(
            "UPDATE discord_channels SET name = $(name) WHERE id = $(id)",
            %{"name" => "channel-100", "id" => "channel-100"}
          ) do
       {:error, reason} -> raise "Failed to seed bad channel name: #{inspect(reason)}"
-      _result -> :ok
+      {:ok, _rows} -> :ok
     end
 
     conn = log_in_test_user(conn)
@@ -547,7 +547,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
 
     refute DiscordDb.get_course_channel_assignment(channel_id: "channel-100")
 
-    refute Enum.any?(DiscordDb.list_channels(), fn channel ->
+    refute Enum.any?(rows!(DiscordDb.list_channels()), fn channel ->
              channel["id"] == "channel-100"
            end)
 
@@ -719,7 +719,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
 
     flush_student_mapping_flow(view)
 
-    assert Enum.any?(DiscordDb.list_student_discord_mappings(), fn mapping ->
+    assert Enum.any?(rows!(DiscordDb.list_student_discord_mappings()), fn mapping ->
              mapping["badger_id"] == "b00000001" and
                mapping["discord_user_id"] == "discord-user-1"
            end)
@@ -789,17 +789,20 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
   defp log_in_test_user(conn),
     do: log_in_user(conn, "discord-channel-assignment@example.com", ["discord_admin"])
 
+  defp rows!({:ok, rows}), do: rows
+  defp rows!({:error, reason}), do: raise("database read failed: #{inspect(reason)}")
+
   defp delete_course_channel_assignments do
-    case DbHelpers.run_sql("DELETE FROM course_channel_assignments", %{}) do
+    case DbHelpers.query("DELETE FROM course_channel_assignments", %{}) do
       {:error, reason} -> raise "Failed to clean course channel assignments: #{inspect(reason)}"
-      _result -> :ok
+      {:ok, _rows} -> :ok
     end
   end
 
   defp delete_student_discord_mappings do
-    case DbHelpers.run_sql("DELETE FROM student_discord_mapping", %{}) do
+    case DbHelpers.query("DELETE FROM student_discord_mapping", %{}) do
       {:error, reason} -> raise "Failed to clean student Discord mappings: #{inspect(reason)}"
-      _result -> :ok
+      {:ok, _rows} -> :ok
     end
   end
 
@@ -976,7 +979,7 @@ defmodule SnowSeToolsWeb.Discord.DiscordChannelAssignmentTest do
     _ = :sys.get_state(view.pid)
     render(view)
 
-    if Enum.any?(DiscordDb.list_channels(), fn channel -> channel["id"] == channel_id end) do
+    if Enum.any?(rows!(DiscordDb.list_channels()), fn channel -> channel["id"] == channel_id end) do
       wait_for_deleted_channel(view, channel_id, attempts_remaining - 1)
     else
       :ok

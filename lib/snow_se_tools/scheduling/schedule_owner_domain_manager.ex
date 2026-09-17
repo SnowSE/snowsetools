@@ -1,6 +1,25 @@
 defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
+  @moduledoc """
+  Serves every scheduling reader: the terms, the searchable owners in a term,
+  and one owner's week.
+
+  A term's data is expensive to assemble and is cached here, but the assembling
+  happens in a task rather than in this process. Everyone scheduling shares this
+  one GenServer, and building a cold term inside it used to make every other
+  reader — including people whose term was already cached — wait behind it.
+  Requests for a term already being built queue up and are answered together
+  when it lands, so a page with eight cards costs one build, not eight.
+
+  The cache keeps the `@max_cached_terms` most recently asked-for terms. It used
+  to keep every term anyone had ever opened, for the life of the process.
+  """
+
   use GenServer
   require Logger
+
+  # Terms are large and people work in one or two at a time.
+  @max_cached_terms 3
+  @load_timeout :timer.seconds(30)
 
   alias SnowSeTools.AcademicPrograms.{AcademicProgramPubSub, ProgramDb}
   alias SnowSeTools.Snow.SnowCourseCacheDb
@@ -29,7 +48,16 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
   end
 
   def get_term_owner_course_lists(term_code: term_code) when is_binary(term_code) do
-    GenServer.call(__MODULE__, {:get_term_owner_course_lists, term_code})
+    GenServer.call(__MODULE__, {:get_term_owner_course_lists, term_code}, @load_timeout)
+  end
+
+  @doc """
+  Returns once no term is being loaded in the background. Loading a cold term
+  happens off this process, so a caller that needs the data to be there — a
+  test, mostly — has something better to wait on than the mailbox being empty.
+  """
+  def await_idle(timeout \\ @load_timeout) do
+    GenServer.call(__MODULE__, :await_idle, timeout)
   end
 
   def init(:ok) do
@@ -43,7 +71,10 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
        terms: load_terms(),
        schedule_owner_metadata_by_term: %{},
        course_lists_by_owner_by_term: %{},
-       academic_programs: academic_programs
+       academic_programs: academic_programs,
+       loading: %{},
+       recent_terms: [],
+       idle_waiters: []
      }}
   end
 
@@ -53,61 +84,69 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
   end
 
   def handle_cast({:request_schedule_owners_metadata, pid, term_code}, state) do
-    metadata_by_term = state.schedule_owner_metadata_by_term
+    case Map.fetch(state.schedule_owner_metadata_by_term, term_code) do
+      {:ok, schedule_owners} ->
+        send_schedule_owners(pid, term_code, schedule_owners)
+        {:noreply, touch_term(state, term_code)}
 
-    schedule_owners =
-      case Map.has_key?(metadata_by_term, term_code) do
-        true ->
-          metadata_by_term[term_code]
-
-        false ->
-          build_schedule_owners_metadata_for_term(term_code, state)
-      end
-
-    send(pid, {:schedule_owners, %{term_code: term_code, schedule_owners: schedule_owners}})
-
-    updated_metadata_by_term = Map.put(metadata_by_term, term_code, schedule_owners)
-
-    {:noreply,
-     state
-     |> Map.put(
-       :schedule_owner_metadata_by_term,
-       updated_metadata_by_term
-     )}
+      :error ->
+        {:noreply, await_term(state, term_code, {:metadata, pid})}
+    end
   end
 
   def handle_cast({:request_schedule_owner_course_list, pid, term_code, owner_key}, state) do
-    {course_lists_by_owner, state} =
-      course_lists_by_owner_for_term(term_code: term_code, state: state)
+    case Map.fetch(state.course_lists_by_owner_by_term, term_code) do
+      {:ok, course_lists_by_owner} ->
+        send_course_list(pid, term_code, owner_key, course_lists_by_owner)
+        {:noreply, touch_term(state, term_code)}
 
-    case Map.get(course_lists_by_owner, owner_key) do
-      nil ->
-        Logger.info(
-          "ScheduleOwnerDomainManager could not find course list for term=#{term_code} owner_key=#{owner_key}"
-        )
-
-        send(
-          pid,
-          {:schedule_owner_course_list,
-           %{term_code: term_code, owner_key: owner_key, course_list: []}}
-        )
-
-      course_list ->
-        send(
-          pid,
-          {:schedule_owner_course_list,
-           %{term_code: term_code, owner_key: owner_key, course_list: course_list}}
-        )
+      :error ->
+        {:noreply, await_term(state, term_code, {:course_list, pid, owner_key})}
     end
-
-    {:noreply, state}
   end
 
-  def handle_call({:get_term_owner_course_lists, term_code}, _from, state) do
-    {course_lists_by_owner, state} =
-      course_lists_by_owner_for_term(term_code: term_code, state: state)
+  def handle_call({:get_term_owner_course_lists, term_code}, from, state) do
+    case Map.fetch(state.course_lists_by_owner_by_term, term_code) do
+      {:ok, course_lists_by_owner} ->
+        {:reply, {:ok, Map.values(course_lists_by_owner)}, touch_term(state, term_code)}
 
-    {:reply, {:ok, Map.values(course_lists_by_owner)}, state}
+      :error ->
+        {:noreply, await_term(state, term_code, {:call, from})}
+    end
+  end
+
+  def handle_call(:await_idle, from, state) do
+    if state.loading == %{} do
+      {:reply, :ok, state}
+    else
+      {:noreply, %{state | idle_waiters: [from | state.idle_waiters]}}
+    end
+  end
+
+  def handle_info({:term_built, term_code, term}, state) do
+    waiters = Map.get(state.loading, term_code, [])
+
+    state =
+      state
+      |> Map.put(:loading, Map.delete(state.loading, term_code))
+      |> cache_term(term_code: term_code, term: term)
+
+    Enum.each(Enum.reverse(waiters), &answer_waiter(&1, term_code, term))
+
+    {:noreply, flush_idle_waiters(state)}
+  end
+
+  def handle_info({:term_build_failed, term_code, reason}, state) do
+    Logger.error(
+      "ScheduleOwnerDomainManager could not build term=#{term_code} reason=#{inspect(reason)}"
+    )
+
+    waiters = Map.get(state.loading, term_code, [])
+    empty = %{metadata: [], course_lists: %{}}
+
+    Enum.each(Enum.reverse(waiters), &answer_waiter(&1, term_code, empty))
+
+    {:noreply, flush_idle_waiters(%{state | loading: Map.delete(state.loading, term_code)})}
   end
 
   def handle_info({:academic_programs, {:program_created, program}}, state) do
@@ -341,7 +380,11 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
           |> Map.keys()
           |> MapSet.new()
 
-        course_lists_by_owner = build_course_lists_by_owner(term_code: term_code, state: state)
+        course_lists_by_owner =
+          build_course_lists(
+            courses: load_course_data(term_code),
+            academic_programs: state.academic_programs
+          )
 
         current_owner_keys =
           course_lists_by_owner
@@ -391,6 +434,135 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
     {:noreply, state}
   end
 
+  # --- background term loading ---------------------------------------------
+
+  defp await_term(state, term_code, waiter) do
+    waiters = Map.get(state.loading, term_code, [])
+    state = %{state | loading: Map.put(state.loading, term_code, [waiter | waiters])}
+
+    if waiters == [] do
+      start_term_build(state, term_code)
+    end
+
+    state
+  end
+
+  defp start_term_build(state, term_code) do
+    manager = self()
+    academic_programs = state.academic_programs
+
+    Task.Supervisor.start_child(SnowSeTools.TaskSupervisor, fn ->
+      message =
+        try do
+          {:term_built, term_code,
+           build_term(term_code: term_code, academic_programs: academic_programs)}
+        rescue
+          exception -> {:term_build_failed, term_code, Exception.message(exception)}
+        end
+
+      send(manager, message)
+    end)
+  end
+
+  defp build_term(term_code: term_code, academic_programs: academic_programs) do
+    courses = load_course_data(term_code)
+
+    %{
+      metadata: build_metadata(courses: courses, academic_programs: academic_programs),
+      course_lists: build_course_lists(courses: courses, academic_programs: academic_programs)
+    }
+  end
+
+  defp answer_waiter({:metadata, pid}, term_code, term),
+    do: send_schedule_owners(pid, term_code, term.metadata)
+
+  defp answer_waiter({:course_list, pid, owner_key}, term_code, term),
+    do: send_course_list(pid, term_code, owner_key, term.course_lists)
+
+  defp answer_waiter({:call, from}, _term_code, term),
+    do: GenServer.reply(from, {:ok, Map.values(term.course_lists)})
+
+  defp send_schedule_owners(pid, term_code, schedule_owners) do
+    send(pid, {:schedule_owners, %{term_code: term_code, schedule_owners: schedule_owners}})
+  end
+
+  defp send_course_list(pid, term_code, owner_key, course_lists_by_owner) do
+    course_list = Map.get(course_lists_by_owner, owner_key)
+
+    if is_nil(course_list) do
+      Logger.info(
+        "ScheduleOwnerDomainManager could not find course list for term=#{term_code} owner_key=#{owner_key}"
+      )
+    end
+
+    send(
+      pid,
+      {:schedule_owner_course_list,
+       %{term_code: term_code, owner_key: owner_key, course_list: course_list || []}}
+    )
+  end
+
+  defp flush_idle_waiters(%{loading: loading} = state) when loading == %{} do
+    Enum.each(state.idle_waiters, &GenServer.reply(&1, :ok))
+    %{state | idle_waiters: []}
+  end
+
+  defp flush_idle_waiters(state), do: state
+
+  # --- cache ----------------------------------------------------------------
+
+  defp cache_term(state, term_code: term_code, term: term) do
+    state
+    |> Map.put(
+      :schedule_owner_metadata_by_term,
+      Map.put(state.schedule_owner_metadata_by_term, term_code, term.metadata)
+    )
+    |> Map.put(
+      :course_lists_by_owner_by_term,
+      Map.put(state.course_lists_by_owner_by_term, term_code, term.course_lists)
+    )
+    |> touch_term(term_code)
+    |> evict_stale_terms()
+  end
+
+  defp touch_term(state, term_code) do
+    %{state | recent_terms: [term_code | List.delete(state.recent_terms, term_code)]}
+  end
+
+  defp evict_stale_terms(state) do
+    case Enum.split(state.recent_terms, @max_cached_terms) do
+      {_kept, []} ->
+        state
+
+      {kept, evicted} ->
+        Enum.reduce(evicted, %{state | recent_terms: kept}, fn term_code, acc ->
+          acc
+          |> Map.put(
+            :schedule_owner_metadata_by_term,
+            Map.delete(acc.schedule_owner_metadata_by_term, term_code)
+          )
+          |> Map.put(
+            :course_lists_by_owner_by_term,
+            Map.delete(acc.course_lists_by_owner_by_term, term_code)
+          )
+        end)
+    end
+  end
+
+  defp load_course_data(term_code) do
+    case SnowCourseCacheDb.list_course_data_for_term(term_code: term_code) do
+      {:ok, courses} ->
+        courses
+
+      {:error, reason} ->
+        Logger.error(
+          "ScheduleOwnerDomainManager failed to load courses for term=#{term_code}: #{inspect(reason)}"
+        )
+
+        []
+    end
+  end
+
   defp load_academic_programs do
     case ProgramDb.list_programs() do
       {:ok, programs} ->
@@ -411,7 +583,7 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
         Logger.error("ScheduleOwnerDomainManager failed to load terms: #{inspect(reason)}")
         []
 
-      terms ->
+      {:ok, terms} ->
         terms
     end
   end
@@ -428,52 +600,22 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
     |> MapSet.union(MapSet.new(Map.keys(state.course_lists_by_owner_by_term)))
   end
 
-  defp course_lists_by_owner_for_term(term_code: term_code, state: state) do
-    case Map.fetch(state.course_lists_by_owner_by_term, term_code) do
-      {:ok, course_lists_by_owner} ->
-        {course_lists_by_owner, state}
-
-      :error ->
-        course_lists_by_owner = build_course_lists_by_owner(term_code: term_code, state: state)
-
-        {course_lists_by_owner,
-         Map.put(
-           state,
-           :course_lists_by_owner_by_term,
-           Map.put(state.course_lists_by_owner_by_term, term_code, course_lists_by_owner)
-         )}
-    end
-  end
-
-  defp build_course_lists_by_owner(term_code: term_code, state: state) do
-    case SnowCourseCacheDb.list_course_data_for_term(term_code: term_code) do
-      {:ok, courses} ->
-        ScheduleUtils.owner_course_lists(
-          courses: courses,
-          academic_programs: state.academic_programs
-        )
-        |> Enum.map(fn course_list ->
-          ScheduleOwnerSchedule.new(
-            owner_key: course_list.owner_key,
-            type: course_list.type,
-            name: course_list.name,
-            courses: course_list.courses,
-            opts: [
-              program_name: Map.get(course_list, :program_name),
-              semester_name: Map.get(course_list, :semester_name),
-              schedule_variants: Map.get(course_list, :schedule_variants, [])
-            ]
-          )
-        end)
-        |> Map.new(&{&1.owner_key, &1})
-
-      {:error, reason} ->
-        Logger.error(
-          "ScheduleOwnerDomainManager failed to load owner course lists for term=#{term_code}: #{inspect(reason)}"
-        )
-
-        %{}
-    end
+  defp build_course_lists(courses: courses, academic_programs: academic_programs) do
+    ScheduleUtils.owner_course_lists(courses: courses, academic_programs: academic_programs)
+    |> Enum.map(fn course_list ->
+      ScheduleOwnerSchedule.new(
+        owner_key: course_list.owner_key,
+        type: course_list.type,
+        name: course_list.name,
+        courses: course_list.courses,
+        opts: [
+          program_name: Map.get(course_list, :program_name),
+          semester_name: Map.get(course_list, :semester_name),
+          schedule_variants: Map.get(course_list, :schedule_variants, [])
+        ]
+      )
+    end)
+    |> Map.new(&{&1.owner_key, &1})
   end
 
   defp program_metadata(program: program) do
@@ -537,21 +679,15 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
   defp courses_for_first_variant([]), do: []
 
   defp build_schedule_owners_metadata_for_term(term_code, state) do
-    courses =
-      case SnowCourseCacheDb.list_course_data_for_term(term_code: term_code) do
-        {:ok, courses} ->
-          courses
+    build_metadata(
+      courses: load_course_data(term_code),
+      academic_programs: state.academic_programs
+    )
+  end
 
-        {:error, reason} ->
-          Logger.error(
-            "ScheduleOwnerDomainManager failed to load courses for term=#{term_code}: #{inspect(reason)}"
-          )
-
-          []
-      end
-
+  defp build_metadata(courses: courses, academic_programs: academic_programs) do
     academic_program_metadata =
-      Enum.flat_map(state.academic_programs, fn program ->
+      Enum.flat_map(academic_programs, fn program ->
         (program["semesters"] || [])
         |> Enum.with_index()
         |> Enum.map(fn {semester, semester_index} ->

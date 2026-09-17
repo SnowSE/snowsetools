@@ -3,6 +3,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
 
   import SnowSeToolsWeb.Components.{Expandable, HoverTooltip}
 
+  alias SnowSeTools.Scheduling.TimeOfDay
+
   attr :schedule_owner, :map, required: true
   attr :owner_key, :string, required: true
   attr :selected_term_code, :string, required: true
@@ -44,7 +46,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
         </div>
       </div>
       <div class="grid min-w-0 flex-1 grid-cols-5 gap-1">
-        <%= for day <- ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"] do %>
+        <%= for day <- TimeOfDay.week_days() do %>
           <div class="min-w-0">
             <div class="py-2 text-center tracking-wide text-slate-500">
               {String.slice(day, 0, 3)}
@@ -736,23 +738,5 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
   defp meeting_term(term, _selected_term_code) when is_binary(term) and term != "", do: term
   defp meeting_term(_term, selected_term_code), do: selected_term_code
 
-  defp format_minutes(minutes) do
-    minutes
-    |> then(fn value ->
-      hour = div(value, 60)
-      minute = rem(value, 60)
-
-      "#{String.pad_leading(to_string(hour), 2, "0")}:#{String.pad_leading(to_string(minute), 2, "0")}"
-    end)
-    |> format_clock()
-  end
-
-  defp format_clock(<<hour::binary-size(2), ":", minute::binary-size(2)>>) do
-    {hour, ""} = Integer.parse(hour)
-    period = if hour >= 12, do: "PM", else: "AM"
-    display_hour = hour |> rem(12) |> then(&if(&1 == 0, do: 12, else: &1))
-    "#{display_hour}:#{minute} #{period}"
-  end
-
-  defp format_clock(time), do: time
+  defp format_minutes(minutes), do: TimeOfDay.format_12h(minutes)
 end

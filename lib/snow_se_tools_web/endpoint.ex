@@ -11,7 +11,10 @@ defmodule SnowSeToolsWeb.Endpoint do
     signing_salt: "hrpbGw22",
     encryption_salt: "kQ7vX2pLm9sN4dRz",
     max_age: 60 * 60 * 24 * 14,
-    same_site: "Lax"
+    same_site: "Lax",
+    # TLS terminates at the Cloudflare tunnel and the app is reached over plain
+    # HTTP behind it, so Plug cannot infer this.
+    secure: true
   ]
 
   socket "/live", Phoenix.LiveView.Socket,

@@ -1,6 +1,9 @@
 defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
+  alias SnowSeTools.Data.Text
   alias SnowSeTools.Scheduling.CourseNameSequel
+  alias SnowSeTools.Scheduling.ScheduleChange
   alias SnowSeTools.Scheduling.ScheduleUtils
+  alias SnowSeTools.Scheduling.TimeOfDay
 
   # Placeholder professor used by registrar for unassigned courses.
   # Filtered out from professor conflict detection entirely.
@@ -122,66 +125,8 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
 
   # -- Change application --
 
-  defp apply_changes(courses: courses, changes: changes) do
-    changes_by_crn = Map.new(changes, &{&1["crn"], &1})
-    existing_crns = MapSet.new(courses, & &1["crn"])
-
-    updated_courses =
-      courses
-      |> Enum.flat_map(fn course ->
-        case Map.get(changes_by_crn, course["crn"]) do
-          nil ->
-            [course]
-
-          %{"course_name" => "__DELETED__"} ->
-            []
-
-          %{"operation" => "update"} = change ->
-            [apply_change_to_course(course: course, change: change)]
-
-          %{"operation" => "add"} ->
-            [course]
-        end
-      end)
-
-    added_courses =
-      changes
-      |> Enum.filter(&(&1["operation"] == "add"))
-      |> Enum.reject(&MapSet.member?(existing_crns, &1["crn"]))
-      |> Enum.map(&change_to_course/1)
-
-    updated_courses ++ added_courses
-  end
-
-  defp apply_change_to_course(course: course, change: change) do
-    course
-    |> Map.put("name", change["course_name"] || course["name"])
-    |> Map.put("subject_code", change["subject_code"] || course["subject_code"])
-    |> Map.put("course_number", change["course_number"] || course["course_number"])
-    |> Map.put("instructors", changed_instructors(change, course))
-    |> Map.put("meet_info", change["meet_info"] || course["meet_info"])
-  end
-
-  defp changed_instructors(%{"target_professor" => professor}, _course)
-       when is_binary(professor) and professor != "" do
-    [%{"name" => professor, "primary_instructor" => true}]
-  end
-
-  defp changed_instructors(_change, course), do: Map.get(course, "instructors", [])
-
-  defp change_to_course(change) do
-    %{
-      "crn" => change["crn"],
-      "term_code" => change["term"],
-      "subject_code" => change["subject_code"],
-      "course_number" => change["course_number"],
-      "section_number" => "",
-      "name" => change["course_name"] || "",
-      "credit_hours" => 0,
-      "instructors" => changed_instructors(change, %{}),
-      "meet_info" => change["meet_info"] || []
-    }
-  end
+  defp apply_changes(courses: courses, changes: changes),
+    do: ScheduleChange.apply_changes(courses: courses, changes: changes)
 
   defp change_ids_by_crn(changes) do
     changes
@@ -615,35 +560,11 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
     |> Enum.join("-")
   end
 
-  defp normalize_time(time) when is_binary(time) do
-    case String.split(time, ":") do
-      [hour, minute | _] -> "#{hour}:#{minute}"
-      _other -> time
-    end
-  end
+  defp normalize_time(time), do: TimeOfDay.normalize_or_nil(time)
 
-  defp normalize_time(_time), do: nil
+  defp time_minutes(time), do: TimeOfDay.minutes(time, 0)
 
-  defp time_minutes(time) when is_binary(time) do
-    case String.split(time, ":") do
-      [hour, minute | _] ->
-        with {h, ""} <- Integer.parse(hour),
-             {m, ""} <- Integer.parse(minute) do
-          h * 60 + m
-        else
-          _other -> 0
-        end
-
-      _other ->
-        0
-    end
-  end
-
-  defp time_minutes(_time), do: 0
-
-  defp blank?(nil), do: true
-  defp blank?(""), do: true
-  defp blank?(_value), do: false
+  defp blank?(value), do: Text.blank?(value)
 
   defp tba_staff_owner?("professor:" <> rest) do
     String.trim(rest) == @tba_staff

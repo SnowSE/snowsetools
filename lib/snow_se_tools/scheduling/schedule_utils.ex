@@ -1,5 +1,7 @@
 defmodule SnowSeTools.Scheduling.ScheduleUtils do
-  @days ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+  alias SnowSeTools.Data.Text
+  alias SnowSeTools.Scheduling.TimeOfDay
+  @days TimeOfDay.week_days()
   @default_start_minutes 8 * 60
   @default_end_minutes 17 * 60
 
@@ -352,22 +354,7 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
     |> Map.put(:end_minutes, parse_minutes(meeting["end_time"]))
   end
 
-  defp parse_minutes(time) when is_binary(time) do
-    case String.split(time, ":") do
-      [hour, minute | _] ->
-        with {h, ""} <- Integer.parse(hour),
-             {m, ""} <- Integer.parse(minute) do
-          h * 60 + m
-        else
-          _ -> @default_start_minutes
-        end
-
-      _ ->
-        @default_start_minutes
-    end
-  end
-
-  defp parse_minutes(_time), do: @default_start_minutes
+  defp parse_minutes(time), do: TimeOfDay.minutes(time, @default_start_minutes)
 
   defp credit_count(courses) do
     courses
@@ -387,6 +374,5 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
     do: value |> String.trim() |> String.upcase()
 
   defp normalize_course_code(_value), do: ""
-  defp blank?(value) when is_binary(value), do: String.trim(value) == ""
-  defp blank?(_value), do: true
+  defp blank?(value), do: Text.blank_string?(value)
 end

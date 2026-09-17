@@ -20,7 +20,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramEditTest do
     start_supervised!(ScheduleOwnerDomainManager)
 
     on_exit(fn ->
-      DbHelpers.run_sql(
+      DbHelpers.query(
         "DELETE FROM academic_programs WHERE name = $(name)",
         %{"name" => "Test Program"}
       )

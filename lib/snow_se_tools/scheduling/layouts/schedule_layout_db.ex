@@ -64,9 +64,9 @@ defmodule SnowSeTools.Scheduling.ScheduleLayoutDb do
     ]
 
     Enum.reduce_while(statements, :ok, fn sql, :ok ->
-      case DbHelpers.run_sql(sql, %{}) do
+      case DbHelpers.query(sql, %{}) do
         {:error, reason} -> {:halt, {:error, reason}}
-        _rows -> {:cont, :ok}
+        {:ok, _rows} -> {:cont, :ok}
       end
     end)
   end
@@ -85,9 +85,9 @@ defmodule SnowSeTools.Scheduling.ScheduleLayoutDb do
     ORDER BY l.scope, lower(l.name)
     """
 
-    case DbHelpers.run_sql(sql, %{"user_id" => Uuid.to_binary(user_id)}, @layout_schema) do
+    case DbHelpers.query(sql, %{"user_id" => Uuid.to_binary(user_id)}, @layout_schema) do
       {:error, _reason} = error -> error
-      layouts -> {:ok, Enum.map(layouts, &decode_entries/1)}
+      {:ok, layouts} -> {:ok, Enum.map(layouts, &decode_entries/1)}
     end
   end
 
@@ -100,11 +100,11 @@ defmodule SnowSeTools.Scheduling.ScheduleLayoutDb do
     WHERE l.id = $(id)
     """
 
-    case DbHelpers.run_sql(sql, %{"id" => Uuid.to_binary(layout_id)}, @layout_schema) do
-      [layout] -> {:ok, decode_entries(layout)}
-      [] -> {:error, :not_found}
+    case DbHelpers.query(sql, %{"id" => Uuid.to_binary(layout_id)}, @layout_schema) do
+      {:ok, [layout]} -> {:ok, decode_entries(layout)}
+      {:ok, []} -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
-      other -> {:error, {:unexpected_select_result, other}}
+      {:ok, other} -> {:error, {:unexpected_select_result, other}}
     end
   end
 
@@ -129,10 +129,10 @@ defmodule SnowSeTools.Scheduling.ScheduleLayoutDb do
       "entries" => Jason.encode!(entries)
     }
 
-    case DbHelpers.run_sql(sql, params, @layout_schema) do
-      [layout] -> {:ok, decode_entries(layout)}
+    case DbHelpers.query(sql, params, @layout_schema) do
+      {:ok, [layout]} -> {:ok, decode_entries(layout)}
       {:error, reason} -> {:error, reason}
-      other -> {:error, {:unexpected_insert_result, other}}
+      {:ok, other} -> {:error, {:unexpected_insert_result, other}}
     end
   end
 
@@ -164,11 +164,11 @@ defmodule SnowSeTools.Scheduling.ScheduleLayoutDb do
       "entries" => entries && Jason.encode!(entries)
     }
 
-    case DbHelpers.run_sql(sql, params, @layout_schema) do
-      [layout] -> {:ok, decode_entries(layout)}
-      [] -> {:error, :not_found}
+    case DbHelpers.query(sql, params, @layout_schema) do
+      {:ok, [layout]} -> {:ok, decode_entries(layout)}
+      {:ok, []} -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
-      other -> {:error, {:unexpected_update_result, other}}
+      {:ok, other} -> {:error, {:unexpected_update_result, other}}
     end
   end
 
@@ -198,9 +198,9 @@ defmodule SnowSeTools.Scheduling.ScheduleLayoutDb do
   def delete(layout_id) when is_binary(layout_id) do
     sql = "DELETE FROM schedule_layouts WHERE id = $(id)"
 
-    case DbHelpers.run_sql(sql, %{"id" => Uuid.to_binary(layout_id)}) do
+    case DbHelpers.query(sql, %{"id" => Uuid.to_binary(layout_id)}) do
       {:error, _reason} = error -> error
-      _rows -> :ok
+      {:ok, _rows} -> :ok
     end
   end
 end

@@ -22,9 +22,9 @@ defmodule SnowSeTools.Reports.RequiredElementDB do
     ORDER BY name ASC
     """
 
-    case DbHelpers.run_sql(sql, %{}) do
+    case DbHelpers.query(sql, %{}) do
       {:error, _} = err -> err
-      rows -> {:ok, rows}
+      {:ok, rows} -> {:ok, rows}
     end
   end
 
@@ -35,10 +35,10 @@ defmodule SnowSeTools.Reports.RequiredElementDB do
     WHERE id = $(id)
     """
 
-    case DbHelpers.run_sql(sql, %{"id" => Uuid.to_binary(id)}) do
+    case DbHelpers.query(sql, %{"id" => Uuid.to_binary(id)}) do
       {:error, _} = err -> err
-      [row | _] -> {:ok, row}
-      [] -> {:error, :not_found}
+      {:ok, [row | _]} -> {:ok, row}
+      {:ok, []} -> {:error, :not_found}
     end
   end
 
@@ -51,13 +51,13 @@ defmodule SnowSeTools.Reports.RequiredElementDB do
         RETURNING id, name, description
         """
 
-        case DbHelpers.run_sql(sql, %{
+        case DbHelpers.query(sql, %{
                "name" => d["name"],
                "description" => d["description"]
              }) do
           {:error, _} = err -> err
-          [row | _] -> {:ok, row}
-          [] -> {:error, :not_found}
+          {:ok, [row | _]} -> {:ok, row}
+          {:ok, []} -> {:error, :not_found}
         end
 
       {:error, errors} ->
@@ -77,14 +77,14 @@ defmodule SnowSeTools.Reports.RequiredElementDB do
         RETURNING id, name, description
         """
 
-        case DbHelpers.run_sql(sql, %{
+        case DbHelpers.query(sql, %{
                "id" => Uuid.to_binary(id),
                "name" => d["name"],
                "description" => d["description"]
              }) do
           {:error, _} = err -> err
-          [row | _] -> {:ok, row}
-          [] -> {:error, :not_found}
+          {:ok, [row | _]} -> {:ok, row}
+          {:ok, []} -> {:error, :not_found}
         end
 
       {:error, errors} ->
@@ -94,12 +94,12 @@ defmodule SnowSeTools.Reports.RequiredElementDB do
 
   def delete(id) do
     DbHelpers.transaction(fn ->
-      DbHelpers.run_sql(
+      DbHelpers.query(
         "DELETE FROM syllabus_generated_report_items WHERE required_element_id = $(id)",
         %{"id" => Uuid.to_binary(id)}
       )
 
-      DbHelpers.run_sql("DELETE FROM syllabus_required_elements WHERE id = $(id)", %{
+      DbHelpers.query("DELETE FROM syllabus_required_elements WHERE id = $(id)", %{
         "id" => Uuid.to_binary(id)
       })
 

@@ -1,5 +1,22 @@
 defmodule SnowSeTools.TestDatabase do
+  @moduledoc """
+  Builds the one database the whole suite shares. See `SnowSeToolsWeb.ConnCase`
+  for what that means for the tests themselves.
+  """
+
   @schema_path Path.expand("../../schema.sql", __DIR__)
+
+  # AccessControl.create_user/1 seeds the built-in groups and grants admin to
+  # the first row in users. Left to chance that lands on whichever test happens
+  # to run first, which then quietly holds super-user rights. Spending it on a
+  # throwaway account makes every test account start with exactly the groups it
+  # asked for.
+  @bootstrap_email "suite-bootstrap@example.com"
+
+  def seed_access_control! do
+    {:ok, _user} = SnowSeTools.Data.AccessControl.create_user(email: @bootstrap_email)
+    :ok
+  end
 
   def reset! do
     Ecto.Adapters.SQL.query!(SnowSeTools.Repo, "DROP SCHEMA IF EXISTS public CASCADE", [])

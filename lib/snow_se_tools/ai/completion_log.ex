@@ -15,7 +15,7 @@ defmodule SnowSeTools.AI.CompletionLog do
     VALUES ($(topic), $(event), $(model), $(endpoint), $(messages), $(status), $(result), $(thinking))
     """
 
-    case DbHelpers.run_sql(sql, %{
+    case DbHelpers.query(sql, %{
            "topic" => topic,
            "event" => inspect(event),
            "model" => model,
@@ -30,7 +30,7 @@ defmodule SnowSeTools.AI.CompletionLog do
           "Failed to log AI completion topic=#{topic} event=#{inspect(event)} reason=#{inspect(reason)}"
         )
 
-      rows when is_list(rows) ->
+      {:ok, rows} when is_list(rows) ->
         :ok
     end
   end
@@ -43,9 +43,9 @@ defmodule SnowSeTools.AI.CompletionLog do
     LIMIT $(limit)
     """
 
-    case DbHelpers.run_sql(sql, %{"limit" => limit}) do
+    case DbHelpers.query(sql, %{"limit" => limit}) do
       {:error, _} = err -> err
-      rows -> {:ok, rows}
+      {:ok, rows} -> {:ok, rows}
     end
   end
 
@@ -56,10 +56,10 @@ defmodule SnowSeTools.AI.CompletionLog do
     WHERE id = $(id)
     """
 
-    case DbHelpers.run_sql(sql, %{"id" => id}) do
+    case DbHelpers.query(sql, %{"id" => id}) do
       {:error, _} = err -> err
-      [row | _] -> {:ok, row}
-      [] -> {:error, :not_found}
+      {:ok, [row | _]} -> {:ok, row}
+      {:ok, []} -> {:error, :not_found}
     end
   end
 end

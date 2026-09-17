@@ -119,9 +119,9 @@ defmodule SnowSeTools.Discord.DiscordDb do
     ]
 
     Enum.reduce_while(statements, :ok, fn sql, :ok ->
-      case DbHelpers.run_sql(sql, %{}) do
+      case DbHelpers.query(sql, %{}) do
         {:error, reason} -> {:halt, {:error, reason}}
-        _ -> {:cont, :ok}
+        {:ok, _} -> {:cont, :ok}
       end
     end)
   end
@@ -143,9 +143,9 @@ defmodule SnowSeTools.Discord.DiscordDb do
       "data" => Jason.encode!(guild)
     }
 
-    case DbHelpers.run_sql(sql, params) do
+    case DbHelpers.query(sql, params) do
       {:error, reason} -> {:error, reason}
-      _ -> :ok
+      {:ok, _} -> :ok
     end
   end
 
@@ -166,9 +166,9 @@ defmodule SnowSeTools.Discord.DiscordDb do
       "data" => Jason.encode!(bot_user)
     }
 
-    case DbHelpers.run_sql(sql, params) do
+    case DbHelpers.query(sql, params) do
       {:error, reason} -> {:error, reason}
-      _ -> :ok
+      {:ok, _} -> :ok
     end
   end
 
@@ -185,11 +185,11 @@ defmodule SnowSeTools.Discord.DiscordDb do
       end)
 
     DbHelpers.transaction(fn ->
-      case DbHelpers.run_sql("DELETE FROM discord_members", %{}) do
+      case DbHelpers.query("DELETE FROM discord_members", %{}) do
         {:error, reason} ->
           {:error, reason}
 
-        _ ->
+        {:ok, _} ->
           if rows == [] do
             :ok
           else
@@ -214,7 +214,7 @@ defmodule SnowSeTools.Discord.DiscordDb do
               "data_list" => Enum.map(rows, &Jason.encode!(&1["data"]))
             }
 
-            case DbHelpers.run_sql(sql, params) do
+            case DbHelpers.query(sql, params) do
               {:error, reason} -> {:error, reason}
               _ -> :ok
             end
@@ -234,11 +234,11 @@ defmodule SnowSeTools.Discord.DiscordDb do
       end)
 
     DbHelpers.transaction(fn ->
-      case DbHelpers.run_sql("DELETE FROM discord_channels", %{}) do
+      case DbHelpers.query("DELETE FROM discord_channels", %{}) do
         {:error, reason} ->
           {:error, reason}
 
-        _ ->
+        {:ok, _} ->
           if rows == [] do
             :ok
           else
@@ -263,7 +263,7 @@ defmodule SnowSeTools.Discord.DiscordDb do
               "data_list" => Enum.map(rows, &Jason.encode!(&1["data"]))
             }
 
-            case DbHelpers.run_sql(sql, params) do
+            case DbHelpers.query(sql, params) do
               {:error, reason} -> {:error, reason}
               _ -> :ok
             end
@@ -289,9 +289,9 @@ defmodule SnowSeTools.Discord.DiscordDb do
       "data" => channel
     }
 
-    case DbHelpers.run_sql(sql, params) do
+    case DbHelpers.query(sql, params) do
       {:error, reason} -> {:error, reason}
-      _ -> :ok
+      {:ok, _} -> :ok
     end
   end
 
@@ -306,11 +306,11 @@ defmodule SnowSeTools.Discord.DiscordDb do
       end)
 
     DbHelpers.transaction(fn ->
-      case DbHelpers.run_sql("DELETE FROM discord_roles", %{}) do
+      case DbHelpers.query("DELETE FROM discord_roles", %{}) do
         {:error, reason} ->
           {:error, reason}
 
-        _ ->
+        {:ok, _} ->
           if rows == [] do
             :ok
           else
@@ -335,7 +335,7 @@ defmodule SnowSeTools.Discord.DiscordDb do
               "data_list" => Enum.map(rows, &Jason.encode!(&1["data"]))
             }
 
-            case DbHelpers.run_sql(sql, params) do
+            case DbHelpers.query(sql, params) do
               {:error, reason} -> {:error, reason}
               _ -> :ok
             end
@@ -357,11 +357,11 @@ defmodule SnowSeTools.Discord.DiscordDb do
       end)
 
     DbHelpers.transaction(fn ->
-      case DbHelpers.run_sql("DELETE FROM discord_invites", %{}) do
+      case DbHelpers.query("DELETE FROM discord_invites", %{}) do
         {:error, reason} ->
           {:error, reason}
 
-        _ ->
+        {:ok, _} ->
           if rows == [] do
             :ok
           else
@@ -386,7 +386,7 @@ defmodule SnowSeTools.Discord.DiscordDb do
               "data_list" => Enum.map(rows, &Jason.encode!(&1["data"]))
             }
 
-            case DbHelpers.run_sql(sql, params) do
+            case DbHelpers.query(sql, params) do
               {:error, reason} -> {:error, reason}
               _ -> :ok
             end
@@ -409,7 +409,7 @@ defmodule SnowSeTools.Discord.DiscordDb do
     ORDER BY name NULLS LAST, id
     """
 
-    DbHelpers.run_sql(sql, %{}, @discord_item_schema)
+    DbHelpers.query(sql, %{}, @discord_item_schema)
   end
 
   def list_bot_users do
@@ -426,7 +426,7 @@ defmodule SnowSeTools.Discord.DiscordDb do
     ORDER BY name NULLS LAST, id
     """
 
-    DbHelpers.run_sql(sql, %{}, @discord_item_schema)
+    DbHelpers.query(sql, %{}, @discord_item_schema)
   end
 
   def list_members do
@@ -436,7 +436,7 @@ defmodule SnowSeTools.Discord.DiscordDb do
     ORDER BY name NULLS LAST, id
     """
 
-    DbHelpers.run_sql(sql, %{}, @discord_item_schema)
+    DbHelpers.query(sql, %{}, @discord_item_schema)
   end
 
   def list_channels do
@@ -446,7 +446,7 @@ defmodule SnowSeTools.Discord.DiscordDb do
     ORDER BY name NULLS LAST, id
     """
 
-    DbHelpers.run_sql(sql, %{}, @discord_item_schema)
+    DbHelpers.query(sql, %{}, @discord_item_schema)
   end
 
   def list_roles do
@@ -456,7 +456,7 @@ defmodule SnowSeTools.Discord.DiscordDb do
     ORDER BY name NULLS LAST, id
     """
 
-    DbHelpers.run_sql(sql, %{}, @discord_item_schema)
+    DbHelpers.query(sql, %{}, @discord_item_schema)
   end
 
   def list_invites do
@@ -466,7 +466,7 @@ defmodule SnowSeTools.Discord.DiscordDb do
     ORDER BY name NULLS LAST, id
     """
 
-    DbHelpers.run_sql(sql, %{}, @discord_item_schema)
+    DbHelpers.query(sql, %{}, @discord_item_schema)
   end
 
   def list_course_channel_assignments do
@@ -476,7 +476,7 @@ defmodule SnowSeTools.Discord.DiscordDb do
     ORDER BY term_code DESC, crn
     """
 
-    DbHelpers.run_sql(sql, %{}, @course_channel_assignment_schema)
+    DbHelpers.query(sql, %{}, @course_channel_assignment_schema)
   end
 
   def get_course_channel_assignment(channel_id: channel_id) do
@@ -487,9 +487,9 @@ defmodule SnowSeTools.Discord.DiscordDb do
     LIMIT 1
     """
 
-    case DbHelpers.run_sql(sql, %{"channel_id" => channel_id}, @course_channel_assignment_schema) do
-      [assignment] -> assignment
-      [] -> nil
+    case DbHelpers.query(sql, %{"channel_id" => channel_id}, @course_channel_assignment_schema) do
+      {:ok, [assignment]} -> assignment
+      {:ok, []} -> nil
       {:error, reason} -> {:error, reason}
     end
   end
@@ -502,9 +502,9 @@ defmodule SnowSeTools.Discord.DiscordDb do
     LIMIT 1
     """
 
-    case DbHelpers.run_sql(sql, %{"crn" => crn}, @course_channel_assignment_schema) do
-      [assignment] -> assignment
-      [] -> nil
+    case DbHelpers.query(sql, %{"crn" => crn}, @course_channel_assignment_schema) do
+      {:ok, [assignment]} -> assignment
+      {:ok, []} -> nil
       {:error, reason} -> {:error, reason}
     end
   end
@@ -532,7 +532,7 @@ defmodule SnowSeTools.Discord.DiscordDb do
       updated_at = NOW()
     """
 
-    DbHelpers.run_sql(sql, %{
+    DbHelpers.query(sql, %{
       "crn" => crn,
       "term_code" => term_code,
       "discord_channel_id" => discord_channel_id,
@@ -542,17 +542,17 @@ defmodule SnowSeTools.Discord.DiscordDb do
 
   def delete_course_channel_assignment(crn: crn) do
     sql = "DELETE FROM course_channel_assignments WHERE crn = $(crn)"
-    normalize_delete_result(DbHelpers.run_sql(sql, %{"crn" => crn}))
+    normalize_delete_result(DbHelpers.query(sql, %{"crn" => crn}))
   end
 
   def delete_course_channel_assignment(channel_id: channel_id) do
     sql = "DELETE FROM course_channel_assignments WHERE discord_channel_id = $(channel_id)"
-    normalize_delete_result(DbHelpers.run_sql(sql, %{"channel_id" => channel_id}))
+    normalize_delete_result(DbHelpers.query(sql, %{"channel_id" => channel_id}))
   end
 
   def delete_channel(channel_id: channel_id) do
     sql = "DELETE FROM discord_channels WHERE id = $(channel_id)"
-    normalize_delete_result(DbHelpers.run_sql(sql, %{"channel_id" => channel_id}))
+    normalize_delete_result(DbHelpers.query(sql, %{"channel_id" => channel_id}))
   end
 
   def delete_orphaned_course_channel_assignments do
@@ -562,7 +562,7 @@ defmodule SnowSeTools.Discord.DiscordDb do
        OR discord_role_id NOT IN (SELECT id FROM discord_roles)
     """
 
-    DbHelpers.run_sql(sql, %{})
+    DbHelpers.query(sql, %{})
   end
 
   def list_student_discord_mappings do
@@ -572,7 +572,7 @@ defmodule SnowSeTools.Discord.DiscordDb do
     ORDER BY badger_id
     """
 
-    DbHelpers.run_sql(sql, %{}, @student_discord_mapping_schema)
+    DbHelpers.query(sql, %{}, @student_discord_mapping_schema)
   end
 
   def save_student_discord_mapping(badger_id: badger_id, discord_user_id: discord_user_id) do
@@ -584,7 +584,7 @@ defmodule SnowSeTools.Discord.DiscordDb do
       updated_at = NOW()
     """
 
-    DbHelpers.run_sql(sql, %{
+    DbHelpers.query(sql, %{
       "badger_id" => badger_id,
       "discord_user_id" => discord_user_id
     })
@@ -592,11 +592,11 @@ defmodule SnowSeTools.Discord.DiscordDb do
 
   def delete_student_discord_mapping(badger_id: badger_id) do
     sql = "DELETE FROM student_discord_mapping WHERE badger_id = $(badger_id)"
-    DbHelpers.run_sql(sql, %{"badger_id" => badger_id})
+    DbHelpers.query(sql, %{"badger_id" => badger_id})
   end
 
   defp normalize_delete_result({:error, reason}), do: {:error, reason}
-  defp normalize_delete_result(_result), do: :ok
+  defp normalize_delete_result({:ok, _rows}), do: :ok
 
   def get_mapped_badger_id(discord_user_id: discord_user_id) do
     sql = """
@@ -606,23 +606,20 @@ defmodule SnowSeTools.Discord.DiscordDb do
     LIMIT 1
     """
 
-    case DbHelpers.run_sql(sql, %{"discord_user_id" => discord_user_id}) do
-      [row] -> row["badger_id"]
-      [] -> nil
+    case DbHelpers.query(sql, %{"discord_user_id" => discord_user_id}) do
+      {:ok, [row]} -> row["badger_id"]
+      {:ok, []} -> nil
       {:error, reason} -> {:error, reason}
     end
   end
 
   def get_server_status do
-    with guilds when is_list(guilds) <- list_guilds(),
-         bot_users when is_list(bot_users) <- list_bot_users() do
+    with {:ok, guilds} <- list_guilds(),
+         {:ok, bot_users} <- list_bot_users() do
       %{
         guild: List.first(guilds),
         bot_user: List.first(bot_users)
       }
-    else
-      {:error, reason} -> {:error, reason}
-      unexpected -> {:error, {:unexpected_server_status_result, unexpected}}
     end
   end
 
@@ -645,7 +642,7 @@ defmodule SnowSeTools.Discord.DiscordDb do
     ORDER BY resource
     """
 
-    DbHelpers.run_sql(sql, %{}, @sync_summary_schema)
+    DbHelpers.query(sql, %{}, @sync_summary_schema)
   end
 
   defp display_name(member) do

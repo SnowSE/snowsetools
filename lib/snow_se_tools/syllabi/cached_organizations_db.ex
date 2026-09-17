@@ -45,9 +45,9 @@ defmodule SnowSeTools.Syllabi.CachedOrganizationsDb do
           end)
       }
 
-      case DbHelpers.run_sql(sql, params) do
+      case DbHelpers.query(sql, params) do
         {:error, reason} -> {:error, reason}
-        _rows -> :ok
+        {:ok, _rows} -> :ok
       end
     end
   end
@@ -60,11 +60,11 @@ defmodule SnowSeTools.Syllabi.CachedOrganizationsDb do
     ORDER BY level, name
     """
 
-    case DbHelpers.run_sql(sql, %{}) do
+    case DbHelpers.query(sql, %{}) do
       {:error, _} = err ->
         err
 
-      rows ->
+      {:ok, rows} ->
         orgs =
           Enum.map(rows, fn row ->
             %{
@@ -85,11 +85,11 @@ defmodule SnowSeTools.Syllabi.CachedOrganizationsDb do
     ORDER BY level, name
     """
 
-    case DbHelpers.run_sql(sql, %{}) do
+    case DbHelpers.query(sql, %{}) do
       {:error, _} = err ->
         err
 
-      rows ->
+      {:ok, rows} ->
         orgs =
           Enum.map(rows, fn row ->
             %{
@@ -107,6 +107,6 @@ defmodule SnowSeTools.Syllabi.CachedOrganizationsDb do
 
   def clear_cache do
     sql = "DELETE FROM syllabus_cached_organizations"
-    DbHelpers.run_sql(sql, %{})
+    DbHelpers.query(sql, %{})
   end
 end

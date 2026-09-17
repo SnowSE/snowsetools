@@ -1,12 +1,11 @@
 _build
 deps
 .git
-.env
+*.env
 *.md
 test
 priv/static/uploads
 node_modules
 assets/node_modules
-secrets.env
 k8s/
 .github/

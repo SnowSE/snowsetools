@@ -140,13 +140,9 @@ defmodule SnowSeTools.UserGroups.UserGroupDomainManager do
     {:noreply, state}
   end
 
-  defp load_users do
-    normalize_rows(AccessControl.list_users_with_groups())
-  end
+  defp load_users, do: AccessControl.list_users_with_groups()
 
-  defp load_groups do
-    normalize_rows(AccessControl.list_groups())
-  end
+  defp load_groups, do: AccessControl.list_groups()
 
   defp send_users(pid) do
     case load_users() do
@@ -167,8 +163,4 @@ defmodule SnowSeTools.UserGroups.UserGroupDomainManager do
         AdminUIMessages.send_action_result(pid: pid, result: {:error, reason})
     end
   end
-
-  defp normalize_rows(rows) when is_list(rows), do: {:ok, rows}
-  defp normalize_rows({:error, reason}), do: {:error, reason}
-  defp normalize_rows(other), do: {:error, other}
 end

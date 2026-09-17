@@ -18,7 +18,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerTermPersistenceTest do
 
     {:ok, view, _html} = live(conn, ~p"/scheduling?mode=viewer&term=202690")
 
-    _ = :sys.get_state(ScheduleOwnerDomainManager)
+    :ok = ScheduleOwnerDomainManager.await_idle()
     render(view)
 
     assert has_element?(view, "#scheduling-term-select option[value='202690'][selected]")
@@ -31,7 +31,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerTermPersistenceTest do
 
     {:ok, refreshed_view, _html} = live(conn, ~p"/scheduling?mode=viewer&term=202590")
 
-    _ = :sys.get_state(ScheduleOwnerDomainManager)
+    :ok = ScheduleOwnerDomainManager.await_idle()
     render(refreshed_view)
 
     assert has_element?(

@@ -253,7 +253,7 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
         {:request_student_mappings_for_course, pid, key, term_code, crn},
         state
       ) do
-    with all_mappings when is_list(all_mappings) <- DiscordDb.list_student_discord_mappings(),
+    with {:ok, all_mappings} <- DiscordDb.list_student_discord_mappings(),
          {:ok, students} <- SnowCourseCacheDb.get_section_students(term_code: term_code, crn: crn) do
       course_badger_ids =
         students
@@ -306,7 +306,7 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
 
         send(pid, {:discord, {:course_channel_assignment_saved, key, {:error, reason}}})
 
-      _ ->
+      {:ok, _} ->
         send(pid, {:discord, {:course_channel_assignment_saved, key, {:ok, %{crn: crn}}}})
     end
 
@@ -340,7 +340,7 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
 
         send(pid, {:discord, {:course_channel_assignment_deleted, key, {:error, reason}}})
 
-      _ ->
+      :ok ->
         send(pid, {:discord, {:course_channel_assignment_deleted, key, {:ok, crn}}})
     end
 
@@ -372,7 +372,7 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
 
         send(pid, {:discord, {:student_discord_mapping_saved, key, {:error, reason}}})
 
-      _ ->
+      {:ok, _} ->
         send(
           pid,
           {:discord,
@@ -393,7 +393,7 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
 
         send(pid, {:discord, {:student_discord_mapping_deleted, key, {:error, reason}}})
 
-      _ ->
+      {:ok, _} ->
         send(pid, {:discord, {:student_discord_mapping_deleted, key, {:ok, badger_id}}})
     end
 
@@ -496,7 +496,7 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
             {:discord, {:sync_finished, {:error, ["orphan_cleanup: #{inspect(reason)}"]}}}
           )
 
-        _ ->
+        {:ok, _} ->
           summary = safe_sync_summary()
           DiscordPubSub.broadcast_discord_data_synced(summary)
           send(pid, {:discord, {:sync_finished, {:ok, summary}}})
@@ -786,7 +786,7 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
         Logger.error("Discord student mappings load failed reason=#{inspect(reason)}")
         []
 
-      mappings ->
+      {:ok, mappings} ->
         mappings
     end
   end
@@ -797,7 +797,7 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
         Logger.error("Discord members load failed while syncing roster reason=#{inspect(reason)}")
         []
 
-      members ->
+      {:ok, members} ->
         members
     end
   end
@@ -825,7 +825,7 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
         Logger.error("Discord summary load failed reason=#{inspect(reason)}")
         []
 
-      summary ->
+      {:ok, summary} ->
         summary
     end
   end
@@ -836,6 +836,10 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
         Logger.error("#{error_context} reason=#{inspect(reason)}")
         send(pid, {:discord, {event, key, {:error, reason}}})
 
+      {:ok, data} ->
+        send(pid, {:discord, {event, key, {:ok, data}}})
+
+      # Single-row readers answer with the row itself, or nil for no row.
       data ->
         send(pid, {:discord, {event, key, {:ok, data}}})
     end
@@ -848,7 +852,7 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
   defp course_role?(role_id) when is_binary(role_id) do
     case DiscordDb.list_course_channel_assignments() do
       {:error, _} -> false
-      assignments -> Enum.any?(assignments, &(&1["discord_role_id"] == role_id))
+      {:ok, assignments} -> Enum.any?(assignments, &(&1["discord_role_id"] == role_id))
     end
   end
 

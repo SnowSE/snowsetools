@@ -1,18 +1,24 @@
 defmodule SnowSeToolsWeb.ConnCase do
   @moduledoc """
-  This module defines the test case to be used by
-  tests that require setting up a connection.
+  The test case for tests that need a connection: `Phoenix.ConnTest`,
+  `Phoenix.LiveViewTest` and the login helper below.
 
-  Such tests rely on `Phoenix.ConnTest` and also
-  import other functionality to make it easier
-  to build common data structures and query the data layer.
+  **There is no SQL sandbox.** `SnowSeTools.TestDatabase.reset!/0` runs once in
+  `test_helper.exs`, so every test in every file shares one database and rows
+  written by one test are still there for the next. Three rules follow:
 
-  Finally, if the test case interacts with the database,
-  we enable the SQL sandbox, so changes done to the database
-  are reverted at the end of every test. If you are using
-  PostgreSQL, you can even run database tests asynchronously
-  by setting `use SnowSeToolsWeb.ConnCase, async: true`, although
-  this option is not recommended for other databases.
+    * Name fixtures uniquely — `unique_email/1`, or anything carrying
+      `System.unique_integer([:positive])`. Two files that both insert
+      "Test Program" will fight.
+    * Never assert on absence or on a global count ("no layouts exist yet").
+      Assert on rows your own test made.
+    * `async: true` is only safe for tests that do not touch the database.
+      Render-only and pure-function tests qualify; anything that writes a row
+      does not.
+
+  The suite seeds a throwaway account before any test runs, so the admin group
+  that `AccessControl.create_user/1` grants to the first user in the table
+  never lands on a test account by accident.
   """
 
   use ExUnit.CaseTemplate
@@ -37,6 +43,12 @@ defmodule SnowSeToolsWeb.ConnCase do
   end
 
   @doc """
+  An email nothing else in the suite will use.
+  """
+  def unique_email(prefix \\ "user"),
+    do: "#{prefix}-#{System.unique_integer([:positive])}@example.com"
+
+  @doc """
   Creates (or finds) a user with `email`, adds them to the given access groups
   (names such as `"discord_admin"` or `"admin"`) and logs them in.
 
@@ -47,8 +59,10 @@ defmodule SnowSeToolsWeb.ConnCase do
 
     {:ok, user} = User.find_or_create(email)
 
+    {:ok, all_groups} = AccessControl.list_groups()
+
     for group_name <- groups do
-      group = Enum.find(AccessControl.list_groups(), &(&1.name == group_name))
+      group = Enum.find(all_groups, &(&1.name == group_name))
       :ok = AccessControl.add_user_group(user_id: user.id, group_id: group.id)
     end
 

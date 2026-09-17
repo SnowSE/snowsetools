@@ -80,11 +80,11 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
     ]
 
     Enum.reduce_while(statements, :ok, fn sql, :ok ->
-      case DbHelpers.run_sql(sql, params) do
+      case DbHelpers.query(sql, params) do
         {:error, reason} ->
           {:halt, {:error, reason}}
 
-        _ ->
+        {:ok, _} ->
           {:cont, :ok}
       end
     end)
@@ -100,7 +100,7 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
       updated_at = NOW()
     """
 
-    DbHelpers.run_sql(sql, %{"term_code" => term_code, "term_name" => term_name})
+    DbHelpers.query(sql, %{"term_code" => term_code, "term_name" => term_name})
   end
 
   def save_courses(term_code: term_code, term_name: term_name, courses: courses)
@@ -113,11 +113,11 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
         _ ->
           delete_sql = "DELETE FROM snow_courses WHERE term_code = $(term_code)"
 
-          case DbHelpers.run_sql(delete_sql, %{"term_code" => term_code}) do
+          case DbHelpers.query(delete_sql, %{"term_code" => term_code}) do
             {:error, reason} ->
               {:error, reason}
 
-            _ ->
+            {:ok, _} ->
               rows =
                 courses
                 |> Enum.map(fn course ->
@@ -192,7 +192,7 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
                 "data_list" => Enum.map(rows, & &1["data"])
               }
 
-              case DbHelpers.run_sql(insert_sql, params) do
+              case DbHelpers.query(insert_sql, params) do
                 {:error, reason} -> {:error, reason}
                 _ -> :ok
               end
@@ -207,11 +207,11 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
       delete_sql =
         "DELETE FROM snow_section_students WHERE term_code = $(term_code) AND crn = $(crn)"
 
-      case DbHelpers.run_sql(delete_sql, %{"term_code" => term_code, "crn" => crn}) do
+      case DbHelpers.query(delete_sql, %{"term_code" => term_code, "crn" => crn}) do
         {:error, reason} ->
           {:error, reason}
 
-        _ ->
+        {:ok, _} ->
           rows =
             Enum.map(students, fn student ->
               student_attributes(student)
@@ -270,7 +270,7 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
             "data_list" => Enum.map(rows, & &1["data"])
           }
 
-          case DbHelpers.run_sql(insert_sql, params) do
+          case DbHelpers.query(insert_sql, params) do
             {:error, reason} -> {:error, reason}
             _ -> :ok
           end
@@ -293,7 +293,7 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
     ORDER BY t.term_code DESC
     """
 
-    DbHelpers.run_sql(sql, %{}, @term_summary_schema)
+    DbHelpers.query(sql, %{}, @term_summary_schema)
   end
 
   def list_courses_for_term(term_code: term_code) do
@@ -325,7 +325,7 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
     ORDER BY c.subject_code, c.course_number, c.section_number, c.crn
     """
 
-    DbHelpers.run_sql(sql, %{"term_code" => term_code}, @course_schema)
+    DbHelpers.query(sql, %{"term_code" => term_code}, @course_schema)
   end
 
   def get_course(term_code: term_code, crn: crn) do
@@ -358,9 +358,9 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
     LIMIT 1
     """
 
-    case DbHelpers.run_sql(sql, %{"term_code" => term_code, "crn" => crn}, @course_schema) do
-      [course] -> course
-      [] -> nil
+    case DbHelpers.query(sql, %{"term_code" => term_code, "crn" => crn}, @course_schema) do
+      {:ok, [course]} -> course
+      {:ok, []} -> nil
       {:error, reason} -> {:error, reason}
     end
   end
@@ -373,9 +373,9 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
     ORDER BY c.subject_code, c.course_number, c.section_number, c.crn
     """
 
-    case DbHelpers.run_sql(sql, %{"term_code" => term_code}) do
+    case DbHelpers.query(sql, %{"term_code" => term_code}) do
       {:error, _} = err -> err
-      rows -> {:ok, Enum.map(rows, & &1["data"])}
+      {:ok, rows} -> {:ok, Enum.map(rows, & &1["data"])}
     end
   end
 
@@ -393,7 +393,7 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
     ORDER BY subject_code, course_number, course_name, cached_at DESC
     """
 
-    DbHelpers.run_sql(sql, %{}, @course_catalog_schema)
+    DbHelpers.query(sql, %{}, @course_catalog_schema)
   end
 
   def get_section_students(term_code: term_code, crn: crn) do
@@ -411,9 +411,9 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
     ORDER BY last_synced_at DESC
     """
 
-    case DbHelpers.run_sql(sql, %{"term_code" => term_code, "crn" => crn}) do
+    case DbHelpers.query(sql, %{"term_code" => term_code, "crn" => crn}) do
       {:error, _} = err -> err
-      rows -> {:ok, Enum.map(rows, & &1["data"])}
+      {:ok, rows} -> {:ok, Enum.map(rows, & &1["data"])}
     end
   end
 
@@ -469,6 +469,6 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDb do
   def delete_term(term_code: term_code) do
     sql = "DELETE FROM snow_terms WHERE term_code = $(term_code)"
 
-    DbHelpers.run_sql(sql, %{"term_code" => term_code})
+    DbHelpers.query(sql, %{"term_code" => term_code})
   end
 end

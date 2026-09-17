@@ -83,9 +83,15 @@ avoid empty catch-all clauses that hide errors
 
 ## Database
 
-Phoenix connects to Postgres via `Ecto.Repo` (no Ecto schemas). All queries use `DbHelpers.run_sql/2,3` with named parameters (`$(param_name)`), which are converted to positional Postgrex params at runtime. Query results are optionally validated against a Zoi schema.
+Phoenix connects to Postgres via `Ecto.Repo` (no Ecto schemas). All queries go
+through `DbHelpers.query/2,3` with named parameters (`$(param_name)`), which are
+converted to positional Postgrex params at runtime. Results are optionally
+validated against a Zoi schema.
 
-• Use DbHelpers.run_sql/3 with explicit sql, params, and a Zoi schema:
+Every query answers `{:ok, rows} | {:error, reason}`, and `reason` is an atom
+you can match on — `:not_unique`, `:missing_reference`, `:missing_param`,
+`:validation_error`, or `{:query_failed, message}`:
+
 ```elixir
   schema =
     Zoi.object(%{
@@ -101,15 +107,19 @@ Phoenix connects to Postgres via `Ecto.Repo` (no Ecto schemas). All queries use 
 
   params = %{"user_id" => Uuid.to_binary(user_id)}
 
-  case DbHelpers.run_sql(sql, params, schema) do
-    [{user}] -> {:ok, user}
-    [] -> {:error, :not_found}
+  case DbHelpers.query(sql, params, schema) do
+    {:ok, [user | _]} -> {:ok, user}
+    {:ok, []} -> {:error, :not_found}
     {:error, reason} -> {:error, reason}
   end
 ```
 
-Postgrex UUID params must be 16-byte binaries; convert UUID strings with SnowSeTools.Data.Uuid.to_binary/1
-before passing them to DbHelpers.run_sql/2,3.
+Use `DbHelpers.query_or/3,4` only for reads where an empty result and a broken
+database lead to the same screen; anything that writes, or that owes the user an
+explanation, matches on `query/2,3`.
+
+Postgrex UUID params must be 16-byte binaries; convert UUID strings with
+SnowSeTools.Data.Uuid.to_binary/1 before passing them to DbHelpers.query/2,3.
 
 ```elixir
 alias SnowSeTools.Data.{DbHelpers, Uuid}
@@ -122,7 +132,7 @@ WHERE id = $(id)
 
 params = %{"id" => Uuid.to_binary(program_id)}
 
-DbHelpers.run_sql(sql, params)
+DbHelpers.query(sql, params)
 ```
 
 UI updates should not talk to SQL directly. Flow should be:
@@ -323,6 +333,50 @@ Three containers:
 
 `PHX_HOST`, `OIDC_REDIRECT_URI`, and the tunnel's public hostname must all agree,
 or OIDC login breaks.
+
+## Shared vocabulary
+
+Reach for these before writing a private copy — each replaced a set of
+near-duplicates that had quietly drifted apart:
+
+* `SnowSeTools.Scheduling.TimeOfDay` — parsing, formatting and comparing clock
+  times, plus `week_days/0`. Never hand-roll `String.split(time, ":")`: the
+  copies of that disagreed about a single-digit hour, and one of them read
+  `"9:00"` as midnight.
+* `SnowSeTools.Data.Text` — `blank?/1` (nil or whitespace) and the stricter
+  `blank_string?/1` (anything that is not a non-empty string).
+* `SnowSeTools.Scheduling.ScheduleChange` — what a change group's changes do to
+  a course. Both the week grid and conflict detection go through it, so what the
+  screen shows and what conflict detection computes cannot disagree.
+
+## Access control
+
+Areas are gated by `SnowSeTools.Data.Access`. Each area has one or more roles
+carrying a level: `can?/2` asks whether a user may open an area, `can_edit?/2`
+whether they may change it. Scheduling is the area with both tiers today
+(`scheduling_view`, `scheduling_admin`); the others are edit-only.
+
+Hiding a button is not access control. Scheduling's server-side gate is
+`SnowSeToolsWeb.Scheduling.SchedulingAccess`, a `handle_event` hook attached
+only for viewers that classifies events by namespace and **denies anything it
+does not recognise**. Adding a new scheduling event namespace means classifying
+it there, or viewers cannot use it.
+
+Change groups are shared: every editor sees and may modify every group. That is
+deliberate for a department-sized team, but it means a group is not private to
+whoever made it.
+
+## Tests
+
+There is no SQL sandbox. `TestDatabase.reset!/0` runs once in
+`test_helper.exs`, so every test shares one database and rows persist across
+files. Give fixtures unique names (`ConnCase.unique_email/1`, or anything with
+`System.unique_integer([:positive])`), never assert on absence or global counts,
+and keep `async: true` for tests that do not touch the database.
+
+Domain managers load in the background, so `:sys.get_state/1` is not a
+synchronisation point for them. `ScheduleOwnerDomainManager.await_idle/0`
+returns once nothing is loading.
 
 ## Getting feedback
 

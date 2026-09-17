@@ -1,5 +1,10 @@
 defmodule SnowSeToolsWeb.Scheduling.CourseChangeIntent do
+  alias SnowSeTools.Scheduling.ScheduleChange
   alias SnowSeTools.Scheduling.ScheduleUtils
+  alias SnowSeTools.Scheduling.TimeOfDay
+
+  # Where a course lands when its own start time cannot be read.
+  @default_start_minutes 8 * 60
 
   @mwf_days ["Monday", "Wednesday", "Friday"]
   @tth_days ["Tuesday", "Thursday"]
@@ -78,7 +83,7 @@ defmodule SnowSeToolsWeb.Scheduling.CourseChangeIntent do
          "term" => term,
          "subject_code" => subject_code,
          "course_number" => course_number,
-         "course_name" => "__DELETED__",
+         "course_name" => ScheduleChange.deleted_marker(),
          "target_professor" => "",
          "meet_info" => [],
          "operation" => "update"
@@ -226,20 +231,7 @@ defmodule SnowSeToolsWeb.Scheduling.CourseChangeIntent do
     end
   end
 
-  defp parse_minutes(<<hour::binary-size(2), ":", minute::binary-size(2), _rest::binary>>) do
-    {hour, ""} = Integer.parse(hour)
-    {minute, ""} = Integer.parse(minute)
-    hour * 60 + minute
-  rescue
-    _error -> 8 * 60
-  end
+  defp parse_minutes(time), do: TimeOfDay.minutes(time, @default_start_minutes)
 
-  defp parse_minutes(_time), do: 8 * 60
-
-  defp format_time(minutes) do
-    hour = div(minutes, 60)
-    minute = rem(minutes, 60)
-
-    "#{String.pad_leading(to_string(hour), 2, "0")}:#{String.pad_leading(to_string(minute), 2, "0")}"
-  end
+  defp format_time(minutes), do: TimeOfDay.format(minutes)
 end

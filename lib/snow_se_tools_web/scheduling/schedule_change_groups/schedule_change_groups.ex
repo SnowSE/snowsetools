@@ -1,4 +1,14 @@
 defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroups do
+  @moduledoc """
+  The change groups panel: drafts of proposed schedule changes.
+
+  Groups are shared, not personal. Every schedule editor sees all of them and
+  may add to, edit or delete any of them — deliberate for a department working
+  a term out together, but it does mean a group is not private to whoever made
+  it. View-only users never see this panel at all, and the draft schedule it
+  produces is never applied to what they read.
+  """
+
   use SnowSeToolsWeb, :html
 
   alias Phoenix.LiveView

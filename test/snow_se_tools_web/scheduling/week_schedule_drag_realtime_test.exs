@@ -340,7 +340,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
   end
 
   defp wait_for_schedule_metadata(view) do
-    _ = :sys.get_state(ScheduleOwnerDomainManager)
+    :ok = ScheduleOwnerDomainManager.await_idle()
     render(view)
   end
 
@@ -351,9 +351,9 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleDragRealtimeTest do
   end
 
   defp wait_for_week_schedules(view) do
-    _ = :sys.get_state(ScheduleOwnerDomainManager)
+    :ok = ScheduleOwnerDomainManager.await_idle()
     render(view)
-    _ = :sys.get_state(ScheduleOwnerDomainManager)
+    :ok = ScheduleOwnerDomainManager.await_idle()
     render(view)
   end
 

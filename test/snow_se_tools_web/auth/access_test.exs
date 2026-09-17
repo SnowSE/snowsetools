@@ -56,11 +56,12 @@ defmodule SnowSeToolsWeb.Auth.AccessTest do
     end
 
     test "built-in groups are seeded and cannot be renamed or deleted" do
-      names = Enum.map(AccessControl.list_groups(), & &1.name)
+      {:ok, groups} = AccessControl.list_groups()
+      names = Enum.map(groups, & &1.name)
 
       for name <- ~w(admin discord_admin scheduling_admin scheduling_view syllabus_admin) do
         assert name in names
-        group = Enum.find(AccessControl.list_groups(), &(&1.name == name))
+        group = Enum.find(groups, &(&1.name == name))
         assert {:error, :protected_group_locked} = AccessControl.delete_group(group_id: group.id)
 
         assert {:error, :protected_group_locked} =

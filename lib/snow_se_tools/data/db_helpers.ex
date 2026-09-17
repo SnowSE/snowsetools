@@ -1,82 +1,143 @@
 defmodule SnowSeTools.Data.DbHelpers do
+  @moduledoc """
+  Raw SQL against `SnowSeTools.Repo`, with named parameters.
+
+  Write `$(name)` in the SQL and pass `%{"name" => value}`; the names are
+  rewritten to Postgrex's positional `$1` at call time, so a query reads the
+  same as the map beside it and repeating a parameter costs nothing.
+
+  Every query answers `{:ok, rows} | {:error, reason}`. Success and failure used
+  to share one channel — a bare list for rows, a tuple for errors — which meant
+  a caller that piped the result into `Enum` blew up on a database error
+  instead of handling it. `reason` is one of the atoms below rather than a
+  message string, so callers can tell the cases apart:
+
+    * `:not_unique` — a unique constraint rejected the write
+    * `:missing_reference` — a foreign key had nothing to point at
+    * `:missing_param` — the SQL named a parameter the map did not carry
+    * `:validation_error` — rows came back in a shape the Zoi schema refuses
+    * `{:query_failed, message}` — anything else, message already logged
+  """
+
   require Logger
+
   @get_named_param ~r/\$\((\w+)\)/
 
-  def run_sql(sql, params, schema) when not is_nil(schema) do
-    run_sql(sql, params) |> validate_rows(schema)
-  end
+  @type row :: %{optional(String.t()) => term()}
+  @type reason ::
+          :not_unique
+          | :missing_reference
+          | :missing_param
+          | :validation_error
+          | {:query_failed, String.t()}
 
-  def run_sql(sql, params) do
-    original_sql = sql
-    original_params = params
-    {sql, params} = named_params_to_positional_params(sql, params)
+  @spec query(String.t(), map(), term()) :: {:ok, [row()]} | {:error, reason()}
+  def query(sql, params, nil), do: query(sql, params)
 
-    try do
-      result = Ecto.Adapters.SQL.query!(SnowSeTools.Repo, sql, params)
-
-      Enum.map(result.rows || [], fn row ->
-        Enum.zip(result.columns, row)
-        |> Enum.map(fn {col, val} -> {col, format_db_value(val)} end)
-        |> Enum.into(%{})
-      end)
-    rescue
-      exception ->
-        error_message = extract_error_message(exception)
-        Logger.error("Database error: #{error_message}")
-        Logger.error("Failed SQL: #{original_sql}")
-        # Values are redacted: several tables hold student PII and credentials.
-        Logger.error("SQL param names: #{inspect(Map.keys(original_params))}")
-        {:error, error_message}
+  def query(sql, params, schema) do
+    case query(sql, params) do
+      {:ok, rows} -> validate_rows(rows, schema)
+      {:error, reason} -> {:error, reason}
     end
   end
 
-  defp extract_error_message(exception) do
-    msg =
-      case exception do
-        %{message: msg} when is_binary(msg) and byte_size(msg) > 0 -> msg
-        _ -> nil
-      end
-
-    msg || Exception.message(exception)
+  @spec query(String.t(), map()) :: {:ok, [row()]} | {:error, reason()}
+  def query(sql, params) do
+    with {:ok, positional_sql, positional_params} <- positional(sql, params) do
+      run(sql: sql, positional_sql: positional_sql, params: positional_params, names: params)
+    end
   end
 
-  def named_params_to_positional_params(query, params) do
-    param_occurrences = Regex.scan(@get_named_param, query)
+  @doc """
+  The rows, or `default` when the query fails. For reads where an empty result
+  and a broken database lead to the same screen; anything that writes, or that
+  must tell the user why it could not answer, should match on `query/2,3`.
+  """
+  def query_or(sql, params, default), do: query_or(sql, params, nil, default)
 
-    {param_to_index, ordered_values} =
-      Enum.reduce(param_occurrences, {%{}, []}, fn [_full, param_name], {index_map, values} ->
-        if Map.has_key?(index_map, param_name) do
-          {index_map, values}
+  def query_or(sql, params, schema, default) do
+    case query(sql, params, schema) do
+      {:ok, rows} -> rows
+      {:error, _reason} -> default
+    end
+  end
+
+  defp run(sql: sql, positional_sql: positional_sql, params: params, names: names) do
+    {:ok, Ecto.Adapters.SQL.query!(SnowSeTools.Repo, positional_sql, params) |> to_rows()}
+  rescue
+    exception ->
+      message = extract_error_message(exception)
+      Logger.error("Database error: #{message}")
+      Logger.error("Failed SQL: #{sql}")
+      # Values are redacted: several tables hold student PII and credentials.
+      Logger.error("SQL param names: #{inspect(Map.keys(names))}")
+
+      {:error, classify(exception, message)}
+  end
+
+  defp to_rows(result) do
+    Enum.map(result.rows || [], fn row ->
+      result.columns |> Enum.zip(row) |> Map.new()
+    end)
+  end
+
+  # Postgrex reports constraint violations as codes; turning the common ones
+  # into atoms means a caller can say "that name is taken" instead of matching
+  # on the text of a Postgres message.
+  defp classify(%Postgrex.Error{postgres: %{code: :unique_violation}}, _message), do: :not_unique
+
+  defp classify(%Postgrex.Error{postgres: %{code: :foreign_key_violation}}, _message),
+    do: :missing_reference
+
+  defp classify(_exception, message), do: {:query_failed, message}
+
+  defp extract_error_message(exception) do
+    case exception do
+      %{message: message} when is_binary(message) and message != "" -> message
+      _other -> Exception.message(exception)
+    end
+  end
+
+  defp positional(sql, params) do
+    {names, ordered_names} =
+      @get_named_param
+      |> Regex.scan(sql)
+      |> Enum.reduce({%{}, []}, fn [_full, name], {indexes, ordered} ->
+        if Map.has_key?(indexes, name) do
+          {indexes, ordered}
         else
-          next_index = map_size(index_map) + 1
-          param_value = Map.fetch!(params, param_name)
-          {Map.put(index_map, param_name, next_index), values ++ [param_value]}
+          {Map.put(indexes, name, map_size(indexes) + 1), [name | ordered]}
         end
       end)
 
-    positional_sql =
-      Regex.replace(@get_named_param, query, fn _full, param_name ->
-        "$#{param_to_index[param_name]}"
-      end)
+    ordered_names = Enum.reverse(ordered_names)
 
-    {positional_sql, ordered_values}
+    case Enum.reject(ordered_names, &Map.has_key?(params, &1)) do
+      [] ->
+        positional_sql =
+          Regex.replace(@get_named_param, sql, fn _full, name -> "$#{names[name]}" end)
+
+        {:ok, positional_sql, Enum.map(ordered_names, &Map.fetch!(params, &1))}
+
+      missing ->
+        # Raising here would escape the caller's error handling entirely, which
+        # is what this used to do by expanding parameters outside the rescue.
+        Logger.error("SQL is missing parameters: #{inspect(missing)}")
+        Logger.error("Failed SQL: #{sql}")
+        {:error, :missing_param}
+    end
   end
 
-  # UUID columns are decoded to strings by SnowSeTools.Data.PostgrexUuidString,
-  # so no per-value type guessing is needed here.
-  defp format_db_value(val), do: val
-
   @doc """
-  Runs a transaction. Inside the callback, use `run_sql/2,3` as normal — any
-  `{:error, _}` return will automatically roll back the transaction. If the
-  callback returns `:ok` or `{:ok, value}`, the transaction commits and that
-  value is returned unwrapped.
-
-  Example:
+  Runs a transaction. Inside the callback, use `query/2,3` as normal — any
+  `{:error, _}` return rolls the transaction back. If the callback returns
+  `:ok` or `{:ok, value}`, the transaction commits and that value is returned
+  unwrapped.
 
       DbHelpers.transaction(fn ->
-        DbHelpers.run_sql("DELETE FROM foo WHERE id = $(id)", %{"id" => id})
-        {:ok, DbHelpers.run_sql("INSERT INTO bar ...", %{...})}
+        with {:ok, _} <- DbHelpers.query("DELETE FROM foo WHERE id = $(id)", %{"id" => id}) do
+          DbHelpers.query("INSERT INTO bar ...", %{})
+        end
       end)
   """
   def transaction(fun) when is_function(fun, 0) do
@@ -85,9 +146,9 @@ defmodule SnowSeTools.Data.DbHelpers do
         try do
           fun.()
         rescue
-          e ->
-            Logger.error("Transaction callback raised: #{Exception.message(e)}")
-            {:error, e}
+          exception ->
+            Logger.error("Transaction callback raised: #{Exception.message(exception)}")
+            {:error, {:query_failed, Exception.message(exception)}}
         end
 
       case result do
@@ -109,10 +170,9 @@ defmodule SnowSeTools.Data.DbHelpers do
     end
   end
 
-  defp validate_rows({:error, _} = err, _schema), do: err
-
   defp validate_rows(rows, schema) do
-    Enum.reduce_while(rows, {:ok, []}, fn row, {:ok, acc} ->
+    rows
+    |> Enum.reduce_while({:ok, []}, fn row, {:ok, acc} ->
       case Zoi.parse(schema, row, coerce: true) do
         {:ok, valid} ->
           {:cont, {:ok, [valid | acc]}}
@@ -122,9 +182,9 @@ defmodule SnowSeTools.Data.DbHelpers do
           {:halt, {:error, :validation_error}}
       end
     end)
-    |> then(fn
-      {:ok, valid_rows} -> Enum.reverse(valid_rows)
-      error -> error
-    end)
+    |> case do
+      {:ok, valid_rows} -> {:ok, Enum.reverse(valid_rows)}
+      {:error, reason} -> {:error, reason}
+    end
   end
 end

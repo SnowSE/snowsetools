@@ -61,12 +61,12 @@ defmodule SnowSeTools.Syllabi.SyllabusDB do
       "linked_emails" => linked_emails
     }
 
-    case DbHelpers.run_sql(sql, params) do
+    case DbHelpers.query(sql, params) do
       {:error, reason} = err ->
         Logger.error("Failed to upsert syllabus code=#{doc["code"]} reason=#{inspect(reason)}")
         err
 
-      rows when is_list(rows) ->
+      {:ok, rows} when is_list(rows) ->
         Logger.info("Upserted syllabus #{doc["title"]}")
         :ok
     end
@@ -156,19 +156,19 @@ defmodule SnowSeTools.Syllabi.SyllabusDB do
     ORDER BY source_order, COALESCE(list_data->>'title', list_data->>'course_name') ASC NULLS LAST
     """
 
-    case DbHelpers.run_sql(sql, %{"org_ids" => [org_id], "org_id" => org_id, "term_id" => term_id}) do
+    case DbHelpers.query(sql, %{"org_ids" => [org_id], "org_id" => org_id, "term_id" => term_id}) do
       {:error, _} = err -> err
-      [] -> {:ok, [], nil}
-      rows -> {:ok, Enum.map(rows, & &1["list_data"]), oldest_cached_at(rows)}
+      {:ok, []} -> {:ok, [], nil}
+      {:ok, rows} -> {:ok, Enum.map(rows, & &1["list_data"]), oldest_cached_at(rows)}
     end
   end
 
   def list_populated_org_ids do
     sql = "SELECT DISTINCT org_id FROM syllabi WHERE org_id IS NOT NULL"
 
-    case DbHelpers.run_sql(sql, %{}) do
+    case DbHelpers.query(sql, %{}) do
       {:error, _} = err -> err
-      rows -> {:ok, Enum.map(rows, & &1["org_id"])}
+      {:ok, rows} -> {:ok, Enum.map(rows, & &1["org_id"])}
     end
   end
 
@@ -258,10 +258,10 @@ defmodule SnowSeTools.Syllabi.SyllabusDB do
     ORDER BY source_order, COALESCE(list_data->>'title', list_data->>'course_name') ASC NULLS LAST
     """
 
-    case DbHelpers.run_sql(sql, %{"email" => email, "term_id" => term_id}) do
+    case DbHelpers.query(sql, %{"email" => email, "term_id" => term_id}) do
       {:error, _} = err -> err
-      [] -> {:ok, [], nil}
-      rows -> {:ok, Enum.map(rows, & &1["list_data"]), oldest_cached_at(rows)}
+      {:ok, []} -> {:ok, [], nil}
+      {:ok, rows} -> {:ok, Enum.map(rows, & &1["list_data"]), oldest_cached_at(rows)}
     end
   end
 
@@ -276,10 +276,10 @@ defmodule SnowSeTools.Syllabi.SyllabusDB do
       AND ($(term_id)::text IS NULL OR term_id = $(term_id))
     """
 
-    case DbHelpers.run_sql(sql, %{"code" => code, "term_id" => term_id}) do
+    case DbHelpers.query(sql, %{"code" => code, "term_id" => term_id}) do
       {:error, _} = err -> err
-      [] -> {:ok, nil, nil}
-      [row | _] -> {:ok, row["detail_data"], row["detail_cached_at"]}
+      {:ok, []} -> {:ok, nil, nil}
+      {:ok, [row | _]} -> {:ok, row["detail_data"], row["detail_cached_at"]}
     end
   end
 
@@ -300,8 +300,8 @@ defmodule SnowSeTools.Syllabi.SyllabusDB do
     FROM syllabi
     """
 
-    case DbHelpers.run_sql(sql, %{}) do
-      [%{"total" => total}] -> {:ok, total}
+    case DbHelpers.query(sql, %{}) do
+      {:ok, [%{"total" => total}]} -> {:ok, total}
       {:error, _} = err -> err
     end
   end

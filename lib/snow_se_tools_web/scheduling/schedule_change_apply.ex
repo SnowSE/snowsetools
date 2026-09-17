@@ -1,11 +1,24 @@
 defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApply do
-  alias SnowSeTools.Scheduling.ScheduleUtils
+  @moduledoc """
+  A schedule owner's week with a change group applied, for drawing.
+
+  The rules for what a change does to a course live in
+  `SnowSeTools.Scheduling.ScheduleChange`; this only decides which of the
+  resulting courses belong on this owner's card.
+  """
+
+  alias SnowSeTools.Scheduling.{ScheduleChange, ScheduleUtils}
 
   def apply_changes(%{type: type, name: name} = schedule_owner, changes) when is_list(changes) do
     courses = Map.get(schedule_owner, :courses, [])
 
     applied =
-      apply_to_courses(courses: courses, changes: changes, owner_type: type, owner_name: name)
+      courses_on_this_card(
+        courses: courses,
+        changes: changes,
+        owner_type: type,
+        owner_name: name
+      )
 
     ScheduleUtils.build_week_schedule(
       type: type,
@@ -25,92 +38,34 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApply do
     apply_changes(schedule_owner, changes)
   end
 
-  defp apply_to_courses(
+  defp courses_on_this_card(
          courses: courses,
          changes: changes,
          owner_type: owner_type,
          owner_name: owner_name
        )
        when is_list(courses) and is_list(changes) do
-    changes_by_crn = Enum.group_by(changes, & &1["crn"])
-    existing_crns = MapSet.new(courses, & &1["crn"])
+    changed = ScheduleChange.apply_changes(courses: courses, changes: changes)
 
-    updated_courses =
-      Enum.flat_map(courses, fn course ->
-        case Map.get(changes_by_crn, course["crn"]) do
-          nil ->
-            [course]
+    moved_in =
+      moved_in_courses(courses: courses, changes: changes, owner_type: owner_type)
 
-          [%{"course_name" => "__DELETED__"}] ->
-            []
-
-          [%{"operation" => "update"} = change] ->
-            [apply_change_to_course(course, change)]
-
-          [%{"operation" => "add"}] ->
-            [course]
-        end
-      end)
-
-    new_courses =
-      changes
-      |> Enum.filter(&(&1["operation"] == "add"))
-      |> Enum.map(&change_to_course/1)
-
-    moved_courses = moved_courses_for_owner(changes, existing_crns, owner_type)
-
-    (updated_courses ++ new_courses ++ moved_courses)
+    (changed ++ moved_in)
     |> Enum.filter(
       &course_matches_owner?(course: &1, owner_type: owner_type, owner_name: owner_name)
     )
   end
 
-  defp moved_courses_for_owner(_changes, _existing_crns, :academic_program_semester), do: []
+  # A program semester lists the courses it requires; nothing moves into it.
+  defp moved_in_courses(
+         courses: _courses,
+         changes: _changes,
+         owner_type: :academic_program_semester
+       ),
+       do: []
 
-  defp moved_courses_for_owner(changes, existing_crns, _owner_type) do
-    changes
-    |> Enum.filter(&(&1["operation"] == "update"))
-    |> Enum.reject(&(&1["course_name"] == "__DELETED__"))
-    |> Enum.reject(&MapSet.member?(existing_crns, &1["crn"]))
-    |> Enum.map(&change_to_course/1)
-  end
-
-  defp apply_change_to_course(
-         %{"crn" => _crn} = course,
-         %{"crn" => crn, "operation" => "update"} = change
-       ) do
-    course
-    |> Map.put("crn", crn)
-    |> Map.put("name", change["course_name"] || course["name"])
-    |> Map.put(
-      "instructors",
-      case change["target_professor"] do
-        nil -> course["instructors"]
-        prof -> [%{"name" => prof, "primary_instructor" => true}]
-      end
-    )
-    |> Map.put("meet_info", change["meet_info"] || course["meet_info"])
-    |> Map.put("__source", :updated)
-  end
-
-  defp change_to_course(%{"crn" => crn, "operation" => operation} = change)
-       when operation in ["add", "update"] do
-    %{
-      "crn" => crn,
-      "name" => change["course_name"] || "",
-      "subject_code" => change["subject_code"] || "",
-      "course_number" => change["course_number"] || "",
-      "section_number" => "",
-      "credit_hours" => 0,
-      "instructors" =>
-        case change["target_professor"] do
-          nil -> []
-          prof -> [%{"name" => prof, "primary_instructor" => true}]
-        end,
-      "meet_info" => change["meet_info"],
-      "__source" => :added
-    }
-  end
+  defp moved_in_courses(courses: courses, changes: changes, owner_type: _owner_type),
+    do: ScheduleChange.moved_courses(courses: courses, changes: changes)
 
   defp course_matches_owner?(
          course: _course,

@@ -5,10 +5,12 @@ defmodule SnowSeToolsWeb.Scheduling.OverlayGroup do
   """
   use SnowSeToolsWeb, :html
 
+  alias SnowSeTools.Scheduling.TimeOfDay
+
   alias SnowSeToolsWeb.Scheduling.{OverlayControls, ScheduleOverlays, WeekSchedule}
   import SnowSeToolsWeb.Scheduling.WeekScheduleGrid
 
-  @days ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+  @days TimeOfDay.week_days()
 
   attr :group_key, :string, required: true
   attr :member_keys, :list, required: true

@@ -63,9 +63,9 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
     ]
 
     Enum.reduce_while(statements, :ok, fn sql, :ok ->
-      case DbHelpers.run_sql(sql, %{}) do
+      case DbHelpers.query(sql, %{}) do
         {:error, reason} -> {:halt, {:error, reason}}
-        _rows -> {:cont, :ok}
+        {:ok, _rows} -> {:cont, :ok}
       end
     end)
   end
@@ -81,11 +81,11 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
     ORDER BY lower(name)
     """
 
-    case DbHelpers.run_sql(sql, %{}, @program_schema) do
+    case DbHelpers.query(sql, %{}, @program_schema) do
       {:error, _reason} = error ->
         error
 
-      programs ->
+      {:ok, programs} ->
         hydrate_programs(programs)
     end
   end
@@ -125,12 +125,12 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
         WHERE id = $(id)
         """
 
-        case DbHelpers.run_sql(update_sql, %{"id" => uuid_param(id), "name" => name}) do
+        case DbHelpers.query(update_sql, %{"id" => uuid_param(id), "name" => name}) do
           {:error, reason} ->
             {:error, reason}
 
-          _rows ->
-            case DbHelpers.run_sql(
+          {:ok, _rows} ->
+            case DbHelpers.query(
                    "DELETE FROM academic_program_semesters WHERE academic_program_id = $(id)",
                    %{"id" => uuid_param(id)}
                  ) do
@@ -152,9 +152,9 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
   def delete_program(id: id) do
     sql = "DELETE FROM academic_programs WHERE id = $(id)"
 
-    case DbHelpers.run_sql(sql, %{"id" => uuid_param(id)}) do
+    case DbHelpers.query(sql, %{"id" => uuid_param(id)}) do
       {:error, _reason} = error -> error
-      _rows -> :ok
+      {:ok, _rows} -> :ok
     end
   end
 
@@ -165,10 +165,10 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
     RETURNING id
     """
 
-    case DbHelpers.run_sql(sql, %{"name" => name}) do
-      [%{"id" => id}] -> {:ok, id}
+    case DbHelpers.query(sql, %{"name" => name}) do
+      {:ok, [%{"id" => id}]} -> {:ok, id}
       {:error, reason} -> {:error, reason}
-      other -> {:error, {:unexpected_insert_result, other}}
+      {:ok, other} -> {:error, {:unexpected_insert_result, other}}
     end
   end
 
@@ -183,9 +183,9 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
     WHERE id = $(id)
     """
 
-    case DbHelpers.run_sql(sql, %{"id" => uuid_param(program_id)}, @program_schema) do
-      [program] -> {:ok, hydrate_program(program)}
-      [] -> {:error, :not_found}
+    case DbHelpers.query(sql, %{"id" => uuid_param(program_id)}, @program_schema) do
+      {:ok, [program]} -> {:ok, hydrate_program(program)}
+      {:ok, []} -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
     end
   end
@@ -206,12 +206,12 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
     ORDER BY position
     """
 
-    case DbHelpers.run_sql(sql, %{"program_id" => uuid_param(program_id)}) do
+    case DbHelpers.query(sql, %{"program_id" => uuid_param(program_id)}) do
       {:error, reason} ->
         Logger.error("Failed to list academic program semesters reason=#{inspect(reason)}")
         []
 
-      semesters ->
+      {:ok, semesters} ->
         Enum.map(semesters, fn semester ->
           Map.put(semester, "courses", list_courses(semester_id: semester["id"]))
         end)
@@ -226,12 +226,12 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
     ORDER BY position, subject_code, course_number
     """
 
-    case DbHelpers.run_sql(sql, %{"semester_id" => uuid_param(semester_id)}) do
+    case DbHelpers.query(sql, %{"semester_id" => uuid_param(semester_id)}) do
       {:error, reason} ->
         Logger.error("Failed to list academic program semester courses reason=#{inspect(reason)}")
         []
 
-      courses ->
+      {:ok, courses} ->
         courses
     end
   end
@@ -265,10 +265,10 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
       "position" => position
     }
 
-    case DbHelpers.run_sql(sql, params) do
-      [%{"id" => id}] -> {:ok, id}
+    case DbHelpers.query(sql, params) do
+      {:ok, [%{"id" => id}]} -> {:ok, id}
       {:error, reason} -> {:error, reason}
-      other -> {:error, {:unexpected_insert_result, other}}
+      {:ok, other} -> {:error, {:unexpected_insert_result, other}}
     end
   end
 
@@ -294,9 +294,9 @@ defmodule SnowSeTools.AcademicPrograms.ProgramDb do
         "position" => index
       }
 
-      case DbHelpers.run_sql(sql, params) do
+      case DbHelpers.query(sql, params) do
         {:error, reason} -> {:halt, {:error, reason}}
-        _rows -> {:cont, :ok}
+        {:ok, _rows} -> {:cont, :ok}
       end
     end)
   end

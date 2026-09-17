@@ -1,6 +1,8 @@
 defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   use SnowSeToolsWeb, :live_view
 
+  require Logger
+
   alias SnowSeTools.Scheduling.{ScheduleChangeDomainManager, ScheduleChangePubSub}
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramEditor
   alias SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker
@@ -74,7 +76,10 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
      )}
   end
 
-  def handle_event(_event, _params, socket), do: {:noreply, socket}
+  def handle_event(event, _params, socket) do
+    Logger.warning("SchedulingLive ignored an unhandled event event=#{event}")
+    {:noreply, socket}
+  end
 
   def handle_info({:schedule_change_groups, groups}, socket) do
     {:noreply, ScheduleChangeGroups.sync_groups(socket, groups)}
@@ -85,7 +90,10 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
     {:noreply, socket}
   end
 
-  def handle_info(_message, socket), do: {:noreply, socket}
+  def handle_info(message, socket) do
+    Logger.warning("SchedulingLive ignored an unhandled message #{inspect(message)}")
+    {:noreply, socket}
+  end
 
   def render(assigns) do
     ~H"""

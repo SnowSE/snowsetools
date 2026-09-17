@@ -29,9 +29,9 @@ defmodule SnowSeTools.Syllabi.AvailableTermsDb do
         "term_names" => Enum.map(terms, fn {_, term_name} -> term_name end)
       }
 
-      case DbHelpers.run_sql(sql, params) do
+      case DbHelpers.query(sql, params) do
         {:error, reason} -> {:error, reason}
-        _rows -> :ok
+        {:ok, _rows} -> :ok
       end
     end
   end
@@ -44,11 +44,11 @@ defmodule SnowSeTools.Syllabi.AvailableTermsDb do
     ORDER BY term_id DESC
     """
 
-    case DbHelpers.run_sql(sql, %{}) do
+    case DbHelpers.query(sql, %{}) do
       {:error, _} = err ->
         err
 
-      rows ->
+      {:ok, rows} ->
         terms =
           rows
           |> Enum.map(fn row -> {row["term_id"], row["term_name"]} end)
@@ -75,11 +75,11 @@ defmodule SnowSeTools.Syllabi.AvailableTermsDb do
     ORDER BY t.term_id DESC
     """
 
-    case DbHelpers.run_sql(sql, %{}) do
+    case DbHelpers.query(sql, %{}) do
       {:error, _} = err ->
         err
 
-      rows ->
+      {:ok, rows} ->
         terms =
           rows
           |> Enum.sort_by(fn row -> sort_key({row["term_id"], row["term_name"]}) end)
@@ -119,11 +119,11 @@ defmodule SnowSeTools.Syllabi.AvailableTermsDb do
     WHERE term_id = $(term_id)
     """
 
-    case DbHelpers.run_sql(sql, %{"term_id" => term_id}) do
+    case DbHelpers.query(sql, %{"term_id" => term_id}) do
       {:error, _} = err ->
         err
 
-      [row] ->
+      {:ok, [row]} ->
         {:ok,
          %{
            term_id: row["term_id"],
@@ -131,7 +131,7 @@ defmodule SnowSeTools.Syllabi.AvailableTermsDb do
            status: row["status"]
          }}
 
-      [] ->
+      {:ok, []} ->
         nil
     end
   end
@@ -139,11 +139,11 @@ defmodule SnowSeTools.Syllabi.AvailableTermsDb do
   def count_active_terms do
     sql = "SELECT COUNT(*) as count FROM syllabus_available_terms WHERE status = 'active'"
 
-    case DbHelpers.run_sql(sql, %{}) do
+    case DbHelpers.query(sql, %{}) do
       {:error, _} = err ->
         err
 
-      [row] ->
+      {:ok, [row]} ->
         {:ok, String.to_integer(row["count"])}
     end
   end

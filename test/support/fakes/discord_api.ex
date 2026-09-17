@@ -20,7 +20,7 @@ defmodule SnowSeTools.TestSupport.Fakes.DiscordApi do
 
     cached_channels =
       case SnowSeTools.Discord.DiscordDb.list_channels() do
-        channels when is_list(channels) -> Enum.map(channels, &Map.get(&1, "data", &1))
+        {:ok, channels} -> Enum.map(channels, &Map.get(&1, "data", &1))
         {:error, _reason} -> []
       end
 

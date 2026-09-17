@@ -72,8 +72,8 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
     result =
       case SnowCourseCacheDb.list_terms_with_courses() do
         {:error, reason} -> {:error, reason}
-        [] -> {:ok, %{}}
-        terms -> {:ok, load_courses_for_all_terms(terms)}
+        {:ok, []} -> {:ok, %{}}
+        {:ok, terms} -> {:ok, load_courses_for_all_terms(terms)}
       end
 
     send(pid, {:snow_course_cache, {:all_courses_loaded, result}})
@@ -92,7 +92,7 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
           Logger.error("Snow course cache catalog load failed reason=#{inspect(reason)}")
           {:error, reason}
 
-        courses ->
+        {:ok, courses} ->
           {:ok, courses}
       end
 
@@ -182,7 +182,7 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
           result: {:error, reason}
         )
 
-      _ ->
+      {:ok, _} ->
         SnowCourseCachePubSub.broadcast_course_cache_deleted(term_code)
 
         AdminSnowCoursesUIMessages.send_snow_cache_action_result(
@@ -239,13 +239,13 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
           result: {:error, reason}
         )
 
-      [] ->
+      {:ok, []} ->
         AdminSnowCoursesUIMessages.send_snow_cache_action_result(
           pid: pid,
           result: {:error, "No cached courses found for #{term_code}."}
         )
 
-      courses ->
+      {:ok, courses} ->
         results =
           courses
           |> Task.async_stream(
@@ -349,10 +349,10 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
       {:error, reason} ->
         {:error, reason}
 
-      [] ->
+      {:ok, []} ->
         {:ok, []}
 
-      terms ->
+      {:ok, terms} ->
         term_tasks =
           terms
           |> Task.async_stream(
@@ -403,7 +403,7 @@ defmodule SnowSeTools.Snow.SnowCourseCacheDomainManager do
 
               {term["term_code"], []}
 
-            courses when is_list(courses) ->
+            {:ok, courses} when is_list(courses) ->
               {term["term_code"], courses}
           end
         end,

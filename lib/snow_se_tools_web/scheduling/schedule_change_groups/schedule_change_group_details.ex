@@ -1,4 +1,9 @@
 defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
+  alias SnowSeTools.Data.Text
+  alias SnowSeTools.Scheduling.ScheduleChange
+
+  @deleted_marker ScheduleChange.deleted_marker()
+  alias SnowSeTools.Scheduling.TimeOfDay
   use SnowSeToolsWeb, :html
 
   require Logger
@@ -105,7 +110,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
 
             <div class="mt-2 space-y-1">
               <div
-                :if={change["course_name"] == "__DELETED__"}
+                :if={ScheduleChange.deleted?(change)}
                 class="rounded-md border border-slate-800/80 bg-slate-900/55 px-2 py-1 text-[11px]"
               >
                 <span class="font-semibold text-slate-300">Status</span>
@@ -223,7 +228,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
     end
   end
 
-  defp change_title(%{"course_name" => "__DELETED__"} = change),
+  defp change_title(%{"course_name" => @deleted_marker} = change),
     do: "Removed CRN #{change["crn"]}"
 
   defp change_title(%{"course_name" => name}) when is_binary(name) and name != "", do: name
@@ -257,7 +262,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
     end
   end
 
-  defp change_card_class(%{"course_name" => "__DELETED__"}, _conflicts) do
+  defp change_card_class(%{"course_name" => @deleted_marker}, _conflicts) do
     "rounded-lg border border-red-500/30 bg-red-950/20 p-2.5"
   end
 
@@ -476,16 +481,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
     |> Enum.join("-")
   end
 
-  defp normalize_time(time) when is_binary(time) do
-    time
-    |> String.split(":")
-    |> case do
-      [hour, minute | _] -> "#{hour}:#{minute}"
-      _other -> time
-    end
-  end
-
-  defp normalize_time(_time), do: nil
+  defp normalize_time(time), do: TimeOfDay.normalize_or_nil(time)
 
   defp normalize_course_part(value) when is_binary(value), do: String.downcase(String.trim(value))
   defp normalize_course_part(_value), do: ""
@@ -515,7 +511,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
 
   defp professor_name(_change, original_course), do: first_professor(original_course)
 
-  defp blank?(value), do: is_nil(value) or value == ""
+  defp blank?(value), do: Text.blank?(value)
 
   defp semester_label(0), do: "Freshman first semester"
   defp semester_label(1), do: "Freshman second semester"

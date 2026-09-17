@@ -11,6 +11,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
     ScheduleUtils
   }
 
+  alias SnowSeTools.Scheduling.TimeOfDay
+
   alias SnowSeToolsWeb.Scheduling.{CourseChangeIntent, OverlayControls, ScheduleChangeApply}
   import SnowSeToolsWeb.Scheduling.WeekScheduleGrid
 
@@ -440,6 +442,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
     end
   end
 
+  # Nothing downstream wants this message, so it stops here whether or not a
+  # card on screen is the one that changed.
   def hooked_info(
         {:schedule_owners,
          {:schedule_owner_detail_changed,
@@ -449,14 +453,14 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
     state = Map.get(socket.assigns.week_schedules, owner_key)
 
     if state != nil and state.owner_key == owner_key and state.selected_term_code == term_code do
-      {:cont,
+      {:halt,
        assign(
          socket,
          :week_schedules,
          Map.put(socket.assigns.week_schedules, owner_key, loaded_state(state, course_list))
        )}
     else
-      {:cont, socket}
+      {:halt, socket}
     end
   end
 
@@ -659,10 +663,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
     |> Enum.find("", &is_binary/1)
   end
 
-  defp normalize_time(<<hour::binary-size(2), ":", minute::binary-size(2), _rest::binary>>),
-    do: "#{hour}:#{minute}"
-
-  defp normalize_time(_time), do: ""
+  defp normalize_time(time), do: TimeOfDay.normalize(time)
 
   defp fetch_string(params, key) do
     case Map.get(params, key) do
@@ -671,18 +672,9 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
     end
   end
 
-  defp time_minutes(<<hour::binary-size(2), ":", minute::binary-size(2), _rest::binary>>) do
-    with {hour, ""} <- Integer.parse(hour),
-         {minute, ""} <- Integer.parse(minute) do
-      hour * 60 + minute
-    else
-      _other -> 0
-    end
-  end
+  defp time_minutes(time), do: TimeOfDay.minutes(time, 0)
 
-  defp time_minutes(_time), do: 0
-
-  defp week_days, do: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+  defp week_days, do: TimeOfDay.week_days()
 
   defp loaded_state(state, nil) do
     %{state | course_list: nil, week_schedule: nil, loading?: false}

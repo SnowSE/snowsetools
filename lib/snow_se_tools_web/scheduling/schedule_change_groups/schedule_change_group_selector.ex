@@ -7,8 +7,12 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupSelector do
     ~H"""
     <div class="flex flex-col gap-4">
       <div class="flex items-center justify-between">
-        <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">
+        <h3
+          class="text-xs font-semibold uppercase tracking-wider text-slate-400"
+          title="Every schedule editor sees and can change these groups."
+        >
           Change Groups
+          <span class="ml-1 font-normal normal-case tracking-normal text-slate-500">· shared</span>
         </h3>
         <button
           type="button"

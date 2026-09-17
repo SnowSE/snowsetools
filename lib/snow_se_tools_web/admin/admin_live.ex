@@ -3,6 +3,8 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
   use SnowSeToolsWeb.Admin.AdminUIMessages
   use SnowSeToolsWeb.Admin.AdminSnowCoursesUIMessages
 
+  require Logger
+
   alias SnowSeTools.Data.Access
   alias SnowSeTools.Snow.SnowCourseCacheDomainManager
   alias SnowSeTools.Telemetry.Events
@@ -138,7 +140,10 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
     {:noreply, socket}
   end
 
-  def handle_info(_message, socket), do: {:noreply, socket}
+  def handle_info(message, socket) do
+    Logger.warning("AdminLive ignored an unhandled message #{inspect(message)}")
+    {:noreply, socket}
+  end
 
   # Access changes are recorded with names, not ids: "granted syllabi to
   # someone@snow.edu" is worth reading a month later, a pair of uuids is not.

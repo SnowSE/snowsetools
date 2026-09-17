@@ -18,9 +18,9 @@ defmodule SnowSeTools.Reports.ReportInstructionDB do
     ORDER BY inserted_at ASC
     """
 
-    case DbHelpers.run_sql(sql, %{"required_element_id" => Uuid.to_binary(required_element_id)}) do
+    case DbHelpers.query(sql, %{"required_element_id" => Uuid.to_binary(required_element_id)}) do
       {:error, _} = err -> err
-      rows -> {:ok, rows}
+      {:ok, rows} -> {:ok, rows}
     end
   end
 
@@ -31,10 +31,10 @@ defmodule SnowSeTools.Reports.ReportInstructionDB do
     WHERE id = $(id)
     """
 
-    case DbHelpers.run_sql(sql, %{"id" => Uuid.to_binary(id)}) do
+    case DbHelpers.query(sql, %{"id" => Uuid.to_binary(id)}) do
       {:error, _} = err -> err
-      [row | _] -> {:ok, row}
-      [] -> {:error, :not_found}
+      {:ok, [row | _]} -> {:ok, row}
+      {:ok, []} -> {:error, :not_found}
     end
   end
 
@@ -47,13 +47,13 @@ defmodule SnowSeTools.Reports.ReportInstructionDB do
         RETURNING id, required_element_id, content
         """
 
-        case DbHelpers.run_sql(sql, %{
+        case DbHelpers.query(sql, %{
                "required_element_id" => Uuid.to_binary(required_element_id),
                "content" => d["content"]
              }) do
           {:error, _} = err -> err
-          [row | _] -> {:ok, row}
-          [] -> {:error, :not_found}
+          {:ok, [row | _]} -> {:ok, row}
+          {:ok, []} -> {:error, :not_found}
         end
 
       {:error, errors} ->
@@ -72,13 +72,13 @@ defmodule SnowSeTools.Reports.ReportInstructionDB do
         RETURNING id, required_element_id, content
         """
 
-        case DbHelpers.run_sql(sql, %{
+        case DbHelpers.query(sql, %{
                "id" => Uuid.to_binary(id),
                "content" => d["content"]
              }) do
           {:error, _} = err -> err
-          [row | _] -> {:ok, row}
-          [] -> {:error, :not_found}
+          {:ok, [row | _]} -> {:ok, row}
+          {:ok, []} -> {:error, :not_found}
         end
 
       {:error, errors} ->
@@ -89,9 +89,9 @@ defmodule SnowSeTools.Reports.ReportInstructionDB do
   def delete(id) do
     sql = "DELETE FROM syllabus_required_element_report_instructions WHERE id = $(id)"
 
-    case DbHelpers.run_sql(sql, %{"id" => Uuid.to_binary(id)}) do
+    case DbHelpers.query(sql, %{"id" => Uuid.to_binary(id)}) do
       {:error, _} = err -> err
-      _ -> :ok
+      {:ok, _} -> :ok
     end
   end
 end

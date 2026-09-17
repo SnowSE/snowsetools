@@ -6,8 +6,10 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDomainManager do
     ScheduleChangeDb,
     ScheduleChangePubSub,
     ScheduleConflictDetector,
+    ScheduleChange,
     ScheduleOwnerDomainManager,
-    ScheduleUtils
+    ScheduleUtils,
+    TimeOfDay
   }
 
   def start_link(_opts) do
@@ -396,7 +398,7 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDomainManager do
   end
 
   defp change_returns_to_original(change_attrs: %{"operation" => "update"} = change_attrs) do
-    with false <- change_attrs["course_name"] == "__DELETED__",
+    with false <- ScheduleChange.deleted?(change_attrs),
          term_code when is_binary(term_code) <- change_attrs["term"],
          crn when is_binary(crn) <- change_attrs["crn"],
          {:ok, owner_course_lists} <- owner_course_lists_for_term(term_code: term_code),
@@ -478,14 +480,5 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDomainManager do
     end)
   end
 
-  defp time_minutes(<<hour::binary-size(2), ":", minute::binary-size(2), _rest::binary>>) do
-    with {hour, ""} <- Integer.parse(hour),
-         {minute, ""} <- Integer.parse(minute) do
-      hour * 60 + minute
-    else
-      _other -> nil
-    end
-  end
-
-  defp time_minutes(_time), do: nil
+  defp time_minutes(time), do: TimeOfDay.minutes(time, nil)
 end
