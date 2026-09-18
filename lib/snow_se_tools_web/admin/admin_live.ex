@@ -5,7 +5,7 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
 
   require Logger
 
-  alias SnowSeTools.Data.Access
+  alias SnowSeTools.Data.{Access, EmailList}
   alias SnowSeTools.Snow.SnowCourseCacheDomainManager
   alias SnowSeTools.Telemetry.Events
   alias SnowSeTools.UserGroups.UserGroupDomainManager
@@ -24,6 +24,7 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
       |> assign(:pending_delete, nil)
       |> assign(:group_form, to_form(%{"name" => ""}, as: :group))
       |> assign(:user_form, to_form(%{"email" => ""}, as: :user))
+      |> assign(:new_user_group_ids, [])
 
     if connected?(socket) do
       UserGroupDomainManager.request_dashboard(pid: self())
@@ -34,13 +35,32 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
   end
 
   def handle_event("create_user", %{"user" => user_params}, socket) do
+    emails = EmailList.parse(user_params["email"] || "")
+    user_params = Map.put(user_params, "group_ids", socket.assigns.new_user_group_ids)
+
     Events.record("admin.user.created",
       user: socket.assigns.current_user,
-      attributes: %{"target.email" => user_params["email"] || "unknown"}
+      attributes: %{
+        "target.email" => if(emails == [], do: "unknown", else: Enum.join(emails, ", ")),
+        "target.count" => length(emails)
+      }
     )
 
     UserGroupDomainManager.create_user(pid: self(), user_params: user_params)
     {:noreply, socket}
+  end
+
+  def handle_event("toggle_new_user_group", %{"group_id" => group_id}, socket) do
+    selected = socket.assigns.new_user_group_ids
+
+    selected =
+      if group_id in selected do
+        List.delete(selected, group_id)
+      else
+        [group_id | selected]
+      end
+
+    {:noreply, assign(socket, :new_user_group_ids, selected)}
   end
 
   def handle_event("save_group", %{"group" => group_params}, socket) do
@@ -188,17 +208,41 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
             </div>
 
             <.form for={@user_form} id="admin-user-form" phx-submit="create_user" class="mb-5">
-              <div class="flex flex-col gap-3 sm:flex-row">
-                <label class="flex-1 space-y-2">
-                  <span class="block text-sm font-medium text-slate-300">Create user</span>
-                  <input
-                    type="email"
-                    name={@user_form[:email].name}
-                    value={@user_form[:email].value}
-                    placeholder="user@example.com"
-                    class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                  />
-                </label>
+              <label class="block space-y-2">
+                <span class="block text-sm font-medium text-slate-300">Create users</span>
+                <textarea
+                  name={@user_form[:email].name}
+                  rows="2"
+                  placeholder={~s(user@snow.edu; "First Last" <first.last@snow.edu>)}
+                  class="w-full resize-y rounded-xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                >{@user_form[:email].value}</textarea>
+              </label>
+
+              <div class="mt-3 flex flex-wrap items-end justify-between gap-3">
+                <div class="space-y-2">
+                  <span class="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                    Roles to assign
+                  </span>
+                  <div class="flex flex-wrap gap-2">
+                    <%= for role <- Access.roles(), group = group_named(@groups, role.group), group do %>
+                      <.new_user_group_checkbox
+                        group={group}
+                        label={role.label}
+                        title={role.description}
+                        checked={group.id in @new_user_group_ids}
+                      />
+                    <% end %>
+                    <%= for group <- custom_groups(@groups) do %>
+                      <.new_user_group_checkbox
+                        group={group}
+                        label={group.name}
+                        title="Custom group"
+                        checked={group.id in @new_user_group_ids}
+                      />
+                    <% end %>
+                  </div>
+                </div>
+
                 <button
                   type="submit"
                   class="rounded-xl bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-400"
@@ -209,8 +253,11 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
             </.form>
 
             <p class="mb-4 text-xs leading-5 text-slate-500">
-              New accounts start with no access and see an "awaiting approval" page.
-              Toggle the areas each person may use; <span class="text-emerald-300">Super user</span>
+              Paste one address or a whole list — <code class="text-slate-400">"Name" &lt;a@snow.edu&gt;</code>
+              entries separated by semicolons, commas or line breaks all work. Checked roles are
+              added to everyone in the list; an address that is already a user keeps the roles it
+              has. Without a role, an account sees an "awaiting approval" page.
+              <span class="text-emerald-300">Super user</span>
               grants everything, including this page.
             </p>
 
@@ -414,6 +461,36 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
         </.modal>
       </:modal>
     </Layouts.app>
+    """
+  end
+
+  attr :group, :map, required: true
+  attr :label, :string, required: true
+  attr :title, :string, default: nil
+  attr :checked, :boolean, required: true
+
+  # The selection lives in `new_user_group_ids` rather than in the submitted
+  # form, so that clearing it after a submit actually reaches the browser.
+  defp new_user_group_checkbox(assigns) do
+    ~H"""
+    <label title={@title} class="group relative cursor-pointer">
+      <input
+        type="checkbox"
+        id={"new-user-group-#{@group.id}"}
+        checked={@checked}
+        phx-click="toggle_new_user_group"
+        phx-value-group_id={@group.id}
+        class="peer sr-only"
+      />
+      <span class={[
+        "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition",
+        "border-slate-700 bg-slate-900 text-slate-400 group-hover:border-slate-500 group-hover:text-slate-200",
+        "peer-checked:border-indigo-500/40 peer-checked:bg-indigo-500/15 peer-checked:text-indigo-200",
+        "peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-400/60"
+      ]}>
+        {@label}
+      </span>
+    </label>
     """
   end
 

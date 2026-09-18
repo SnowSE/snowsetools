@@ -34,6 +34,7 @@ defmodule SnowSeToolsWeb.Admin.AdminUIMessages do
         |> assign(:editing_group_id, nil)
         |> assign(:group_form, to_form(%{"name" => ""}, as: :group))
         |> assign(:user_form, to_form(%{"email" => ""}, as: :user))
+        |> assign(:new_user_group_ids, [])
       end
 
       defp format_error(reason) when is_binary(reason), do: reason
@@ -45,7 +46,7 @@ defmodule SnowSeToolsWeb.Admin.AdminUIMessages do
         do: "You cannot remove the last super user."
 
       defp format_error(:invalid_group_name), do: "Group name cannot be blank."
-      defp format_error(:invalid_email), do: "Email cannot be blank."
+      defp format_error(:invalid_email), do: "No email address found in that list."
       defp format_error(:not_found), do: "That record no longer exists."
       defp format_error(reason), do: inspect(reason)
     end

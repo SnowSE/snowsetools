@@ -2,7 +2,7 @@ defmodule SnowSeTools.UserGroups.UserGroupDomainManager do
   use GenServer
   require Logger
 
-  alias SnowSeTools.Data.AccessControl
+  alias SnowSeTools.Data.{Access, AccessControl, EmailList}
   alias SnowSeToolsWeb.Admin.AdminUIMessages
 
   def start_link(_opts) do
@@ -99,14 +99,25 @@ defmodule SnowSeTools.UserGroups.UserGroupDomainManager do
   end
 
   def handle_cast({:create_user, pid, user_params}, state) do
-    case AccessControl.create_user(email: Map.get(user_params, "email", "")) do
-      {:ok, _user} ->
-        AdminUIMessages.send_action_result(pid: pid, result: {:ok, "User created."})
-        send_users(pid)
-        send_groups(pid)
+    emails = EmailList.parse(Map.get(user_params, "email", ""))
+    group_ids = Map.get(user_params, "group_ids", []) |> List.wrap()
 
-      {:error, reason} ->
-        AdminUIMessages.send_action_result(pid: pid, result: {:error, reason})
+    case emails do
+      [] ->
+        AdminUIMessages.send_action_result(pid: pid, result: {:error, :invalid_email})
+
+      emails ->
+        {created, failed} = create_users(emails: emails, group_ids: group_ids)
+
+        if created != [] do
+          send_users(pid)
+          send_groups(pid)
+        end
+
+        AdminUIMessages.send_action_result(
+          pid: pid,
+          result: create_users_result(created: created, failed: failed, group_ids: group_ids)
+        )
     end
 
     {:noreply, state}
@@ -138,6 +149,87 @@ defmodule SnowSeTools.UserGroups.UserGroupDomainManager do
     end
 
     {:noreply, state}
+  end
+
+  # Every address in the box is created, and each checked role is added on top
+  # of whatever the person already holds. An address that is already a user is
+  # an upsert, so re-pasting a list never costs anyone an existing role.
+  defp create_users(emails: emails, group_ids: group_ids) do
+    {created, failed} =
+      Enum.reduce(emails, {[], []}, fn email, {created, failed} ->
+        case create_user_with_groups(email: email, group_ids: group_ids) do
+          {:ok, email} -> {[email | created], failed}
+          {:error, reason} -> {created, [{email, reason} | failed]}
+        end
+      end)
+
+    {Enum.reverse(created), Enum.reverse(failed)}
+  end
+
+  defp create_user_with_groups(email: email, group_ids: group_ids) do
+    with {:ok, user} <- AccessControl.create_user(email: email),
+         :ok <- add_groups(user_id: user.id, group_ids: group_ids) do
+      {:ok, email}
+    end
+  end
+
+  defp add_groups(user_id: user_id, group_ids: group_ids) do
+    Enum.reduce_while(group_ids, :ok, fn group_id, :ok ->
+      case AccessControl.add_user_group(user_id: user_id, group_id: group_id) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp create_users_result(created: created, failed: [], group_ids: group_ids) do
+    {:ok, created_message(created: created, group_ids: group_ids)}
+  end
+
+  defp create_users_result(created: created, failed: failed, group_ids: group_ids) do
+    Logger.error("Failed to create users: #{inspect(failed)}")
+
+    could_not = "Could not add " <> Enum.map_join(failed, ", ", fn {email, _reason} -> email end)
+
+    if created == [] do
+      {:error, could_not <> "."}
+    else
+      {:error, created_message(created: created, group_ids: group_ids) <> " " <> could_not <> "."}
+    end
+  end
+
+  defp created_message(created: created, group_ids: group_ids) do
+    people =
+      case created do
+        [email] -> "Added #{email}"
+        created -> "Added #{length(created)} users"
+      end
+
+    case role_names(group_ids) do
+      [] -> people <> "."
+      names -> people <> " with #{Enum.join(names, ", ")}."
+    end
+  end
+
+  defp role_names([]), do: []
+
+  defp role_names(group_ids) do
+    case load_groups() do
+      {:ok, groups} ->
+        groups
+        |> Enum.filter(&(&1.id in group_ids))
+        |> Enum.map(&role_label(&1.name))
+
+      {:error, _reason} ->
+        []
+    end
+  end
+
+  defp role_label(group_name) do
+    case Access.area_for_group(group_name) do
+      %{label: label} -> label
+      nil -> group_name
+    end
   end
 
   defp load_users, do: AccessControl.list_users_with_groups()
