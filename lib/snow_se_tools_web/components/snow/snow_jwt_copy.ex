@@ -23,15 +23,14 @@ console.log(\"Auth token copied to clipboard\");"
 
   def render(assigns) do
     ~H"""
-    <div id={@id} class="space-y-4">
+    <div id={@id} phx-hook=".SnowJwtCopy" class="space-y-4">
       <%= if @show_helper do %>
         <div class="space-y-2">
           <button
             type="button"
             id={"#{@id}-copy-button"}
             data-snippet={@js_snippet}
-            phx-hook=".SnowJwtCopy"
-            phx-update="ignore"
+            data-snow-jwt-copy-button
             class="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-slate-800"
           >
             Get JWT from my.snow.edu
@@ -54,6 +53,7 @@ console.log(\"Auth token copied to clipboard\");"
           name={@name}
           value={@value}
           autocomplete="off"
+          data-snow-jwt-copy-input
           class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
           placeholder={@placeholder}
         />
@@ -62,15 +62,34 @@ console.log(\"Auth token copied to clipboard\");"
       <script :type={Phoenix.LiveView.ColocatedHook} name=".SnowJwtCopy">
         export default {
           mounted() {
-            this.el.addEventListener("click", async () => {
-              const snippet = this.el.dataset.snippet
+            this.el.addEventListener("click", async (event) => {
+              const button = event.target.closest("[data-snow-jwt-copy-button]")
+              if (!button) return
 
               try {
-                await navigator.clipboard.writeText(snippet)
-                window.open("https://my.snow.edu", "_blank")
+                await navigator.clipboard.writeText(button.dataset.snippet)
               } catch (_error) {
-                window.open("https://my.snow.edu", "_blank")
+                // Without the clipboard the snippet is still shown under "Show JavaScript".
               }
+
+              const input = this.el.querySelector("[data-snow-jwt-copy-input]")
+              if (input) {
+                input.focus()
+                input.select()
+              }
+
+              window.open("https://my.snow.edu", "_blank")
+            })
+
+            this.el.addEventListener("keydown", (event) => {
+              if (event.key !== "Enter") return
+              if (!event.target.closest("[data-snow-jwt-copy-input]")) return
+
+              const form = this.el.closest("form")
+              if (!form) return
+
+              event.preventDefault()
+              form.requestSubmit()
             })
           }
         }
