@@ -116,5 +116,16 @@ defmodule SnowSeToolsWeb.Auth.AccessTest do
       conn = get(conn, ~p"/home")
       assert redirected_to(conn) =~ "/auth/login"
     end
+
+    test "the login redirect keeps the query string, so a shared link survives it",
+         %{conn: conn} do
+      conn = get(conn, "/scheduling?mode=viewer&term=202690&layout=Fall+people")
+
+      %{query: query} = URI.parse(redirected_to(conn))
+
+      assert URI.decode_query(query) == %{
+               "return_to" => "/scheduling?mode=viewer&term=202690&layout=Fall+people"
+             }
+    end
   end
 end

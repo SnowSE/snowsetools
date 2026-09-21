@@ -197,8 +197,13 @@ defmodule SnowSeToolsWeb.AuthController do
     end
   end
 
+  # Where they were going, query string and all, kept across the login
+  # round-trip. Only a path on this site: "//elsewhere.example" also starts
+  # with a slash, and following it after login would send them off-site.
   defp save_return_to(conn, _opts) do
     case conn.params["return_to"] do
+      "//" <> _ -> conn
+      "/\\" <> _ -> conn
       "/" <> _ = path -> put_session(conn, "return_to", path)
       _ -> conn
     end

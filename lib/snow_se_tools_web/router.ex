@@ -69,8 +69,16 @@ defmodule SnowSeToolsWeb.Router do
       conn
     else
       conn
-      |> Phoenix.Controller.redirect(to: "/auth/login?return_to=#{conn.request_path}")
+      |> Phoenix.Controller.redirect(
+        to: "/auth/login?" <> URI.encode_query(%{"return_to" => return_to(conn)})
+      )
       |> halt()
     end
   end
+
+  # The query string is part of where they were going: /scheduling carries the
+  # term and the saved layout there, and a link that loses it lands on a
+  # different page than the one that was shared.
+  defp return_to(%{query_string: ""} = conn), do: conn.request_path
+  defp return_to(conn), do: "#{conn.request_path}?#{conn.query_string}"
 end
