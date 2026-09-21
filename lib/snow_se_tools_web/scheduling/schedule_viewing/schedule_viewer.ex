@@ -190,6 +190,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
           ScheduleChangeGroups.active_conflicted_course_crns(@schedule_change_groups_state)
         }
         schedule_owners_metadata={selected_term_schedule_owners(@state)}
+        term_code={@state.selected_term_code}
         editor?={@editor?}
       />
     </div>
@@ -397,7 +398,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
      })
      # A layout named in the URL waits for this: until the term's owners are
      # known there is no way to tell which of its cards this term actually has.
-     |> ScheduleLayouts.maybe_apply_pending_layout()}
+     # The canvas this browser remembers waits for exactly the same thing.
+     |> ScheduleLayouts.maybe_apply_pending_layout()
+     |> ScheduleLayouts.maybe_restore_session()}
   end
 
   def hooked_info(

@@ -397,6 +397,94 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayoutsTest do
     end
   end
 
+  describe "resuming where you left off" do
+    test "the canvas from the last visit comes back without anything being saved",
+         %{conn: conn, term_code: term_code} do
+      view = open_viewer(conn, term_code)
+
+      remember(view, term_code: term_code, entries: [owner_entry(@room_a)])
+      wait_for_week_schedules(view)
+
+      assert has_element?(view, "[data-schedule-key='#{@room_a}']")
+      assert has_element?(view, "#schedule-layouts-note", "Picked up where you left off")
+      # Nothing was loaded from a saved layout, so there is nothing to update.
+      refute has_element?(view, "#schedule-layouts-current")
+    end
+
+    test "cards the term no longer has are dropped and reported",
+         %{conn: conn, term_code: term_code} do
+      view = open_viewer(conn, term_code)
+
+      remember(view,
+        term_code: term_code,
+        entries: [owner_entry(@room_a), owner_entry("professor:Nobody At All")]
+      )
+
+      wait_for_week_schedules(view)
+
+      assert has_element?(view, "#schedule-layouts-note", "1 of 2 cards")
+      assert has_element?(view, "[data-schedule-key='#{@room_a}']")
+      refute has_element?(view, "[data-schedule-key='professor:Nobody At All']")
+    end
+
+    test "a snapshot taken in another term is left where it is",
+         %{conn: conn, term_code: term_code} do
+      view = open_viewer(conn, term_code)
+
+      remember(view, term_code: "#{term_code}-elsewhere", entries: [owner_entry(@room_a)])
+      wait_for_week_schedules(view)
+
+      assert has_element?(view, "#scheduling-empty-selection")
+      refute has_element?(view, "[data-schedule-key='#{@room_a}']")
+    end
+
+    test "a layout named in the URL wins over the remembered canvas",
+         %{conn: conn, term_code: term_code} do
+      {:ok, user} = User.find_or_create(test_email())
+      name = unique("Shared link")
+
+      {:ok, _layout} =
+        ScheduleLayoutDb.create(
+          name: name,
+          scope: "user",
+          user_id: user.id,
+          term_code: term_code,
+          entries: [owner_entry(@room_b)]
+        )
+
+      {:ok, view, _html} =
+        live(
+          log_in_test_user(conn),
+          ~p"/scheduling?mode=viewer&term=#{term_code}&layout=#{name}"
+        )
+
+      wait_for_schedule_metadata(view)
+      wait_for_layouts(view)
+      sync_local_layouts(view)
+
+      remember(view, term_code: term_code, entries: [owner_entry(@room_a)])
+      wait_for_week_schedules(view)
+
+      assert has_element?(view, "#schedule-layouts-current", name)
+      assert has_element?(view, "[data-schedule-key='#{@room_b}']")
+      refute has_element?(view, "[data-schedule-key='#{@room_a}']")
+    end
+
+    test "cards opened since the page loaded are not replaced by the snapshot",
+         %{conn: conn, term_code: term_code} do
+      view = open_viewer(conn, term_code)
+
+      select_schedule_owner(view, @room_b)
+      wait_for_week_schedules(view)
+
+      remember(view, term_code: term_code, entries: [owner_entry(@room_a)])
+      wait_for_week_schedules(view)
+
+      assert has_element?(view, "[data-schedule-key='#{@room_b}']")
+      refute has_element?(view, "[data-schedule-key='#{@room_a}']")
+    end
+  end
+
   describe "name collisions" do
     test "saving over an existing name asks to replace or copy instead of guessing",
          %{conn: conn, term_code: term_code} do
@@ -495,6 +583,21 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayoutsTest do
     :ok = ScheduleOwnerDomainManager.await_idle()
     render(view)
   end
+
+  # What the colocated hook reports from localStorage when the page opens.
+  defp remember(view, term_code: term_code, entries: entries) do
+    render_hook(view, "schedule-layouts:session_read", %{
+      "session" => %{
+        "term_code" => term_code,
+        "entries" => entries,
+        "loaded" => nil,
+        "baseline" => nil
+      }
+    })
+  end
+
+  defp owner_entry(owner_key),
+    do: %{"kind" => "owner", "key" => owner_key, "size" => %{"width" => nil, "scale" => 1.0}}
 
   # The colocated hook reports browser-local layouts in a real session; tests
   # push the same event so the URL resolver knows that source has reported.

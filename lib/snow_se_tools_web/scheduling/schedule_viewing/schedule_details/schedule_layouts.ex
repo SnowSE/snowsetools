@@ -17,6 +17,13 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
   Layouts save to one of three places: this browser (`localStorage`, mirrored
   into the component by a hook), the signed-in user's account, or shared with
   everyone who has scheduling access.
+
+  Saving is for layouts worth keeping. Everything on the canvas is also written
+  to `localStorage` as you work, under a single "session" snapshot, so walking
+  away from the page and coming back to it resumes what you had open rather
+  than an empty canvas. The snapshot is only picked up on a bare page load of
+  the term it was taken in: a URL naming a layout, or a canvas already in use,
+  wins over it.
   """
 
   use SnowSeToolsWeb, :html
@@ -38,6 +45,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
     :note,
     :pending_save,
     :pending_url_layout,
+    :pending_session,
+    :session_ready?,
     :sources_ready
   ]
 
@@ -60,6 +69,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
           note: {:info | :warn | :error, String.t()} | nil,
           pending_save: {String.t(), String.t(), [map()]} | nil,
           pending_url_layout: String.t() | nil,
+          pending_session: :unreported | map() | nil,
+          session_ready?: boolean(),
           sources_ready: MapSet.t(:server | :local)
         }
 
@@ -79,6 +90,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
       note: nil,
       pending_save: nil,
       pending_url_layout: nil,
+      pending_session: :unreported,
+      session_ready?: false,
       sources_ready: MapSet.new()
     })
     |> maybe_attach_hooks()
@@ -115,6 +128,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
 
   attr :state, __MODULE__, required: true
   attr :schedule_details_order, :any, required: true
+  attr :term_code, :string, default: nil
   attr :editor?, :boolean, required: true
   slot :leading, doc: "Controls shown at the start of the layout toolbar row."
 
@@ -135,11 +149,14 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
         state.undo != nil and not dirty?(state, assigns.schedule_details_order)
       )
       |> assign(:primary, primary_action(state, assigns.schedule_details_order, entries))
+      |> assign(:session, session_snapshot(state, entries: entries, term_code: assigns.term_code))
 
     ~H"""
     <div
       id="schedule-layouts"
       phx-hook=".ScheduleLayoutsStore"
+      data-session={@session}
+      data-session-ready={to_string(@state.session_ready?)}
       phx-click-away={@state.menu && "schedule-layouts:close_menus"}
       class="mb-2 flex w-full flex-col gap-2"
     >
@@ -301,10 +318,13 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
       // Browser-scoped layouts never reach the server, so the component holds a
       // mirror of them and this hook is the only thing that touches the store.
       const STORAGE_KEY = "scheduling:layouts";
+      // What was on the canvas when this browser last left the page.
+      const SESSION_KEY = "scheduling:session";
 
       export default {
         mounted() {
           this.sync();
+          this.reportSession();
 
           this.handleEvent("schedule-layouts:write_local", ({ layout }) => {
             const kept = this.read().filter((saved) => saved.id !== layout.id);
@@ -314,6 +334,50 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
           this.handleEvent("schedule-layouts:delete_local", ({ id }) => {
             this.write(this.read().filter((saved) => saved.id !== id));
           });
+        },
+
+        updated() {
+          this.rememberSession();
+        },
+
+        reportSession() {
+          let session = null;
+
+          try {
+            const raw = window.localStorage.getItem(SESSION_KEY);
+            session = raw ? JSON.parse(raw) : null;
+          } catch (error) {
+            console.error("Could not read the canvas this browser remembered", error);
+          }
+
+          this.pushEvent("schedule-layouts:session_read", { session: session });
+        },
+
+        rememberSession() {
+          // The server turns this on once it has decided what to do with the
+          // remembered canvas; writing before then would overwrite it with the
+          // empty page that is on screen while the term loads.
+          if (this.el.dataset.sessionReady !== "true") return;
+
+          const session = this.el.dataset.session;
+          if (session === this.lastSession) return;
+
+          try {
+            if (session === "") {
+              window.localStorage.removeItem(SESSION_KEY);
+            } else {
+              window.localStorage.setItem(SESSION_KEY, session);
+            }
+
+            this.lastSession = session;
+          } catch (error) {
+            console.error("Could not remember the canvas in this browser", error);
+
+            if (!this.sessionFailed) {
+              this.sessionFailed = true;
+              this.pushEvent("schedule-layouts:session_store_failed", { reason: String(error) });
+            }
+          }
         },
 
         read() {
@@ -453,7 +517,127 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
     )
   end
 
+  # -- The canvas this browser remembers -------------------------------------
+
+  @doc """
+  Puts back the canvas this browser last had open, once the term it was taken
+  in has loaded. Called again as that term's owners arrive, because the
+  snapshot and the term land in either order.
+
+  Declines quietly when there is something better on screen — a layout named in
+  the URL, or cards opened since the page loaded — and in every case ends by
+  letting the browser record the canvas again.
+  """
+  def maybe_restore_session(socket) do
+    state = socket.assigns[@key]
+
+    cond do
+      state.session_ready? -> socket
+      state.pending_session == :unreported -> socket
+      is_nil(state.pending_session) -> record_session(socket)
+      canvas_in_use?(socket) -> record_session(socket)
+      !term_ready?(socket) -> socket
+      state.pending_session["term_code"] != selected_term_code(socket) -> record_session(socket)
+      true -> restore_session(socket, state.pending_session)
+    end
+  end
+
+  defp canvas_in_use?(socket) do
+    state = socket.assigns[@key]
+
+    state.pending_url_layout != nil or state.loaded != nil or
+      ScheduleDetailsOrder.to_layout_entries(socket.assigns.schedule_details_order) != []
+  end
+
+  defp restore_session(socket, session) do
+    {socket, outcome} =
+      ScheduleDetailsOrder.apply_layout_entries(socket,
+        entries: session["entries"],
+        available_owner_keys:
+          ScheduleViewer.available_owner_keys(socket.assigns.schedule_viewer_state)
+      )
+
+    # The layout it was saved from may be gone by now; what was on screen is
+    # still restored, it just reads as an unsaved canvas.
+    loaded = resumed_loaded(socket.assigns[@key], session["loaded"])
+
+    socket =
+      put_state(socket, %{
+        pending_session: nil,
+        session_ready?: true,
+        loaded: loaded,
+        baseline: loaded && session["baseline"],
+        note: resume_note(outcome)
+      })
+
+    if loaded, do: sync_url(socket), else: socket
+  end
+
+  defp resumed_loaded(%__MODULE__{}, nil), do: nil
+
+  defp resumed_loaded(%__MODULE__{} = state, layout) do
+    if MapSet.size(state.sources_ready) == 2 and resolve_layout(state, layout["id"]) == nil do
+      Logger.info(
+        "The layout the remembered canvas came from is gone: #{inspect(layout["name"])}"
+      )
+
+      nil
+    else
+      to_loaded(layout)
+    end
+  end
+
+  defp resume_note(%{applied: 0, missing: []}), do: nil
+
+  defp resume_note(%{missing: []}),
+    do: {:info, "Picked up where you left off. Clear Selection starts over."}
+
+  defp resume_note(%{applied: applied, missing: missing}) do
+    {:warn,
+     "Picked up where you left off with #{applied} of #{applied + length(missing)} cards — " <>
+       "#{missing_phrase(missing)}."}
+  end
+
+  # Nothing left to put back, so the browser may record the canvas again.
+  defp record_session(socket),
+    do: put_state(socket, %{pending_session: nil, session_ready?: true})
+
+  defp selected_term_code(socket),
+    do: socket.assigns.schedule_viewer_state.selected_term_code
+
+  defp valid_session(nil), do: nil
+
+  defp valid_session(%{"entries" => entries, "term_code" => term_code} = session)
+       when is_list(entries) and is_binary(term_code),
+       do: session
+
+  defp valid_session(session) do
+    Logger.warning(
+      "Ignored a malformed remembered canvas in browser storage: #{inspect(session)}"
+    )
+
+    nil
+  end
+
   # -- Events ----------------------------------------------------------------
+
+  def hooked_event("schedule-layouts:session_read", %{"session" => session}, socket) do
+    {:halt,
+     socket
+     |> put_state(%{pending_session: valid_session(session)})
+     |> maybe_restore_session()}
+  end
+
+  def hooked_event("schedule-layouts:session_store_failed", %{"reason" => reason}, socket) do
+    Logger.error("Browser session storage failed: #{inspect(reason)}")
+
+    {:halt,
+     put_state(socket, %{
+       note:
+         {:error,
+          "This browser won't remember what you have open, so navigating away will lose it. Save the layout to your account to keep it."}
+     })}
+  end
 
   def hooked_event("schedule-layouts:toggle_save_menu", _params, socket),
     do: {:halt, toggle_menu(socket, :save)}
@@ -1146,13 +1330,18 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
 
   defp load_note(layout, %{applied: applied, missing: missing}) do
     total = applied + length(missing)
+
+    {:warn,
+     "Loaded #{applied} of #{total} cards from “#{layout["name"]}” — " <>
+       "#{missing_phrase(missing)}."}
+  end
+
+  defp missing_phrase(missing) do
     names = Enum.map_join(Enum.take(missing, 3), ", ", &owner_display_name/1)
     remainder = if length(missing) > 3, do: " and #{length(missing) - 3} more", else: ""
     verb = if length(missing) == 1, do: "isn't", else: "aren't"
 
-    {:warn,
-     "Loaded #{applied} of #{total} cards from “#{layout["name"]}” — " <>
-       "#{names}#{remainder} #{verb} in this term."}
+    "#{names}#{remainder} #{verb} in this term"
   end
 
   defp owner_display_name(owner_key),
@@ -1265,4 +1454,30 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
   end
 
   defp random_ref, do: :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
+
+  # What the browser keeps so the next visit resumes this canvas. Blank when
+  # there is nothing to come back to, which is how the browser is told to
+  # forget the last one.
+  defp session_snapshot(%__MODULE__{loaded: nil}, entries: [], term_code: _term_code), do: ""
+
+  defp session_snapshot(%__MODULE__{} = state, entries: entries, term_code: term_code) do
+    Jason.encode!(%{
+      "term_code" => term_code,
+      "entries" => entries,
+      "loaded" => loaded_row(state.loaded),
+      "baseline" => state.baseline
+    })
+  end
+
+  defp loaded_row(nil), do: nil
+
+  defp loaded_row(loaded) do
+    %{
+      "id" => loaded.id,
+      "name" => loaded.name,
+      "scope" => loaded.scope,
+      "owner_email" => loaded.owner_email,
+      "can_edit" => loaded.can_edit?
+    }
+  end
 end

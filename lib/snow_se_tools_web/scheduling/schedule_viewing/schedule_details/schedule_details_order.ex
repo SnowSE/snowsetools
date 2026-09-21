@@ -180,6 +180,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
   attr :active_conflicted_course_crns, :any, default: MapSet.new()
   attr :schedule_owners_metadata, :list, default: []
   attr :schedule_layouts, :any, required: true
+  attr :term_code, :string, default: nil
   attr :editor?, :boolean, required: true
 
   def render(assigns) do
@@ -188,6 +189,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
       <ScheduleLayouts.render
         state={@schedule_layouts}
         schedule_details_order={@state}
+        term_code={@term_code}
         editor?={@editor?}
       >
         <:leading>
