@@ -20,10 +20,12 @@ defmodule SnowSeToolsWeb.PageSnapshotDumpTest do
     SemesterAttrs
   }
 
+  alias SnowSeTools.Data.User
   alias SnowSeTools.Discord.{DiscordDb, DiscordDomainManager}
   alias SnowSeTools.Scheduling.{ScheduleChangeDomainManager, ScheduleOwnerDomainManager}
   alias SnowSeTools.Snow.{SnowCourseCacheDb, SnowCourseCacheDomainManager}
   alias SnowSeTools.UserGroups.UserGroupDomainManager
+  alias SnowSeToolsWeb.{OnlineUsers, Presence}
 
   @out "tmp/screens"
   @room "Tanner Building 101"
@@ -36,6 +38,7 @@ defmodule SnowSeToolsWeb.PageSnapshotDumpTest do
     seed_courses(term_code)
     seed_program()
     seed_discord()
+    seed_other_people_online()
 
     start_supervised!(ProgramDomainManager)
     start_supervised!(SnowCourseCacheDomainManager)
@@ -45,6 +48,34 @@ defmodule SnowSeToolsWeb.PageSnapshotDumpTest do
     start_supervised!(DiscordDomainManager)
 
     {:ok, term_code: term_code}
+  end
+
+  # The header's online banner only exists while someone else is on the site.
+  defp seed_other_people_online do
+    now = System.system_time(:second)
+    test_pid = self()
+
+    for {email, path, minutes_on_page} <- [
+          {"snapshot-dee@example.com", "/scheduling", 12},
+          {"snapshot-ray@example.com", "/syllabi", 3}
+        ] do
+      {:ok, user} = User.find_or_create(email)
+
+      meta = %{
+        email: email,
+        path: path,
+        page_since: now - minutes_on_page * 60,
+        active_at: now
+      }
+
+      spawn(fn ->
+        {:ok, _ref} = Presence.track(self(), OnlineUsers.topic(), to_string(user.id), meta)
+        send(test_pid, :tracked)
+        Process.sleep(:infinity)
+      end)
+
+      assert_receive :tracked
+    end
   end
 
   test "dump every page", %{conn: conn, term_code: term_code} do

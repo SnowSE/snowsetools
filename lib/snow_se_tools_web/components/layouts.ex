@@ -14,7 +14,11 @@ defmodule SnowSeToolsWeb.Layouts do
   def app(assigns) do
     ~H"""
     <div class="flex flex-col h-screen bg-slate-950 text-slate-100">
-      <AppHeader.header current_user={@current_user} current_path={assigns[:current_path]}>
+      <AppHeader.header
+        current_user={@current_user}
+        current_path={assigns[:current_path]}
+        socket={@socket}
+      >
         <:center :if={@socket}>
           {live_render(@socket, SnowSeToolsWeb.AI.QueueStatusLive, id: "queue-status")}
         </:center>
@@ -31,6 +35,39 @@ defmodule SnowSeToolsWeb.Layouts do
     </div>
     <div id="session-refresh-hook" phx-hook=".SessionRefresh" phx-update="ignore" class="hidden">
     </div>
+    <div id="online-activity-hook" phx-hook=".OnlineActivity" phx-update="ignore" class="hidden">
+    </div>
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".OnlineActivity">
+      // Says "still here" at most once a minute, so the online list can leave
+      // out a tab nobody has touched for a while. Silence is the signal.
+      const EVENTS = ["pointerdown", "keydown", "wheel", "touchstart"];
+      const EVERY_MS = 60000;
+
+      export default {
+        mounted() {
+          this.lastReport = Date.now();
+
+          this.report = () => {
+            const now = Date.now();
+            if (now - this.lastReport < EVERY_MS) return;
+            this.lastReport = now;
+            this.pushEvent("online-users:active", {});
+          };
+
+          this.reportOnReturn = () => {
+            if (!document.hidden) this.report();
+          };
+
+          EVENTS.forEach((name) => window.addEventListener(name, this.report, { passive: true }));
+          document.addEventListener("visibilitychange", this.reportOnReturn);
+        },
+
+        destroyed() {
+          EVENTS.forEach((name) => window.removeEventListener(name, this.report));
+          document.removeEventListener("visibilitychange", this.reportOnReturn);
+        }
+      }
+    </script>
     <script :type={Phoenix.LiveView.ColocatedHook} name=".SessionRefresh">
       export default {
         mounted() {

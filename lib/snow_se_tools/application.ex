@@ -24,6 +24,7 @@ defmodule SnowSeTools.Application do
         SnowSeTools.Telemetry.Events,
         {DNSCluster, query: Application.get_env(:snow_se_tools, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: SnowSeTools.PubSub},
+        SnowSeToolsWeb.Presence,
         # Domain managers hand their slow work to tasks here, so one cold cache
         # does not make every other reader wait behind it.
         {Task.Supervisor, name: SnowSeTools.TaskSupervisor},

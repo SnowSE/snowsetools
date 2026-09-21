@@ -22,6 +22,10 @@ defmodule SnowSeToolsWeb.Components.HoverTooltip do
   attr :id, :string, required: true
   attr :class, :string, default: nil
 
+  attr :width_class, :string,
+    default: "max-w-64",
+    doc: "How wide the tooltip may grow. Widen it for content that is not a line of prose."
+
   def hover_tooltip(assigns) do
     ~H"""
     <div
@@ -35,7 +39,12 @@ defmodule SnowSeToolsWeb.Components.HoverTooltip do
       <template data-tooltip-template>
         <div
           role="tooltip"
-          class="pointer-events-none fixed left-0 top-0 z-9999 w-max max-w-64 rounded-lg border border-slate-700/80 bg-slate-950 px-3 py-2.5 text-left text-slate-100 shadow-xl shadow-slate-950/50 opacity-0 transition-[opacity,transform] duration-150 will-change-transform"
+          class={[
+            "pointer-events-none fixed left-0 top-0 z-9999 w-max rounded-lg border border-slate-700/80",
+            "bg-slate-950 px-3 py-2.5 text-left text-slate-100 shadow-xl shadow-slate-950/50",
+            "opacity-0 transition-[opacity,transform] duration-150 will-change-transform",
+            @width_class
+          ]}
           style="transform: translateY(-4px);"
         >
           {render_slot(@body)}

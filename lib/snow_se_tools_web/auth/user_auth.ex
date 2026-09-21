@@ -4,6 +4,7 @@ defmodule SnowSeToolsWeb.UserAuth do
   require Logger
   alias SnowSeTools.Data.{Access, User}
   alias SnowSeTools.Telemetry.Events
+  alias SnowSeToolsWeb.OnlineUsers
 
   @doc """
   LiveView `on_mount` hooks.
@@ -27,6 +28,7 @@ defmodule SnowSeToolsWeb.UserAuth do
           |> assign(:current_user, user)
           |> schedule_session_refresh(session)
           |> track_current_path()
+          |> OnlineUsers.track_viewer()
 
         {:cont, socket}
 

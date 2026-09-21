@@ -5,12 +5,13 @@ defmodule SnowSeToolsWeb.AppHeader do
 
   attr :current_user, :map, default: nil
   attr :current_path, :string, default: nil
+  attr :socket, :any, default: nil
   slot :center
 
   def header(assigns) do
     ~H"""
     <header class="shrink-0 flex items-center justify-between gap-2 px-3 h-10 border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm">
-      <div class="flex shrink-0 items-center">
+      <div class="flex shrink-0 items-center gap-2">
         <.link
           navigate={if @current_user, do: ~p"/home", else: ~p"/"}
           class="text-sm font-semibold text-slate-200 hover:text-white transition-colors"
@@ -18,6 +19,9 @@ defmodule SnowSeToolsWeb.AppHeader do
           <span class="hidden sm:inline">Snow SE Tools</span>
           <span class="sm:hidden">SE Tools</span>
         </.link>
+        <%= if @socket && Access.admin?(@current_user) do %>
+          {live_render(@socket, SnowSeToolsWeb.OnlineUsersLive, id: "online-users-widget")}
+        <% end %>
       </div>
 
       <div class="hidden min-w-0 md:flex md:items-center">
