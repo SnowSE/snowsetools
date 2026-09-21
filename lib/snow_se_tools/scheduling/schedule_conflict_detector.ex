@@ -51,6 +51,7 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
       Enum.concat(all_room_conflicts, all_prof_conflicts)
       |> Enum.map(&attach_schedule_targets(&1, owner_targets_by_key))
       |> Enum.map(&attach_change_ids(&1, change_ids_by_crn))
+      |> Enum.map(&attach_fingerprint/1)
       |> Enum.uniq_by(&conflict_key/1)
 
     %{
@@ -443,6 +444,41 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
 
     %{conflict | introduced_by_change_ids: change_ids}
   end
+
+  defp attach_fingerprint(conflict),
+    do: Map.put(conflict, :fingerprint, fingerprint(conflict))
+
+  @doc """
+  A name for this exact clash: the resource it is over, and every class in it
+  with the days and times that overlap.
+
+  Stable across runs and machines, so it can be stored and matched later, and
+  deliberately sensitive to the meeting times — move one of the classes and the
+  clash that comes back is a different one, which is what makes an acknowledged
+  conflict reappear for a fresh look.
+  """
+  def fingerprint(conflict) do
+    meetings =
+      conflict
+      |> Map.get(:entries, [])
+      |> Enum.map(fn entry ->
+        Enum.map_join(
+          [entry.crn, Enum.sort(List.wrap(entry.days)), entry.start_time, entry.end_time],
+          "|",
+          &to_string_part/1
+        )
+      end)
+      |> Enum.sort()
+
+    [to_string(conflict.type), to_string(conflict.resource_label) | meetings]
+    |> Enum.join("~")
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :lower)
+    |> binary_part(0, 32)
+  end
+
+  defp to_string_part(part) when is_list(part), do: Enum.join(part, ",")
+  defp to_string_part(part), do: to_string(part)
 
   defp attach_schedule_targets(conflict, owner_targets_by_key) do
     schedule_targets =

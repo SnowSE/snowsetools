@@ -8,6 +8,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleConflictDetail do
   attr :conflict, :map, required: true
   attr :schedule_event, :string, default: @default_event
 
+  attr :acknowledge_event, :string,
+    default: nil,
+    doc: "Set to offer an Acknowledge button. The conflict's fingerprint rides with the event."
+
   def render(assigns) do
     ~H"""
     <div class="rounded-md px-2 py-2  text-red-100">
@@ -27,7 +31,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleConflictDetail do
         </span>
       </div>
 
-      <div :if={conflict_targets(assigns.conflict) != []} class="mt-2 flex flex-wrap gap-1">
+      <div
+        :if={conflict_targets(assigns.conflict) != [] or acknowledgeable?(assigns)}
+        class="mt-2 flex flex-wrap items-center gap-1"
+      >
         <.schedule_target_button
           :for={target <- conflict_targets(assigns.conflict)}
           key={target.key}
@@ -35,10 +42,31 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleConflictDetail do
           kind={target.kind}
           schedule_event={@schedule_event}
         />
+
+        <button
+          :if={acknowledgeable?(assigns)}
+          type="button"
+          phx-click={@acknowledge_event}
+          phx-value-fingerprint={fingerprint(@conflict)}
+          title="Take this off the list. It comes back if either class moves."
+          class={[
+            "ml-auto inline-flex cursor-pointer items-center gap-1 rounded-md border px-1.5 py-0.5",
+            "text-[10px] font-medium transition border-slate-400/25 bg-slate-500/10 text-slate-200",
+            "hover:border-slate-300/45 hover:bg-slate-500/20"
+          ]}
+        >
+          <.icon name="hero-check" class="size-3 shrink-0" /> Acknowledge
+        </button>
       </div>
     </div>
     """
   end
+
+  defp acknowledgeable?(assigns),
+    do: is_binary(assigns.acknowledge_event) and is_binary(fingerprint(assigns.conflict))
+
+  defp fingerprint(conflict),
+    do: Map.get(conflict, :fingerprint, Map.get(conflict, "fingerprint"))
 
   attr :key, :string, required: true
   attr :label, :string, required: true

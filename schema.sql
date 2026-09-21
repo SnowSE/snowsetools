@@ -319,3 +319,17 @@ CREATE TABLE schedule_layouts (
 
 CREATE INDEX idx_schedule_layouts_user_id ON schedule_layouts(user_id);
 CREATE INDEX idx_schedule_layouts_scope ON schedule_layouts(scope);
+
+-- Conflicts a person has looked at and decided are fine. Private to them, and
+-- named by a fingerprint that covers the meeting times, so a class that moves
+-- brings its conflict back.
+CREATE TABLE acknowledged_conflicts (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  term_code   TEXT        NOT NULL,
+  fingerprint TEXT        NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (user_id, term_code, fingerprint)
+);
+
+CREATE INDEX idx_acknowledged_conflicts_user_term ON acknowledged_conflicts(user_id, term_code);

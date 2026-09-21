@@ -167,7 +167,18 @@ defmodule SnowSeToolsWeb.PageSnapshotDumpTest do
             "13:00",
             "14:15"
           ),
-          course("40103", "Web Development", "CS", "2550", ["Friday"], "10:00", "11:50")
+          course("40103", "Web Development", "CS", "2550", ["Friday"], "10:00", "11:50"),
+          # Overlaps Data Structures in the same room, with the same professor:
+          # an empty conflicts panel hides every layout problem the real one has.
+          course(
+            "40104",
+            "Discrete Math",
+            "CS",
+            "2100",
+            ["Monday", "Wednesday"],
+            "09:30",
+            "10:45"
+          )
         ]
       )
   end

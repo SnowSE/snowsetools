@@ -5,6 +5,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
   alias Phoenix.LiveView
 
   alias SnowSeTools.Scheduling.{
+    AcknowledgedConflictDomainManager,
     ScheduleConflictDetector,
     ScheduleOwnerDomainManager
   }
@@ -18,7 +19,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
     error: nil,
     resolved_conflicts: [],
     conflict_count: 0,
-    conflicted_course_crns: MapSet.new()
+    conflicted_course_crns: MapSet.new(),
+    acknowledged: MapSet.new(),
+    acknowledged_count: 0
   ]
 
   @type t :: %__MODULE__{
@@ -28,7 +31,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
           error: String.t() | nil,
           resolved_conflicts: [map()],
           conflict_count: non_neg_integer(),
-          conflicted_course_crns: MapSet.t(String.t())
+          conflicted_course_crns: MapSet.t(String.t()),
+          acknowledged: MapSet.t(String.t()),
+          acknowledged_count: non_neg_integer()
         }
 
   @key :schedule_term_conflicts_state
@@ -60,11 +65,14 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
           error: nil,
           resolved_conflicts: [],
           conflict_count: 0,
-          conflicted_course_crns: MapSet.new()
+          conflicted_course_crns: MapSet.new(),
+          acknowledged: MapSet.new(),
+          acknowledged_count: 0
       }
 
       socket
       |> assign(@key, updated_state)
+      |> request_acknowledged(term_code: term_code)
       |> maybe_request_conflicts(term_code: term_code)
     end
   end
@@ -81,6 +89,11 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
         :handle_info,
         &hooked_info/2
       )
+      |> LiveView.attach_hook(
+        "schedule-term-conflicts:event",
+        :handle_event,
+        &hooked_event/3
+      )
       |> put_in([Access.key(:private), :schedule_term_conflicts_hooks_attached?], true)
     end
   end
@@ -94,23 +107,12 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
     if state.selected_term_code == term_code do
       case result do
         {:ok, %{conflicts_by_owner_key: conflicts_by_owner_key}} ->
-          resolved_conflicts =
-            resolve_conflicts_from_viewer_state(
-              conflicts_by_owner_key,
-              socket
-            )
-
-          conflicted_course_crns = conflict_crns(conflicts_by_owner_key)
-
           {:halt,
-           assign(socket, @key, %{
+           show_conflicts(socket, %{
              state
              | conflicts_by_owner_key: conflicts_by_owner_key,
                loading?: false,
-               error: nil,
-               resolved_conflicts: resolved_conflicts,
-               conflict_count: count_conflicts(resolved_conflicts),
-               conflicted_course_crns: conflicted_course_crns
+               error: nil
            })}
 
         {:error, reason} ->
@@ -133,7 +135,88 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
     end
   end
 
+  def hooked_info({:acknowledged_conflicts, {:listed, payload}}, socket) do
+    %{term_code: term_code, fingerprints: fingerprints} = payload
+    state = socket.assigns[@key]
+
+    if state.selected_term_code == term_code do
+      {:halt, show_conflicts(socket, %{state | acknowledged: MapSet.new(fingerprints)})}
+    else
+      {:halt, socket}
+    end
+  end
+
+  def hooked_info({:acknowledged_conflicts, {:acknowledged, payload}}, socket) do
+    %{term_code: term_code, fingerprint: fingerprint} = payload
+    state = socket.assigns[@key]
+
+    if state.selected_term_code == term_code do
+      {:halt,
+       show_conflicts(socket, %{
+         state
+         | acknowledged: MapSet.put(state.acknowledged, fingerprint)
+       })}
+    else
+      {:halt, socket}
+    end
+  end
+
+  def hooked_info({:acknowledged_conflicts, {:reset, %{term_code: term_code}}}, socket) do
+    state = socket.assigns[@key]
+
+    if state.selected_term_code == term_code do
+      {:halt, show_conflicts(socket, %{state | acknowledged: MapSet.new()})}
+    else
+      {:halt, socket}
+    end
+  end
+
+  def hooked_info({:acknowledged_conflicts, {:error, reason}}, socket) do
+    Logger.error("Acknowledged conflicts request failed: #{inspect(reason)}")
+
+    {:halt,
+     LiveView.put_flash(
+       socket,
+       :error,
+       "Couldn't save which conflicts you've acknowledged. They are all still listed."
+     )}
+  end
+
   def hooked_info(_message, socket), do: {:cont, socket}
+
+  # -- Events ------------------------------------------------------------------
+
+  def hooked_event(
+        "schedule-term-conflicts:acknowledge",
+        %{"fingerprint" => fingerprint},
+        socket
+      )
+      when is_binary(fingerprint) do
+    state = socket.assigns[@key]
+
+    AcknowledgedConflictDomainManager.acknowledge(
+      pid: self(),
+      user: socket.assigns[:current_user],
+      term_code: state.selected_term_code,
+      fingerprint: fingerprint
+    )
+
+    {:halt, socket}
+  end
+
+  def hooked_event("schedule-term-conflicts:reset_acknowledged", _params, socket) do
+    state = socket.assigns[@key]
+
+    AcknowledgedConflictDomainManager.reset(
+      pid: self(),
+      user: socket.assigns[:current_user],
+      term_code: state.selected_term_code
+    )
+
+    {:halt, socket}
+  end
+
+  def hooked_event(_event, _params, socket), do: {:cont, socket}
 
   def conflicted_course_crns(%__MODULE__{} = state), do: state.conflicted_course_crns
 
@@ -214,6 +297,63 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
     end
   end
 
+  # The one place the panel decides what is on screen: everything detected,
+  # minus what this person has already looked at. Conflict highlighting in the
+  # week grid comes from the same list, so an acknowledged clash stops colouring
+  # its courses too.
+  defp show_conflicts(socket, %__MODULE__{} = state) do
+    visible = reject_acknowledged(state.conflicts_by_owner_key, state.acknowledged)
+    resolved = resolve_conflicts_from_viewer_state(visible, socket)
+
+    assign(socket, @key, %{
+      state
+      | resolved_conflicts: resolved,
+        conflict_count: count_conflicts(resolved),
+        conflicted_course_crns: conflict_crns(visible),
+        acknowledged_count: acknowledged_count(state)
+    })
+  end
+
+  defp reject_acknowledged(conflicts_by_owner_key, acknowledged) do
+    conflicts_by_owner_key
+    |> Enum.map(fn {owner_key, conflicts} ->
+      {owner_key, Enum.reject(conflicts, &acknowledged?(&1, acknowledged))}
+    end)
+    |> Enum.reject(fn {_owner_key, conflicts} -> conflicts == [] end)
+    |> Map.new()
+  end
+
+  # How many of the conflicts this term actually has are being kept off the
+  # list — not how many were ever acknowledged, so the count matches what
+  # resetting would bring back.
+  defp acknowledged_count(%__MODULE__{} = state) do
+    state.conflicts_by_owner_key
+    |> Map.values()
+    |> List.flatten()
+    |> Enum.filter(&acknowledged?(&1, state.acknowledged))
+    |> Enum.map(&fingerprint/1)
+    |> Enum.uniq()
+    |> length()
+  end
+
+  defp acknowledged?(conflict, acknowledged),
+    do: MapSet.member?(acknowledged, fingerprint(conflict))
+
+  defp fingerprint(conflict),
+    do: Map.get(conflict, :fingerprint, Map.get(conflict, "fingerprint"))
+
+  defp request_acknowledged(socket, term_code: term_code) do
+    if LiveView.connected?(socket) do
+      AcknowledgedConflictDomainManager.list(
+        pid: self(),
+        user: socket.assigns[:current_user],
+        term_code: term_code
+      )
+    end
+
+    socket
+  end
+
   defp count_conflicts(owners),
     do: Enum.reduce(owners, 0, &(&2 + length(&1.conflicts)))
 
@@ -250,10 +390,13 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
         />
       </div>
 
+      <.acknowledged_line :if={@state.acknowledged_count > 0} count={@state.acknowledged_count} />
+
       <.empty_or_error_state
         loading={@state.loading?}
         error={@state.error}
         resolved_conflicts={@state.resolved_conflicts}
+        acknowledged_count={@state.acknowledged_count}
       />
 
       <%= unless Enum.empty?(@state.resolved_conflicts) do %>
@@ -295,9 +438,30 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
     """
   end
 
+  attr :count, :integer, required: true
+
+  defp acknowledged_line(assigns) do
+    ~H"""
+    <div id="schedule-conflicts-acknowledged" class="mt-1 flex items-center gap-2 text-[10px]">
+      <span class="text-slate-500">
+        {@count} acknowledged
+      </span>
+      <button
+        type="button"
+        id="schedule-conflicts-reset-acknowledged"
+        phx-click="schedule-term-conflicts:reset_acknowledged"
+        class="cursor-pointer text-indigo-300 underline decoration-dotted underline-offset-2 transition-colors hover:text-indigo-200"
+      >
+        Reset acknowledged
+      </button>
+    </div>
+    """
+  end
+
   attr :loading, :boolean, required: true
   attr :error, :any, default: nil
   attr :resolved_conflicts, :list, default: []
+  attr :acknowledged_count, :integer, default: 0
 
   defp empty_or_error_state(assigns) do
     ~H"""
@@ -305,6 +469,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
       <% @loading and Enum.empty?(@resolved_conflicts) -> %>
         <div class="rounded-md border border-dashed border-slate-700/60 px-3 py-4 text-center text-xs text-slate-500">
           Checking for conflicts...
+        </div>
+      <% not @loading and Enum.empty?(@resolved_conflicts) and @acknowledged_count > 0 -> %>
+        <div class="rounded-md border border-dashed border-slate-700/60 px-3 py-4 text-center text-xs text-slate-500">
+          Nothing left to look at — every conflict in this term is acknowledged.
         </div>
       <% not @loading and Enum.empty?(@resolved_conflicts) -> %>
         <div class="rounded-md border border-dashed border-slate-700/60 px-3 py-4 text-center text-xs text-slate-500">
@@ -339,7 +507,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
 
       <div class="space-y-1">
         <%= for conflict <- @owner.conflicts do %>
-          <ScheduleConflictDetail.render conflict={conflict} />
+          <ScheduleConflictDetail.render
+            conflict={conflict}
+            acknowledge_event="schedule-term-conflicts:acknowledge"
+          />
         <% end %>
       </div>
     </div>

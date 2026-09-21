@@ -1720,6 +1720,54 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetectorTest do
 
   # -- Helpers --
 
+  describe "fingerprints" do
+    test "name the same clash the same way every time" do
+      [first] = conflicts(sharing_a_room())
+      [again] = conflicts(sharing_a_room())
+
+      assert first.fingerprint == again.fingerprint
+      assert String.length(first.fingerprint) == 32
+    end
+
+    test "change when one of the classes moves, so the clash reads as a new one" do
+      [before_move] = conflicts(sharing_a_room())
+
+      [after_move] =
+        conflicts([
+          course(crn: "10001", professor: "Professor One"),
+          course(crn: "10002", professor: "Professor Two", start_time: "09:10:00")
+        ])
+
+      refute before_move.fingerprint == after_move.fingerprint
+    end
+
+    test "tell two different clashes apart" do
+      [room_clash] = conflicts(sharing_a_room())
+
+      [professor_clash] =
+        conflicts([
+          course(crn: "10003", professor: "Professor Three", room: "Main 201"),
+          course(crn: "10004", professor: "Professor Three", room: "Main 202")
+        ])
+
+      refute room_clash.fingerprint == professor_clash.fingerprint
+    end
+  end
+
+  defp sharing_a_room do
+    [
+      course(crn: "10001", professor: "Professor One"),
+      course(crn: "10002", professor: "Professor Two")
+    ]
+  end
+
+  defp conflicts(courses) do
+    ScheduleConflictDetector.detect_term_conflicts(
+      owner_course_lists: owner_course_lists(courses),
+      active_changes: []
+    ).all_conflicts
+  end
+
   defp owner_course_lists(courses) do
     courses
     |> Enum.flat_map(fn course ->

@@ -19,13 +19,15 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingAccess do
   alias SnowSeTools.Data.Access
 
   # Namespaces that only ever move the viewer's own window onto the data:
-  # searching, selecting, arranging, resizing and saving personal layouts.
+  # searching, selecting, arranging, resizing, saving personal layouts, and
+  # keeping one's own list of conflicts already looked at.
   @view_namespaces ~w(
     schedule-viewer
     schedule-owner-search
     schedule-owner-week-schedule
     schedule-details-order
     schedule-layouts
+    schedule-term-conflicts
   )
 
   # Namespaces that write a course, a change group or a program.
