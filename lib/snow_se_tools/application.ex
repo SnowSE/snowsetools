@@ -55,7 +55,9 @@ defmodule SnowSeTools.Application do
       []
     else
       [
-        {Oidcc.ProviderConfiguration.Worker,
+        # Not the oidcc worker directly: it exits whenever the IdP is
+        # unreachable, which would otherwise take the whole app down.
+        {SnowSeTools.OidcProviderKeeper,
          %{
            issuer: Application.fetch_env!(:snow_se_tools, :oidc) |> Keyword.fetch!(:issuer),
            name: SnowSeTools.OidcProvider,
