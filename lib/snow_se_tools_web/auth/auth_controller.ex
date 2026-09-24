@@ -182,7 +182,7 @@ defmodule SnowSeToolsWeb.AuthController do
         send_resp(conn, 401, "")
 
       {:error, reason} ->
-        Logger.error(
+        Logger.warning(
           "auth_controller.refresh OIDC error sub=#{inspect(sub)} reason=#{inspect(reason)}"
         )
 
