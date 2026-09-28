@@ -147,14 +147,24 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayoutsChrome do
   attr :note, :any, required: true
 
   def note(assigns) do
-    {level, text} = assigns.note
-    assigns = assigns |> assign(:level, level) |> assign(:text, text)
+    # A note tagged :fades is a passing remark: it holds for five seconds,
+    # fades out over two, and then dismisses itself.
+    {level, text, fades?} =
+      case assigns.note do
+        {level, text, :fades} -> {level, text, true}
+        {level, text} -> {level, text, false}
+      end
+
+    assigns = assign(assigns, level: level, text: text, fades?: fades?)
 
     ~H"""
     <div
       id="schedule-layouts-note"
+      phx-hook=".FadingNote"
+      data-fades={to_string(@fades?)}
       class={[
         "flex items-start gap-2 rounded-md border px-3 py-2 text-xs",
+        @fades? && "animate-[schedule-note-fade_7s_ease-in_forwards]",
         @level == :info && "border-slate-700 bg-slate-900/70 text-slate-300",
         @level == :warn && "border-amber-500/40 bg-amber-950/40 text-amber-200",
         @level == :error && "border-red-500/40 bg-red-950/40 text-red-200"
@@ -174,6 +184,17 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayoutsChrome do
         <.icon name="hero-x-mark" class="size-3.5" />
       </button>
     </div>
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".FadingNote">
+      export default {
+        mounted() {
+          this.el.addEventListener("animationend", (event) => {
+            if (event.target === this.el && this.el.dataset.fades === "true") {
+              this.pushEvent("schedule-layouts:dismiss_note", {});
+            }
+          });
+        }
+      }
+    </script>
     """
   end
 

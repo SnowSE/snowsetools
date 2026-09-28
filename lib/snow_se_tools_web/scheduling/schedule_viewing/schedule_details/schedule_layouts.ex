@@ -66,7 +66,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
           undo: map() | nil,
           dialog: map() | nil,
           menu: :save | :load | nil,
-          note: {:info | :warn | :error, String.t()} | nil,
+          note:
+            {:info | :warn | :error, String.t()}
+            | {:info | :warn | :error, String.t(), :fades}
+            | nil,
           pending_save: {String.t(), String.t(), [map()]} | nil,
           pending_url_layout: String.t() | nil,
           pending_session: :unreported | map() | nil,
@@ -592,7 +595,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
   defp resume_note(%{applied: 0, missing: []}), do: nil
 
   defp resume_note(%{missing: []}),
-    do: {:info, "Picked up where you left off. Clear Selection starts over."}
+    do: {:info, "Picked up where you left off. Clear Selection starts over.", :fades}
 
   defp resume_note(%{applied: applied, missing: missing}) do
     {:warn,

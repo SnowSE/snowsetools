@@ -134,3 +134,14 @@ button {
     @apply hidden;
   }
 }
+
+/* The layouts note that dismisses itself: five seconds to read, two to fade (7s total). */
+@keyframes schedule-note-fade {
+  0%,
+  71.43% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
