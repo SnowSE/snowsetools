@@ -40,6 +40,18 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewerTermPersistenceTest do
            )
   end
 
+  test "shows when the selected term's data was last synced", %{conn: conn} do
+    conn = log_in_test_user(conn)
+
+    {:ok, view, _html} = live(conn, ~p"/scheduling?mode=viewer&term=202690")
+
+    :ok = ScheduleOwnerDomainManager.await_idle()
+    render(view)
+
+    assert has_element?(view, "#scheduling-data-as-of", "Data as of")
+    assert has_element?(view, "#scheduling-data-as-of-time[datetime]")
+  end
+
   defp log_in_test_user(conn),
     do: log_in_user(conn, "schedule-viewer-term-persistence@example.com", ["scheduling_admin"])
 

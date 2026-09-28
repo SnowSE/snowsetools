@@ -3,6 +3,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
   require Logger
 
   alias Phoenix.LiveView
+  alias SnowSeToolsWeb.Scheduling.DataAsOf
   alias SnowSeToolsWeb.Scheduling.OverlayGroup
   alias SnowSeToolsWeb.Scheduling.ScheduleLayouts
   alias SnowSeToolsWeb.Scheduling.ScheduleOrder
@@ -181,6 +182,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
   attr :schedule_owners_metadata, :list, default: []
   attr :schedule_layouts, :any, required: true
   attr :term_code, :string, default: nil
+  attr :term, :map, default: nil
   attr :editor?, :boolean, required: true
 
   def render(assigns) do
@@ -192,6 +194,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
         term_code={@term_code}
         editor?={@editor?}
       >
+        <:start>
+          <DataAsOf.data_as_of term={@term} />
+        </:start>
         <:leading>
           <button
             :if={ScheduleOrder.size(@state.selected_schedule_order) > 0}

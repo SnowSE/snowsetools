@@ -130,6 +130,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
   attr :schedule_details_order, :any, required: true
   attr :term_code, :string, default: nil
   attr :editor?, :boolean, required: true
+  slot :start, doc: "Left-aligned content, ahead of the right-aligned controls."
   slot :leading, doc: "Controls shown at the start of the layout toolbar row."
 
   def render(assigns) do
@@ -161,6 +162,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
       class="mb-2 flex w-full flex-col gap-2"
     >
       <div class="flex flex-wrap items-center justify-end gap-2">
+        <div :if={@start != []} class="mr-auto">{render_slot(@start)}</div>
         {render_slot(@leading)}
 
         <Chrome.loaded_chip

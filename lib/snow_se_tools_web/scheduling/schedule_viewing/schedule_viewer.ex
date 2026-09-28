@@ -191,6 +191,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
         }
         schedule_owners_metadata={selected_term_schedule_owners(@state)}
         term_code={@state.selected_term_code}
+        term={selected_term(@state)}
         editor?={@editor?}
       />
     </div>
@@ -300,6 +301,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
           [] -> nil
         end
     end
+  end
+
+  defp selected_term(%__MODULE__{} = state) do
+    Enum.find(state.terms, &(&1["term_code"] == state.selected_term_code))
   end
 
   defp selected_term_schedule_owners(%__MODULE__{} = state) do

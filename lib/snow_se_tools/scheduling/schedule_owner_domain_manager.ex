@@ -344,12 +344,14 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
         state
       ) do
     term_exists? = Enum.any?(state.terms, &(&1["term_code"] == term_code))
+    # The sync just stamped the term; this matches what the DB would now return.
+    cached_at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 
     terms =
       if term_exists? do
         Enum.map(state.terms, fn term ->
           if term["term_code"] == term_code do
-            Map.put(term, "term_name", term_name)
+            Map.merge(term, %{"term_name" => term_name, "cached_at" => cached_at})
           else
             term
           end
@@ -359,7 +361,7 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
           %{
             "term_code" => term_code,
             "term_name" => term_name,
-            "cached_at" => "",
+            "cached_at" => cached_at,
             "course_count" => 0,
             "roster_count" => 0
           }
