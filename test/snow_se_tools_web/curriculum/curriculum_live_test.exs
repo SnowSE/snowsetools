@@ -231,6 +231,15 @@ defmodule SnowSeToolsWeb.CurriculumLiveTest do
 
       Req.Test.stub(__MODULE__, fn conn ->
         case conn.request_path do
+          # The faculty repository is only read when CURRICULUM_GITHUB_TOKEN is
+          # set, so without this clause the suite passes on a machine with no
+          # token and hangs on one that has it: the unmatched path crashes the
+          # task that enqueues the reviews, and the run waits forever.
+          "/repos/SnowSE/faculty/git/trees/HEAD" ->
+            conn
+            |> Plug.Conn.put_resp_content_type("application/json")
+            |> Plug.Conn.send_resp(200, ~s({"tree": []}))
+
           "/academics/science_math/engineering/se/course.html" ->
             if conn.query_string =~ "crse_numb=#{second}",
               do: Plug.Conn.send_resp(conn, 200, course_page),
@@ -287,6 +296,29 @@ defmodule SnowSeToolsWeb.CurriculumLiveTest do
                        }}},
                      5_000
 
+      assert run["finished_courses"] == 2
+    end
+
+    test "a course with nothing to read is reported rather than sent to the model",
+         %{conn: conn, program: program} do
+      program_id = program["id"]
+      view = open(editor(conn), ~p"/curriculum?program=#{program_id}&tab=suggestions")
+
+      view |> element("#start-review") |> render_click()
+
+      assert_receive {:curriculum,
+                      {:run,
+                       %{
+                         running?: false,
+                         run: %{"program_id" => ^program_id, "status" => "completed"} = run
+                       }}},
+                     5_000
+
+      assert Enum.any?(run["notes"], &(&1 =~ "not reviewed — no faculty materials"))
+
+      # The run finishes when every course has reported once. A skipped course
+      # still has to count, or the run waits forever for an answer that was
+      # never asked for.
       assert run["finished_courses"] == 2
     end
   end

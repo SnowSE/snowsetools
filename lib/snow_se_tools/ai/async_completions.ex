@@ -31,7 +31,7 @@ defmodule SnowSeTools.AI.AsyncCompletions do
   @status_topic "async_completions:status"
 
   @type message :: %{role: String.t(), content: String.t()}
-  @type option :: {:schema, map()} | {:user, String.t() | nil}
+  @type option :: {:schema, map()} | {:user, String.t() | nil} | {:max_tokens, pos_integer()}
   @type result :: {:ok, String.t() | map()} | {:error, term()}
 
   def start_link(opts \\ []) do
@@ -225,6 +225,7 @@ defmodule SnowSeTools.AI.AsyncCompletions do
     body =
       %{model: config[:model], messages: messages}
       |> maybe_add_structured_output(opts[:schema])
+      |> maybe_cap_output(opts[:max_tokens])
 
     case Req.post(config[:endpoint],
            json: body,
@@ -243,6 +244,15 @@ defmodule SnowSeTools.AI.AsyncCompletions do
         {{:error, reason}, nil}
     end
   end
+
+  # Without a ceiling a model with little to say can keep generating until it
+  # fills the server's context window, which comes back as an opaque engine
+  # error rather than as a completion. Callers that know roughly how long a
+  # good answer is should say so.
+  defp maybe_cap_output(body, nil), do: body
+
+  defp maybe_cap_output(body, max_tokens) when is_integer(max_tokens) and max_tokens > 0,
+    do: Map.put(body, :max_tokens, max_tokens)
 
   defp maybe_add_structured_output(body, nil), do: body
 

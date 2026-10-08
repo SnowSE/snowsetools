@@ -50,6 +50,9 @@ defmodule SnowSeTools.Curriculum.CurriculumDomainManager do
 
   @ai_topic "curriculum:ai"
   @faculty_budget 40_000
+  # Comfortably more than 25 skills with evidence; a longer answer than this
+  # is a runaway, not a thorough review.
+  @review_max_tokens 4_000
   @section_budget 12_000
 
   def start_link(_opts) do
@@ -387,6 +390,12 @@ defmodule SnowSeTools.Curriculum.CurriculumDomainManager do
             run,
             "#{CourseCode.label(course)}: AI review failed — #{format_reason(reason)}"
           )
+
+        {:skipped, :no_materials} ->
+          add_note(
+            run,
+            "#{CourseCode.label(course)}: not reviewed — no faculty materials or section syllabi to read."
+          )
       end
 
     run = %{run | reviews_done: run.reviews_done + 1}
@@ -544,35 +553,57 @@ defmodule SnowSeTools.Curriculum.CurriculumDomainManager do
         outcomes =
           Enum.group_by(Enum.reject(data.outcomes, & &1["retired_at"]), &CourseCode.key/1)
 
-        notes =
-          Enum.reduce(program_courses, notes, fn course, notes ->
+        {notes, skipped} =
+          Enum.reduce(program_courses, {notes, []}, fn course, {notes, skipped} ->
             {faculty_text, faculty_note} = faculty_text(tree, course)
             {section_text, section_note} = section_text(course)
+            notes = notes ++ Enum.reject([faculty_note, section_note], &is_nil/1)
 
-            messages =
-              SkillReviewPrompt.course_messages(%{
-                course: course,
-                program_courses: program_courses,
-                skills: data.skills,
-                links: data.links,
-                master_syllabus: syllabi[CourseCode.key(course)],
-                outcomes: Map.get(outcomes, CourseCode.key(course), []),
-                faculty_text: faculty_text,
-                section_text: section_text
-              })
+            # The prompt asks for skills the sources show students practising,
+            # so a course with no faculty materials and no section syllabi has
+            # nothing to answer from. Asking anyway invites the model to invent
+            # skills from the master syllabus blurb, and in practice it keeps
+            # generating until it runs the context window out.
+            if faculty_text == "" and section_text == "" do
+              {notes, [course | skipped]}
+            else
+              messages =
+                SkillReviewPrompt.course_messages(%{
+                  course: course,
+                  program_courses: program_courses,
+                  skills: data.skills,
+                  links: data.links,
+                  master_syllabus: syllabi[CourseCode.key(course)],
+                  outcomes: Map.get(outcomes, CourseCode.key(course), []),
+                  faculty_text: faculty_text,
+                  section_text: section_text
+                })
 
-            AsyncCompletions.complete(
-              @ai_topic,
-              {:course_review, run.id, course["subject_code"], course["course_number"]},
-              messages,
-              schema: SkillReviewPrompt.course_schema(),
-              user: run.started_by
-            )
+              AsyncCompletions.complete(
+                @ai_topic,
+                {:course_review, run.id, course["subject_code"], course["course_number"]},
+                messages,
+                schema: SkillReviewPrompt.course_schema(),
+                user: run.started_by,
+                max_tokens: @review_max_tokens
+              )
 
-            notes ++ Enum.reject([faculty_note, section_note], &is_nil/1)
+              {notes, skipped}
+            end
           end)
 
         send(manager, {:reviews_enqueued, run.id, notes})
+
+        # The run finishes when it has heard once about every course, so a
+        # course that was never sent still has to report in -- otherwise the
+        # run waits for an answer that is never coming.
+        for course <- skipped do
+          send(
+            manager,
+            {{:course_review, run.id, course["subject_code"], course["course_number"]},
+             {:skipped, :no_materials}}
+          )
+        end
 
       {:error, reason} ->
         send(manager, {:reviews_failed, run.id, reason})
