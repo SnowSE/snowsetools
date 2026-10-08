@@ -18,6 +18,8 @@ defmodule SnowSeTools.AI.AsyncCompletions do
   use GenServer
   require Logger
 
+  alias SnowSeTools.AI.Settings
+
   alias SnowSeTools.AI.CompletionLog
   alias SnowSeTools.Telemetry.Events
 
@@ -169,7 +171,7 @@ defmodule SnowSeTools.AI.AsyncCompletions do
     {_pid, ref} =
       spawn_monitor(fn ->
         {result, thinking} = complete_sync(messages, opts)
-        config = Application.fetch_env!(:snow_se_tools, :ai)
+        config = Settings.current()
 
         CompletionLog.record(
           topic,
@@ -214,7 +216,7 @@ defmodule SnowSeTools.AI.AsyncCompletions do
   end
 
   defp request_completion(messages, opts) do
-    config = Application.fetch_env!(:snow_se_tools, :ai)
+    config = Settings.current()
 
     Logger.info(
       "AI completion: endpoint=#{config[:endpoint]} model=#{config[:model]} messages=#{length(messages)}"

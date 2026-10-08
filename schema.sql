@@ -464,3 +464,15 @@ CREATE TABLE curriculum_suggestions (
 
 CREATE INDEX curriculum_suggestions_status_idx
 ON curriculum_suggestions (status, subject_code, course_number);
+
+-- Overrides for the AI endpoint, model and key set in the environment, so an
+-- admin can point the app at a different server without a redeploy. At most
+-- one row: id is fixed TRUE. A NULL column means "use the environment value".
+CREATE TABLE ai_settings (
+  id         BOOLEAN     PRIMARY KEY DEFAULT TRUE CHECK (id),
+  endpoint   TEXT,
+  model      TEXT,
+  api_key    TEXT,
+  updated_by TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
