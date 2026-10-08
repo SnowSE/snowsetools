@@ -14,8 +14,8 @@ defmodule SnowSeToolsWeb.UserAuth do
     * `:ensure_authenticated` — a valid login *and* an approved account
       (at least one group). Pending users are sent to `/pending`.
     * `{:ensure_access, area}` — as above, plus membership in the group for
-      `area` (`:syllabi`, `:scheduling`, `:discord`, `:admin`). Super users
-      pass every area.
+      `area` (`:syllabi`, `:scheduling`, `:curriculum`, `:discord`, `:admin`).
+      Super users pass every area; `:curriculum` is open to every approved user.
     * `:ensure_admin` — alias for `{:ensure_access, :admin}`.
   """
   def on_mount(:ensure_session, _params, session, socket) do

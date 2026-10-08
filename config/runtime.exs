@@ -57,6 +57,13 @@ config :snow_se_tools, :ai,
   api_key: env!("AI_API_KEY", :string!),
   model: env!("AI_MODEL", :string!)
 
+# Read-only token for the private SnowSE/faculty repository, which the
+# curriculum review reads course materials from. Optional: without it the
+# review uses the master and section syllabi only.
+config :snow_se_tools, :curriculum,
+  github_token: env!("CURRICULUM_GITHUB_TOKEN", :string, nil),
+  faculty_repo: env!("CURRICULUM_FACULTY_REPO", :string, "SnowSE/faculty")
+
 config :snow_se_tools, SnowSeToolsWeb.Endpoint,
   http: [port: env!("PORT", :integer, 4000), ip: {0, 0, 0, 0}]
 

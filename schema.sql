@@ -333,3 +333,134 @@ CREATE TABLE acknowledged_conflicts (
 );
 
 CREATE INDEX idx_acknowledged_conflicts_user_term ON acknowledged_conflicts(user_id, term_code);
+
+-- Curriculum map (SnowSeTools.Curriculum.CurriculumDb)
+
+CREATE TABLE curriculum_skills (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        TEXT        NOT NULL,
+  category    TEXT        NOT NULL DEFAULT 'concept'
+                CHECK (category IN ('tool', 'practice', 'design', 'concept')),
+  description TEXT        NOT NULL DEFAULT '',
+  inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX curriculum_skills_name_unique_idx
+ON curriculum_skills (lower(name));
+
+CREATE TABLE curriculum_skill_dependencies (
+  skill_id           UUID        NOT NULL REFERENCES curriculum_skills(id) ON DELETE CASCADE,
+  builds_on_skill_id UUID        NOT NULL REFERENCES curriculum_skills(id) ON DELETE CASCADE,
+  inserted_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (skill_id, builds_on_skill_id),
+  CHECK (skill_id <> builds_on_skill_id)
+);
+
+CREATE TABLE curriculum_course_skills (
+  subject_code  TEXT        NOT NULL,
+  course_number TEXT        NOT NULL,
+  skill_id      UUID        NOT NULL REFERENCES curriculum_skills(id) ON DELETE CASCADE,
+  level         TEXT        NOT NULL
+                  CHECK (level IN ('introduced', 'reinforced', 'mastered')),
+  note          TEXT        NOT NULL DEFAULT '',
+  updated_by    TEXT,
+  inserted_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (subject_code, course_number, skill_id)
+);
+
+CREATE TABLE curriculum_master_syllabi (
+  subject_code      TEXT        NOT NULL,
+  course_number     TEXT        NOT NULL,
+  title             TEXT        NOT NULL DEFAULT '',
+  snow_syllabus_id  TEXT,
+  url               TEXT,
+  description       TEXT        NOT NULL DEFAULT '',
+  prerequisites     TEXT        NOT NULL DEFAULT '',
+  corequisites      TEXT        NOT NULL DEFAULT '',
+  content           TEXT        NOT NULL DEFAULT '',
+  semester_approved TEXT        NOT NULL DEFAULT '',
+  five_year_review  TEXT        NOT NULL DEFAULT '',
+  first_fetched_at  TIMESTAMPTZ,
+  fetched_at        TIMESTAMPTZ,
+  fetch_error       TEXT,
+  PRIMARY KEY (subject_code, course_number)
+);
+
+CREATE TABLE curriculum_course_outcomes (
+  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  subject_code    TEXT        NOT NULL,
+  course_number   TEXT        NOT NULL,
+  text            TEXT        NOT NULL,
+  normalized_text TEXT        NOT NULL,
+  position        INTEGER     NOT NULL DEFAULT 0,
+  abet_slos       INTEGER[]   NOT NULL DEFAULT '{}',
+  first_seen_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  retired_at      TIMESTAMPTZ,
+  UNIQUE (subject_code, course_number, normalized_text)
+);
+
+CREATE TABLE curriculum_abet_outcomes (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  code        TEXT        NOT NULL UNIQUE,
+  kind        TEXT        NOT NULL CHECK (kind IN ('slo', 'criterion')),
+  number      INTEGER,
+  title       TEXT        NOT NULL,
+  position    INTEGER     NOT NULL DEFAULT 0,
+  inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE curriculum_course_abet (
+  subject_code    TEXT    NOT NULL,
+  course_number   TEXT    NOT NULL,
+  abet_outcome_id UUID    NOT NULL REFERENCES curriculum_abet_outcomes(id) ON DELETE CASCADE,
+  tentative       BOOLEAN NOT NULL DEFAULT FALSE,
+  PRIMARY KEY (subject_code, course_number, abet_outcome_id)
+);
+
+CREATE TABLE curriculum_abet_imports (
+  id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  file_name      TEXT        NOT NULL,
+  slo_sheet      TEXT        NOT NULL,
+  criteria_sheet TEXT,
+  imported_by    TEXT,
+  imported_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE curriculum_runs (
+  id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  program_id       UUID,
+  status           TEXT        NOT NULL DEFAULT 'running'
+                     CHECK (status IN ('running', 'completed', 'error')),
+  started_by       TEXT,
+  total_courses    INTEGER     NOT NULL DEFAULT 0,
+  finished_courses INTEGER     NOT NULL DEFAULT 0,
+  notes            JSONB       NOT NULL DEFAULT '[]',
+  error            TEXT,
+  started_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  finished_at      TIMESTAMPTZ
+);
+
+CREATE TABLE curriculum_suggestions (
+  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  run_id        UUID        NOT NULL REFERENCES curriculum_runs(id) ON DELETE CASCADE,
+  kind          TEXT        NOT NULL
+                  CHECK (kind IN ('course_skill', 'skill_dependency', 'merge_skills')),
+  subject_code  TEXT,
+  course_number TEXT,
+  payload       JSONB       NOT NULL DEFAULT '{}',
+  fingerprint   TEXT        NOT NULL DEFAULT '',
+  rationale     TEXT        NOT NULL DEFAULT '',
+  evidence      TEXT        NOT NULL DEFAULT '',
+  status        TEXT        NOT NULL DEFAULT 'pending'
+                  CHECK (status IN ('pending', 'accepted', 'rejected', 'superseded')),
+  decided_by    TEXT,
+  decided_at    TIMESTAMPTZ,
+  inserted_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX curriculum_suggestions_status_idx
+ON curriculum_suggestions (status, subject_code, course_number);

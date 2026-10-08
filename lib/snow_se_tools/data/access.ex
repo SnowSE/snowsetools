@@ -38,6 +38,14 @@ defmodule SnowSeTools.Data.Access do
       description: "Academic programs, schedule viewing, conflicts and schedule change groups."
     },
     %{
+      area: :curriculum,
+      level: :edit,
+      group: "curriculum_admin",
+      label: "Curriculum map",
+      description:
+        "Edit skills and course links, run the master-syllabus and AI review, accept suggestions and import the ABET matrix."
+    },
+    %{
       area: :discord,
       level: :edit,
       group: "discord_admin",
@@ -51,6 +59,20 @@ defmodule SnowSeTools.Data.Access do
       group: @admin_group,
       label: "Super user",
       description: "Full access to every area plus user and group management."
+    }
+  ]
+
+  # Areas every approved user can read without a group of their own. Approved
+  # users are faculty and staff, and the curriculum map is meant to be read by
+  # all of them; only changing it takes a group.
+  @open_areas [
+    %{
+      area: :curriculum,
+      level: :view,
+      group: nil,
+      label: "Curriculum map",
+      description:
+        "Where each skill and learning outcome is introduced, reinforced and mastered across the program, with ABET coverage."
     }
   ]
 
@@ -92,8 +114,12 @@ defmodule SnowSeTools.Data.Access do
   @doc "Can `user` open `area` at all? Super users can open every area."
   def can?(user, area) do
     names = group_names(user)
-    @admin_group in names or Enum.any?(groups_for(area), &(&1 in names))
+
+    @admin_group in names or Enum.any?(groups_for(area), &(&1 in names)) or
+      (open_area?(area) and approved?(user))
   end
+
+  defp open_area?(area), do: Enum.any?(@open_areas, &(&1.area == area))
 
   @doc """
   Can `user` change `area`, rather than only read it? Super users can change
@@ -109,9 +135,11 @@ defmodule SnowSeTools.Data.Access do
   user holds at more than one level appears once, at the highest level.
   """
   def accessible_areas(user) do
-    @roles
+    open = if approved?(user), do: @open_areas, else: []
+
+    (@roles ++ open)
     |> Enum.reject(&(&1.area == :admin))
-    |> Enum.filter(&(&1.group in group_names(user) or admin?(user)))
+    |> Enum.filter(&(&1.group == nil or &1.group in group_names(user) or admin?(user)))
     |> Enum.group_by(& &1.area)
     |> Enum.map(fn {_area, roles} -> highest_role(roles) end)
     |> Enum.sort_by(&role_position/1)
@@ -119,7 +147,7 @@ defmodule SnowSeTools.Data.Access do
 
   defp highest_role(roles), do: Enum.find(roles, List.first(roles), &(&1.level == :edit))
 
-  defp role_position(role), do: Enum.find_index(@roles, &(&1.group == role.group))
+  defp role_position(role), do: Enum.find_index(@roles, &(&1.area == role.area))
 
   defp group_names(%{group_names: names}) when is_list(names), do: names
   defp group_names(%{"group_names" => names}) when is_list(names), do: names

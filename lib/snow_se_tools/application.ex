@@ -93,6 +93,7 @@ defmodule SnowSeTools.Application do
         SnowSeTools.Snow.SnowCourseCacheDomainManager,
         SnowSeTools.Discord.DiscordDomainManager,
         SnowSeTools.AcademicPrograms.ProgramDomainManager,
+        SnowSeTools.Curriculum.CurriculumDomainManager,
         SnowSeTools.Scheduling.ScheduleOwnerDomainManager,
         SnowSeTools.Scheduling.ScheduleChangeDomainManager,
         SnowSeTools.Scheduling.ScheduleLayoutDomainManager,

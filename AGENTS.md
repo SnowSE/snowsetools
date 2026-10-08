@@ -362,6 +362,12 @@ only for viewers that classifies events by namespace and **denies anything it
 does not recognise**. Adding a new scheduling event namespace means classifying
 it there, or viewers cannot use it.
 
+The curriculum map (`/curriculum`) is the one area open to every approved
+user without a group of its own (`@open_areas` in `Access`); changing it takes
+`curriculum_admin`. Its gate is `SnowSeToolsWeb.Curriculum.CurriculumAccess`:
+every event that writes is named `curriculum-edit:…`, and viewers are refused
+anything else not listed as a view event.
+
 Change groups are shared: every editor sees and may modify every group. That is
 deliberate for a department-sized team, but it means a group is not private to
 whoever made it.
