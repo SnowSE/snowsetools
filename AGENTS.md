@@ -362,9 +362,29 @@ only for viewers that classifies events by namespace and **denies anything it
 does not recognise**. Adding a new scheduling event namespace means classifying
 it there, or viewers cannot use it.
 
+The curriculum map (`/curriculum`) is the one area open to every approved
+user without a group of its own (`@open_areas` in `Access`); changing it takes
+`curriculum_admin`. Its gate is `SnowSeToolsWeb.Curriculum.CurriculumAccess`:
+every event that writes is named `curriculum-edit:…`, and viewers are refused
+anything else not listed as a view event.
+
 Change groups are shared: every editor sees and may modify every group. That is
 deliberate for a department-sized team, but it means a group is not private to
 whoever made it.
+
+## AI settings
+
+The AI endpoint, model and key are resolved per completion by
+`SnowSeTools.AI.Settings.current/0`, not read from application env at the call
+site. A row in `ai_settings` overrides the environment **field by field**: a
+NULL column means "use what `prod.env` set", so an admin can repoint the model
+without also having to restate the endpoint. Admins edit it on `/admin`.
+
+Two consequences worth knowing. The stored API key is write-only -- it is never
+sent to a browser, so a blank key box means "keep the current key" and clearing
+an override is the explicit revert button, never an empty field. And every read
+falls back to the environment if the database cannot answer, because a database
+outage should not also take the AI down.
 
 ## Tests
 

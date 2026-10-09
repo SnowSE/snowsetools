@@ -51,6 +51,13 @@ defmodule SnowSeToolsWeb.AppHeader do
             Scheduling
           </.link>
           <.link
+            :if={Access.can?(@current_user, :curriculum)}
+            navigate={~p"/curriculum"}
+            class={nav_link_class(@current_path, ~p"/curriculum")}
+          >
+            Curriculum
+          </.link>
+          <.link
             :if={Access.can?(@current_user, :discord)}
             navigate={~p"/discord"}
             class={nav_link_class(@current_path, ~p"/discord")}

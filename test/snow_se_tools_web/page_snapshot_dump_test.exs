@@ -20,6 +20,7 @@ defmodule SnowSeToolsWeb.PageSnapshotDumpTest do
     SemesterAttrs
   }
 
+  alias SnowSeTools.Curriculum.{AbetDb, CurriculumDomainManager, OutcomeDb, SkillDb, SuggestionDb}
   alias SnowSeTools.Data.User
   alias SnowSeTools.Discord.{DiscordDb, DiscordDomainManager}
   alias SnowSeTools.Scheduling.{ScheduleChangeDomainManager, ScheduleOwnerDomainManager}
@@ -46,8 +47,9 @@ defmodule SnowSeToolsWeb.PageSnapshotDumpTest do
     start_supervised!(ScheduleChangeDomainManager)
     start_supervised!(UserGroupDomainManager)
     start_supervised!(DiscordDomainManager)
+    start_supervised!(CurriculumDomainManager)
 
-    {:ok, term_code: term_code}
+    {:ok, term_code: term_code, curriculum_program: seed_curriculum()}
   end
 
   # The header's online banner only exists while someone else is on the site.
@@ -78,7 +80,7 @@ defmodule SnowSeToolsWeb.PageSnapshotDumpTest do
     end
   end
 
-  test "dump every page", %{conn: conn, term_code: term_code} do
+  test "dump every page", %{conn: conn, term_code: term_code, curriculum_program: curriculum} do
     conn = log_in_user(conn, "snapshot-admin@example.com", ["admin"])
 
     dump("home", live_html(conn, ~p"/home"))
@@ -87,6 +89,20 @@ defmodule SnowSeToolsWeb.PageSnapshotDumpTest do
     dump("admin", live_html(conn, ~p"/admin"))
     dump("programs", live_html(conn, ~p"/scheduling?mode=programs&term=#{term_code}"))
     dump("scheduling", scheduling_with_cards(conn, term_code))
+
+    program = "program=#{curriculum["id"]}"
+    {:ok, git} = SkillDb.find_skill_by_name("Git (command line)")
+    dump("curriculum", live_html(conn, "/curriculum?#{program}"))
+    dump("curriculum-abet", live_html(conn, "/curriculum?#{program}&tab=abet"))
+
+    dump(
+      "curriculum-graph",
+      live_html(conn, "/curriculum?#{program}&tab=graph&overlay=skill:#{git["id"]}")
+    )
+
+    dump("curriculum-skills", live_html(conn, "/curriculum?#{program}&tab=skills"))
+    dump("curriculum-suggestions", live_html(conn, "/curriculum?#{program}&tab=suggestions"))
+    dump("curriculum-course", live_html(conn, "/curriculum/courses/SE/3820?#{program}"))
 
     assert File.ls!(@out) != []
   end
@@ -123,6 +139,7 @@ defmodule SnowSeToolsWeb.PageSnapshotDumpTest do
       :ok = ScheduleOwnerDomainManager.await_idle()
       _ = :sys.get_state(DiscordDomainManager)
       _ = :sys.get_state(ProgramDomainManager)
+      _ = :sys.get_state(CurriculumDomainManager)
       _ = :sys.get_state(view.pid)
       render(view)
     end
@@ -267,6 +284,183 @@ defmodule SnowSeToolsWeb.PageSnapshotDumpTest do
           }
         ]
       )
+  end
+
+  # A small Software Engineering plan with skills that run through it, one
+  # out-of-order skill (so the warning shows), master syllabi with
+  # prerequisites (so the map has edges), an ABET matrix and a suggestion.
+  defp seed_curriculum do
+    plan = [
+      [{"CS", "1400"}, {"CS", "1410"}],
+      [{"CS", "2420"}, {"CS", "2450"}],
+      [{"SE", "3630"}, {"SE", "3820"}],
+      [{"SE", "4450"}, {"SE", "4620"}]
+    ]
+
+    {:ok, program} =
+      ProgramDb.create_program(
+        program: %ProgramAttrs{
+          name: "Software Engineering (snapshot)",
+          semesters:
+            for semester <- plan do
+              %SemesterAttrs{
+                courses:
+                  for(
+                    {subject, number} <- semester,
+                    do: %CourseAttrs{subject_code: subject, course_number: number}
+                  )
+              }
+            end
+        }
+      )
+
+    syllabi = [
+      {"CS", "1400", "Fundamentals of Programming", "",
+       ["Write simple programs from the command line."]},
+      {"CS", "1410", "Object-Oriented Programming", "CS 1400",
+       ["Design classes with unit tests."]},
+      {"CS", "2420", "Data Structures & Algorithms", "CS 1410",
+       ["Analyze algorithms. (ABET SLO 1)"]},
+      {"CS", "2450", "Intro to Software Engineering", "CS 1410",
+       ["Work in a team using GitHub. (ABET SLO 2)"]},
+      {"SE", "3630", "Mobile Application Development", "CS 2450", ["Ship a mobile app."]},
+      {"SE", "3820", "Back-End Web Development", "CS 2450 and CS 2420",
+       [
+         "Upon successful completion of this course students will be able to build HTTP APIs with automated tests. (ABET SLO 2)",
+         "Upon successful completion of this course students will be able to apply onion architecture."
+       ]},
+      {"SE", "4450", "SE Practicum II", "SE 3820",
+       ["Deliver a project for a client. (ABET SLO 3, 5)"]},
+      {"SE", "4620", "Distributed Application Development", "SE 3820 or SE 3630",
+       ["Build distributed systems."]}
+    ]
+
+    for {subject, number, title, prerequisites, outcomes} <- syllabi do
+      {:ok, _counts} =
+        OutcomeDb.save_master_syllabus(
+          subject_code: subject,
+          course_number: number,
+          syllabus: %{
+            "title" => "#{subject} #{number} #{title}",
+            "prerequisites" => prerequisites,
+            "url" => "https://snow.edu/academics/science_math/engineering/se/syllabus.html?q=1",
+            "semester_approved" => "Spring 2026",
+            "five_year_review" => "Fall 2030",
+            "description" => "Snapshot course description.",
+            "outcomes" => outcomes
+          }
+        )
+    end
+
+    links = [
+      {"Command line",
+       [{"CS", "1400", "introduced"}, {"CS", "1410", "reinforced"}, {"SE", "3820", "mastered"}]},
+      {"Git (command line)",
+       [{"CS", "1410", "introduced"}, {"CS", "2450", "reinforced"}, {"SE", "4450", "mastered"}]},
+      {"GitHub",
+       [{"CS", "2450", "introduced"}, {"SE", "3630", "reinforced"}, {"SE", "4450", "mastered"}]},
+      {".NET SDK CLI", [{"CS", "1410", "introduced"}, {"SE", "3820", "reinforced"}]},
+      {"Unit testing",
+       [{"CS", "1410", "introduced"}, {"CS", "2420", "reinforced"}, {"SE", "3820", "reinforced"}]},
+      {"Test-driven development (TDD)",
+       [{"CS", "2450", "introduced"}, {"SE", "3820", "mastered"}]},
+      {"Mocks & fakes", [{"SE", "3820", "reinforced"}, {"SE", "4620", "mastered"}]},
+      {"Onion architecture", [{"SE", "3820", "introduced"}, {"SE", "4620", "mastered"}]}
+    ]
+
+    for {name, course_links} <- links, {subject, number, level} <- course_links do
+      {:ok, skill} = SkillDb.find_skill_by_name(name)
+
+      :ok =
+        SkillDb.set_course_skill(
+          subject_code: subject,
+          course_number: number,
+          skill_id: skill["id"],
+          level: level,
+          note: "",
+          updated_by: "snapshot"
+        )
+    end
+
+    {:ok, _counts} =
+      AbetDb.import_matrix(
+        matrix: %{
+          outcomes: [
+            %{
+              code: "SLO 1",
+              kind: "slo",
+              number: 1,
+              title: "An ability to identify, formulate, and solve complex engineering problems.",
+              position: 1
+            },
+            %{
+              code: "SLO 2",
+              kind: "slo",
+              number: 2,
+              title: "An ability to apply engineering design to produce solutions.",
+              position: 2
+            },
+            %{
+              code: "PC: Security",
+              kind: "criterion",
+              number: nil,
+              title: "Security",
+              position: 100
+            }
+          ],
+          coverage: [
+            %{subject_code: "CS", course_number: "2420", code: "SLO 1", tentative: false},
+            %{subject_code: "SE", course_number: "4620", code: "SLO 1", tentative: false},
+            %{subject_code: "CS", course_number: "2450", code: "SLO 2", tentative: false},
+            %{subject_code: "SE", course_number: "4450", code: "SLO 2", tentative: true},
+            %{subject_code: "SE", course_number: "4620", code: "PC: Security", tentative: false}
+          ]
+        },
+        meta: %{
+          file_name: "B1 ABET_Matrix_2023.xlsx",
+          slo_sheet: "Fall2025_Catalog_Matrix",
+          criteria_sheet: "Main table",
+          imported_by: "snapshot-admin@example.com"
+        }
+      )
+
+    {:ok, run} =
+      SuggestionDb.create_run(
+        program_id: program["id"],
+        started_by: "snapshot-admin@example.com",
+        total_courses: 8
+      )
+
+    :ok =
+      SuggestionDb.insert_suggestion(
+        run_id: run["id"],
+        suggestion: %{
+          "kind" => "course_skill",
+          "subject_code" => "SE",
+          "course_number" => "3820",
+          "payload" => %{
+            "skill_name" => "Docker Compose",
+            "skill_id" => nil,
+            "category" => "tool",
+            "description" => "Running multi-container apps locally.",
+            "level" => "introduced"
+          },
+          "fingerprint" => "course_skill|SE|3820|docker compose|introduced",
+          "evidence" => "3820_BackEnd/2026-fall-dallan/modules/M3/docker.md"
+        }
+      )
+
+    {:ok, _run} =
+      SuggestionDb.update_run(
+        run_id: run["id"],
+        changes: %{
+          status: "completed",
+          finished_courses: 8,
+          notes: ["Faculty repository skipped: CURRICULUM_GITHUB_TOKEN is not set."]
+        }
+      )
+
+    program
   end
 
   defp seed_program do

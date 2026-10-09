@@ -11,6 +11,10 @@ defmodule SnowSeToolsWeb.Admin.AdminUIMessages do
     send(pid, {:admin_ui_action_result, result})
   end
 
+  def send_ai_settings(pid: pid, settings: settings) when is_pid(pid) do
+    send(pid, {:ai_settings, settings})
+  end
+
   defmacro __using__(_opts) do
     quote do
       def handle_info({:admin_ui_users, users}, socket) do
@@ -19,6 +23,10 @@ defmodule SnowSeToolsWeb.Admin.AdminUIMessages do
 
       def handle_info({:admin_ui_groups, groups}, socket) do
         {:noreply, assign(socket, :groups, groups)}
+      end
+
+      def handle_info({:ai_settings, settings}, socket) do
+        {:noreply, assign(socket, :ai_settings, settings)}
       end
 
       def handle_info({:admin_ui_action_result, {:ok, message}}, socket) do
@@ -46,6 +54,7 @@ defmodule SnowSeToolsWeb.Admin.AdminUIMessages do
         do: "You cannot remove the last super user."
 
       defp format_error(:invalid_group_name), do: "Group name cannot be blank."
+      defp format_error(:unknown_ai_setting), do: "That is not an AI setting."
       defp format_error(:invalid_email), do: "No email address found in that list."
       defp format_error(:not_found), do: "That record no longer exists."
       defp format_error(reason), do: inspect(reason)

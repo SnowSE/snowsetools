@@ -56,4 +56,5 @@ defmodule SnowSeToolsWeb.Home.HomeLive do
   defp area_path(:syllabi), do: ~p"/syllabi"
   defp area_path(:scheduling), do: ~p"/scheduling"
   defp area_path(:discord), do: ~p"/discord"
+  defp area_path(:curriculum), do: ~p"/curriculum"
 end

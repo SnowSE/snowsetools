@@ -5,6 +5,7 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
 
   require Logger
 
+  alias SnowSeTools.AI.SettingsDomainManager
   alias SnowSeTools.Data.{Access, EmailList}
   alias SnowSeTools.Snow.SnowCourseCacheDomainManager
   alias SnowSeTools.Telemetry.Events
@@ -25,10 +26,12 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
       |> assign(:group_form, to_form(%{"name" => ""}, as: :group))
       |> assign(:user_form, to_form(%{"email" => ""}, as: :user))
       |> assign(:new_user_group_ids, [])
+      |> assign(:ai_settings, nil)
 
     if connected?(socket) do
       UserGroupDomainManager.request_dashboard(pid: self())
       SnowCourseCacheDomainManager.request_dashboard(pid: self())
+      SettingsDomainManager.request_settings(pid: self())
     end
 
     {:ok, socket}
@@ -253,7 +256,8 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
             </.form>
 
             <p class="mb-4 text-xs leading-5 text-slate-500">
-              Paste one address or a whole list — <code class="text-slate-400">"Name" &lt;a@snow.edu&gt;</code>
+              Paste one address or a whole list —
+              <code class="text-slate-400">"Name" &lt;a@snow.edu&gt;</code>
               entries separated by semicolons, commas or line breaks all work. Checked roles are
               added to everyone in the list; an address that is already a user keeps the roles it
               has. Without a role, an account sees an "awaiting approval" page.
@@ -422,6 +426,15 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
               </table>
             </div>
           </section>
+
+          <div :if={@ai_settings} class="col-span-full">
+            <.live_component
+              module={SnowSeToolsWeb.Admin.AiSettingsComponent}
+              id="ai-settings-component"
+              settings={@ai_settings}
+              current_user={@current_user}
+            />
+          </div>
 
           <div class="col-span-full">
             <.live_component

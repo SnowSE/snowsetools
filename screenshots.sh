@@ -19,7 +19,7 @@ cd "$SCRIPT_DIR"
 W="${W:-390}"
 H="${H:-900}"
 SUFFIX="${SUFFIX:-}"
-PAGES=(home syllabi discord admin programs scheduling)
+PAGES=(home syllabi discord admin programs scheduling curriculum curriculum-abet curriculum-graph curriculum-skills curriculum-suggestions curriculum-course)
 
 DB_CONTAINER="snowse-shots-db"
 NETWORK="snowse-shots-net"

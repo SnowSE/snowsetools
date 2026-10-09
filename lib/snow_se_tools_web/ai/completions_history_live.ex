@@ -3,6 +3,7 @@ defmodule SnowSeToolsWeb.AI.CompletionsHistoryLive do
 
   alias SnowSeTools.AI.CompletionLog
   alias SnowSeTools.AI.AsyncCompletions
+  alias SnowSeTools.AI.SettingsDomainManager
   import SnowSeToolsWeb.AI.CompletionDetails
 
   on_mount {SnowSeToolsWeb.UserAuth, {:ensure_access, :syllabi}}
@@ -10,6 +11,7 @@ defmodule SnowSeToolsWeb.AI.CompletionsHistoryLive do
   def mount(_params, _session, socket) do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(SnowSeTools.PubSub, AsyncCompletions.status_topic())
+      SettingsDomainManager.request_settings(pid: self())
     end
 
     %{
@@ -19,13 +21,11 @@ defmodule SnowSeToolsWeb.AI.CompletionsHistoryLive do
     } =
       AsyncCompletions.status()
 
-    ai_config = Application.get_env(:snow_se_tools, :ai, [])
-
     socket =
       socket
       |> assign(:page_title, "AI Completions History")
-      |> assign(:ai_endpoint, ai_config[:endpoint])
-      |> assign(:ai_model, ai_config[:model])
+      |> assign(:ai_endpoint, nil)
+      |> assign(:ai_model, nil)
       |> assign(:loading, true)
       |> assign(:completions_empty?, true)
       |> assign(:in_flight_items, in_flight_items)
@@ -36,6 +36,15 @@ defmodule SnowSeToolsWeb.AI.CompletionsHistoryLive do
       |> start_async(:fetch, fn -> CompletionLog.list_recent(200) end)
 
     {:ok, socket}
+  end
+
+  # The endpoint and model shown here are whatever the admin page has in
+  # force, which is not necessarily what the environment set.
+  def handle_info({:ai_settings, settings}, socket) do
+    {:noreply,
+     socket
+     |> assign(:ai_endpoint, settings.endpoint)
+     |> assign(:ai_model, settings.model)}
   end
 
   def handle_info({:queue_status, status}, socket) do
