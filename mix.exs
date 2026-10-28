@@ -99,9 +99,11 @@ defmodule SnowSeTools.MixProject do
         "esbuild snow_se_tools --minify",
         "phx.digest"
       ],
+      # hex.audit goes first: once compile has pruned the code path, Mix can
+      # no longer find the Hex archive's tasks in the same run.
       precommit: [
-        "compile --warnings-as-errors",
         "hex.audit",
+        "compile --warnings-as-errors",
         "deps.unlock --unused",
         "format",
         "dialyzer --quiet-with-result",
