@@ -70,6 +70,13 @@ defmodule SnowSeToolsWeb.Layouts do
     </script>
     <script :type={Phoenix.LiveView.ColocatedHook} name=".SessionRefresh">
       export default {
+        // Keeps the page and its query string, so login lands them where they were
+        // instead of on /home.
+        loginAndComeBack() {
+          const returnTo = window.location.pathname + window.location.search;
+          window.location.href = "/auth/login?return_to=" + encodeURIComponent(returnTo);
+        },
+
         mounted() {
           this.refreshing = false;
           this.handleEvent("session_refresh", () => {
@@ -83,7 +90,7 @@ defmodule SnowSeToolsWeb.Layouts do
               .then(resp => {
                 if (!resp.ok) {
                   console.error("[SessionRefresh] Refresh failed, status=", resp.status, "- redirecting to login");
-                  window.location.href = "/auth/login";
+                  this.loginAndComeBack();
                   return;
                 }
                 console.log("[SessionRefresh] Refresh HTTP 200, reading new exp");
@@ -99,7 +106,7 @@ defmodule SnowSeToolsWeb.Layouts do
               })
               .catch(err => {
                 console.error("[SessionRefresh] Fetch error:", err, "- redirecting to login");
-                window.location.href = "/auth/login";
+                this.loginAndComeBack();
               })
               .finally(() => {
                 this.refreshing = false;

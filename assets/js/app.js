@@ -31,7 +31,11 @@ const csrfToken = document
   .getAttribute("content");
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
-  params: { _csrf_token: csrfToken },
+  // Read on every join, so a reconnect after sleep reports the page it is on.
+  params: () => ({
+    _csrf_token: csrfToken,
+    return_to: location.pathname + location.search,
+  }),
   hooks: { ...colocatedHooks },
 });
 

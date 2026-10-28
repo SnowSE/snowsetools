@@ -32,13 +32,9 @@ defmodule SnowSeToolsWeb.UserAuth do
 
         {:cont, socket}
 
-      _ ->
-        socket =
-          socket
-          |> put_flash(:error, "Your session has expired. Please log in again.")
-          |> redirect(to: "/auth/logout")
-
-        {:halt, socket}
+      no_user ->
+        Logger.info("UserAuth: no logged-in user (#{inspect(no_user)}), sending through login")
+        {:halt, redirect(socket, to: login_path(socket))}
     end
   end
 
@@ -70,6 +66,22 @@ defmodule SnowSeToolsWeb.UserAuth do
   def on_mount(:ensure_admin, params, session, socket) do
     on_mount({:ensure_access, :admin}, params, session, socket)
   end
+
+  # The socket only knows the host, so the browser sends its own path and query
+  # string when it connects (app.js). Login brings them back there, where logout
+  # would drop them on the landing page. No flash: the IdP never renders one.
+  # Only the root LiveView can read connect params.
+  defp login_path(%{parent_pid: nil} = socket) do
+    case get_connect_params(socket) do
+      %{"return_to" => "/" <> _ = path} ->
+        "/auth/login?" <> URI.encode_query(%{"return_to" => path})
+
+      _ ->
+        "/auth/login"
+    end
+  end
+
+  defp login_path(_nested_socket), do: "/auth/login"
 
   # Refresh 60 seconds before expiry. Must be shorter than the token lifetime.
   @refresh_before_seconds 60
