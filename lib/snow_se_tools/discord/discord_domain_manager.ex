@@ -272,17 +272,6 @@ defmodule SnowSeTools.Discord.DiscordDomainManager do
       {:error, reason} ->
         Logger.error("Discord student mappings for course load failed reason=#{inspect(reason)}")
         send(pid, {:discord, {:student_mappings_for_course_loaded, key, {:error, reason}}})
-
-      unexpected ->
-        Logger.error(
-          "Discord student mappings for course load returned unexpected result=#{inspect(unexpected)}"
-        )
-
-        send(
-          pid,
-          {:discord,
-           {:student_mappings_for_course_loaded, key, {:error, {:unexpected, unexpected}}}}
-        )
     end
 
     {:noreply, state}
