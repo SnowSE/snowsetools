@@ -247,22 +247,13 @@ defmodule SnowSeTools.Telemetry.Events do
   # Stamping the current span onto the event is what lets Grafana jump from a
   # line on the usage dashboard to the trace for that exact request.
   defp trace_context do
-    case :otel_tracer.current_span_ctx() do
-      {:span_ctx, trace_id, span_id, _, _, _, _, _, _} when is_integer(trace_id) ->
-        %{traceId: hex(trace_id, 32), spanId: hex(span_id, 16)}
+    span_ctx = :otel_tracer.current_span_ctx()
 
-      _ ->
-        %{}
+    if :otel_span.is_valid(span_ctx) do
+      %{traceId: :otel_span.hex_trace_id(span_ctx), spanId: :otel_span.hex_span_id(span_ctx)}
+    else
+      %{}
     end
-  rescue
-    _ -> %{}
-  end
-
-  defp hex(id, width) do
-    id
-    |> Integer.to_string(16)
-    |> String.downcase()
-    |> String.pad_leading(width, "0")
   end
 
   defp resource_attributes do
