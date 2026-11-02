@@ -341,6 +341,15 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
           });
         },
 
+        // A dropped socket rejoins as a brand-new LiveView process with an empty
+        // canvas, but the hook element survives, so mounted() does not run again.
+        // Report the remembered canvas (and the browser's layouts) once more, or
+        // the server never restores what was open before the drop.
+        reconnected() {
+          this.sync();
+          this.reportSession();
+        },
+
         updated() {
           this.rememberSession();
         },
