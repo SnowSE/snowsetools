@@ -50,9 +50,12 @@ defmodule SnowSeTools.Curriculum.CurriculumDomainManager do
 
   @ai_topic "curriculum:ai"
   @faculty_budget 40_000
-  # Comfortably more than 25 skills with evidence; a longer answer than this
-  # is a runaway, not a thorough review.
-  @review_max_tokens 4_000
+  # The answer itself -- 25 skills with evidence -- fits in about 4,000 tokens,
+  # but a thinking model spends this same budget on its reasoning first. At
+  # 4,000 a real course review ran out mid-thought and came back empty. This
+  # leaves room for both while still stopping a runaway well short of the
+  # server's context window.
+  @review_max_tokens 16_000
   @section_budget 12_000
 
   def start_link(_opts) do
@@ -903,8 +906,19 @@ defmodule SnowSeTools.Curriculum.CurriculumDomainManager do
   def format_reason(:not_unique), do: "that name is already taken"
   def format_reason(:queue_full), do: "the AI queue is full; try again later"
 
+  def format_reason({status, message}) when is_integer(status) and is_binary(message),
+    do: "AI service answered #{status}: #{message}"
+
   def format_reason({status, message}) when is_integer(status),
     do: "AI service answered #{status}: #{inspect(message)}"
+
+  def format_reason({:ran_out_of_tokens, :while_thinking}),
+    do:
+      "the model spent its whole token budget thinking and never wrote an answer. " <>
+        "Try again, or pick a model that thinks less on the admin page."
+
+  def format_reason({:ran_out_of_tokens, :mid_answer}),
+    do: "the model ran out of tokens partway through its answer."
 
   def format_reason(reason), do: inspect(reason, limit: 5)
 end
