@@ -62,7 +62,16 @@ config :snow_se_tools, :ai,
 # review uses the master and section syllabi only.
 config :snow_se_tools, :curriculum,
   github_token: env!("CURRICULUM_GITHUB_TOKEN", :string, nil),
-  faculty_repo: env!("CURRICULUM_FACULTY_REPO", :string, "SnowSE/faculty")
+  faculty_repo: env!("CURRICULUM_FACULTY_REPO", :string, "SnowSE/faculty"),
+  # The subjects a review run reads and reviews. A program plan also lists the
+  # general-education courses a student must pass; the department does not map
+  # skills for those.
+  reviewed_subjects:
+    "CURRICULUM_REVIEWED_SUBJECTS"
+    |> env!(:string, "CS,SE")
+    |> String.split(",", trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
 
 config :snow_se_tools, SnowSeToolsWeb.Endpoint,
   http: [port: env!("PORT", :integer, 4000), ip: {0, 0, 0, 0}]

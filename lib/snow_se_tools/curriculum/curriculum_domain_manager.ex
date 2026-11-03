@@ -49,6 +49,14 @@ defmodule SnowSeTools.Curriculum.CurriculumDomainManager do
   alias SnowSeTools.Data.DbHelpers
 
   @ai_topic "curriculum:ai"
+  # The department teaches the CS and SE courses. A program plan also lists the
+  # general-education courses a student has to pass -- MATH, ENGL, COMM -- and
+  # those have no materials in the faculty repository and no skills this map is
+  # about, so a run neither reads their syllabi nor reviews them. They still
+  # appear on the program plan and in the prerequisite graph; they are just not
+  # something the department maps skills for.
+  @default_reviewed_subjects ~w(CS SE)
+
   @faculty_budget 40_000
   # The answer itself -- 25 skills with evidence -- fits in about 4,000 tokens,
   # but a thinking model spends this same budget on its reasoning first. At
@@ -446,9 +454,36 @@ defmodule SnowSeTools.Curriculum.CurriculumDomainManager do
     {:noreply, state}
   end
 
+  defp empty_courses_error(program_id) do
+    case find_program(program_id) do
+      {:ok, program} ->
+        if CurriculumMap.program_courses(program) == [] do
+          "That program has no courses yet."
+        else
+          "That program has no #{Enum.join(reviewed_subjects(), " or ")} courses to review."
+        end
+
+      _ ->
+        "That program has no courses yet."
+    end
+  end
+
+  defp reviewed_courses(courses) do
+    subjects = reviewed_subjects()
+    Enum.filter(courses, &(String.upcase(&1["subject_code"] || "") in subjects))
+  end
+
+  defp reviewed_subjects do
+    :snow_se_tools
+    |> Application.get_env(:curriculum, [])
+    |> Keyword.get(:reviewed_subjects, @default_reviewed_subjects)
+    |> Enum.map(&String.upcase/1)
+  end
+
   defp begin_run(program_id, kind, started_by) do
     with {:ok, program} <- find_program(program_id),
-         courses when courses != [] <- CurriculumMap.program_courses(program),
+         all_courses when all_courses != [] <- CurriculumMap.program_courses(program),
+         courses when courses != [] <- reviewed_courses(all_courses),
          {:ok, previous_syllabi} <- OutcomeDb.list_master_syllabi(),
          {:ok, row} <-
            SuggestionDb.create_run(
@@ -477,8 +512,13 @@ defmodule SnowSeTools.Curriculum.CurriculumDomainManager do
       start_task(fn -> read_master_syllabi(manager, run) end)
       {:ok, run}
     else
-      [] -> {:error, "That program has no courses yet."}
-      {:error, reason} -> {:error, reason}
+      # Two different empty lists reach here: a plan with nothing on it at all,
+      # and a plan whose courses are all outside the reviewed subjects.
+      [] ->
+        {:error, empty_courses_error(program_id)}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

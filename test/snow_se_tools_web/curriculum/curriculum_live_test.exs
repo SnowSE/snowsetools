@@ -256,6 +256,16 @@ defmodule SnowSeToolsWeb.CurriculumLiveTest do
           else: Application.delete_env(:snow_se_tools, :curriculum_req_options)
       end)
 
+      curriculum = Application.get_env(:snow_se_tools, :curriculum, [])
+
+      Application.put_env(
+        :snow_se_tools,
+        :curriculum,
+        Keyword.put(curriculum, :reviewed_subjects, ["QZ"])
+      )
+
+      on_exit(fn -> Application.put_env(:snow_se_tools, :curriculum, curriculum) end)
+
       CurriculumPubSub.subscribe()
       :ok
     end
@@ -297,6 +307,31 @@ defmodule SnowSeToolsWeb.CurriculumLiveTest do
                      5_000
 
       assert run["finished_courses"] == 2
+    end
+
+    test "a general-education course is left out of the run entirely", %{
+      conn: conn,
+      program: program,
+      first: first
+    } do
+      # The program plan still lists it; the run simply does not read or review
+      # it, which is what keeps MATH and ENGL out of the map's AI work.
+      Application.put_env(
+        :snow_se_tools,
+        :curriculum,
+        Keyword.put(Application.get_env(:snow_se_tools, :curriculum, []), :reviewed_subjects, [
+          "SE"
+        ])
+      )
+
+      program_id = program["id"]
+      view = open(editor(conn), ~p"/curriculum?program=#{program_id}&tab=suggestions")
+
+      refute has_element?(view, "#start-review[disabled]")
+      view |> element("#start-review") |> render_click()
+      settle(view)
+
+      refute render(view) =~ "QZ #{first}: "
     end
 
     test "a course with nothing to read is reported rather than sent to the model",
