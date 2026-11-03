@@ -148,6 +148,181 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramIntegrationTest do
     assert change_groups_state.active_change_group["name"] == "My Test Group"
   end
 
+  describe "reviewing a program's schedule conflicts" do
+    setup do
+      program =
+        create_program([
+          [%{subject_code: "CE", course_number: "2010"}],
+          [%{subject_code: "CE", course_number: "3020"}],
+          [%{subject_code: "MATH", course_number: "1010"}]
+        ])
+
+      # Something else to have on the canvas as unsaved work.
+      other = create_program([[%{subject_code: "CE", course_number: "2010"}]])
+
+      %{program: program, other_key: semester_keys(other) |> hd()}
+    end
+
+    test "on an empty canvas, opens every semester in order without asking",
+         %{conn: conn, program: program} do
+      view = open_programs_tab(conn)
+
+      review(view, program)
+
+      # The program param is consumed and dropped, leaving a plain viewer URL,
+      # so a reload keeps whatever is arranged afterwards.
+      assert_patch(view, ~p"/scheduling?mode=viewer&term=202590")
+      refute has_element?(view, "#schedule-program-choice")
+      assert canvas_keys(view) == semester_keys(program)
+      assert render(view) =~ "Opened 3 semesters of #{program["name"]}"
+    end
+
+    test "with unsaved work, asks first and touches nothing until answered",
+         %{conn: conn, program: program, other_key: other_key} do
+      view = open_programs_tab(conn)
+      put_on_canvas(view, other_key)
+
+      review(view, program)
+
+      assert has_element?(view, "#schedule-program-choice", program["name"])
+      assert has_element?(view, "#schedule-program-choice", "hasn't been saved")
+      assert canvas_keys(view) == [other_key]
+    end
+
+    test "choosing add keeps the work and puts the semesters after it",
+         %{conn: conn, program: program, other_key: other_key} do
+      view = open_programs_tab(conn)
+      put_on_canvas(view, other_key)
+      review(view, program)
+
+      view |> element("#schedule-program-choice-add") |> render_click()
+
+      refute has_element?(view, "#schedule-program-choice")
+      assert canvas_keys(view) == [other_key | semester_keys(program)]
+      assert render(view) =~ "Added 3 semesters of #{program["name"]} to your layout"
+    end
+
+    test "choosing add skips semesters already on the canvas",
+         %{conn: conn, program: program} do
+      [first | rest] = semester_keys(program)
+      view = open_programs_tab(conn)
+      put_on_canvas(view, first)
+      review(view, program)
+
+      view |> element("#schedule-program-choice-add") |> render_click()
+
+      assert canvas_keys(view) == [first | rest]
+      assert render(view) =~ "Added 2 semesters"
+    end
+
+    test "choosing replace swaps the work for the program",
+         %{conn: conn, program: program, other_key: other_key} do
+      view = open_programs_tab(conn)
+      put_on_canvas(view, other_key)
+      review(view, program)
+
+      view |> element("#schedule-program-choice-replace") |> render_click()
+
+      assert canvas_keys(view) == semester_keys(program)
+    end
+
+    test "cancelling leaves the canvas exactly as it was",
+         %{conn: conn, program: program, other_key: other_key} do
+      view = open_programs_tab(conn)
+      put_on_canvas(view, other_key)
+      review(view, program)
+
+      view |> element("#schedule-program-choice-cancel") |> render_click()
+
+      refute has_element?(view, "#schedule-program-choice")
+      assert canvas_keys(view) == [other_key]
+    end
+
+    test "a link waits for the remembered canvas, then asks rather than overwriting it",
+         %{conn: conn, program: program, other_key: other_key} do
+      conn = log_in_test_user(conn)
+
+      {:ok, view, _html} =
+        live(conn, ~p"/scheduling?mode=viewer&term=202590&program=#{program["id"]}")
+
+      _ = render(view)
+      assert canvas_keys(view) == []
+
+      # What the browser reports from localStorage once the hook mounts.
+      render_hook(view, "schedule-layouts:session_read", %{
+        "session" => %{
+          "term_code" => "202590",
+          "entries" => [%{"kind" => "owner", "key" => other_key}],
+          "loaded" => nil,
+          "baseline" => nil
+        }
+      })
+
+      assert canvas_keys(view) == [other_key]
+      assert has_element?(view, "#schedule-program-choice")
+    end
+
+    test "a link with nothing remembered opens the semesters straight away",
+         %{conn: conn, program: program} do
+      conn = log_in_test_user(conn)
+
+      {:ok, view, _html} =
+        live(conn, ~p"/scheduling?mode=viewer&term=202590&program=#{program["id"]}")
+
+      render_hook(view, "schedule-layouts:session_read", %{"session" => nil})
+
+      refute has_element?(view, "#schedule-program-choice")
+      assert canvas_keys(view) == semester_keys(program)
+    end
+  end
+
+  defp create_program(semesters) do
+    {:ok, attrs} =
+      SnowSeTools.AcademicPrograms.ProgramAttrs.parse(%{
+        name: "Conflict Review #{System.unique_integer([:positive])}",
+        semesters: Enum.map(semesters, &%{courses: &1})
+      })
+
+    ProgramDomainManager.create_program(pid: self(), program: attrs)
+    assert_receive {:academic_programs, {:action_result, {:ok, _message, program}}}
+    # Let the schedule owners pick up the new program's semesters.
+    _ = :sys.get_state(ScheduleOwnerDomainManager)
+    program
+  end
+
+  defp semester_keys(program) do
+    Enum.map(program["semesters"], fn semester ->
+      "academic_program_semester:#{program["id"]}:#{semester["id"]}"
+    end)
+  end
+
+  defp open_programs_tab(conn) do
+    conn = log_in_test_user(conn)
+    {:ok, view, _html} = live(conn, ~p"/scheduling?mode=programs&term=202590")
+    # The program list arrives as a message once the view has connected, and
+    # the browser hook reports that it remembers no canvas.
+    _ = :sys.get_state(ProgramDomainManager)
+    render_hook(view, "schedule-layouts:session_read", %{"session" => nil})
+    view
+  end
+
+  defp put_on_canvas(view, key),
+    do: render_click(view, "schedule-details-order:toggle", %{"key" => key})
+
+  defp review(view, program) do
+    view |> element("#academic-program-#{program["id"]}") |> render_click()
+    view |> element("#review-program-schedule-conflicts") |> render_click()
+  end
+
+  defp canvas_keys(view) do
+    :sys.get_state(view.pid).socket.assigns.schedule_details_order
+    |> SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder.to_layout_entries()
+    |> Enum.flat_map(fn
+      %{"kind" => "overlay", "members" => members} -> members
+      %{"key" => key} -> [key]
+    end)
+  end
+
   defp log_in_test_user(conn),
     do: log_in_user(conn, "academic-program-integration@example.com", ["scheduling_admin"])
 

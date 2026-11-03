@@ -403,9 +403,12 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
      })
      # A layout named in the URL waits for this: until the term's owners are
      # known there is no way to tell which of its cards this term actually has.
-     # The canvas this browser remembers waits for exactly the same thing.
+     # The canvas this browser remembers waits for exactly the same thing. A
+     # program asked for from the programs tab goes last: whether it may replace
+     # the canvas depends on what the restore put there.
      |> ScheduleLayouts.maybe_apply_pending_layout()
-     |> ScheduleLayouts.maybe_restore_session()}
+     |> ScheduleLayouts.maybe_restore_session()
+     |> ScheduleLayouts.maybe_apply_pending_program()}
   end
 
   def hooked_info(

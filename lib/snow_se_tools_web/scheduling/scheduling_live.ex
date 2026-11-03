@@ -186,15 +186,17 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
 
   @doc """
   The scheduling URL. `layout` names the saved layout on screen so the page can
-  be bookmarked and shared; blank values are left out rather than written as
-  empty query params.
+  be bookmarked and shared; `program` asks the schedule viewer to open every
+  semester of that academic program (it drops the param once it has). Blank
+  values are left out rather than written as empty query params.
   """
   def scheduling_path(opts) do
     query =
       [
         {"mode", to_string(Keyword.fetch!(opts, :mode))},
         {"term", Keyword.get(opts, :term)},
-        {"layout", Keyword.get(opts, :layout)}
+        {"layout", Keyword.get(opts, :layout)},
+        {"program", Keyword.get(opts, :program)}
       ]
       |> Enum.reject(fn {_key, value} -> value in [nil, ""] end)
       |> URI.encode_query()

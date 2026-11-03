@@ -6,6 +6,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
   alias SnowSeTools.AcademicPrograms.{AcademicProgramPubSub, ProgramDomainManager}
   alias SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramEditor
+  alias SnowSeToolsWeb.Scheduling.SchedulingLive
 
   defstruct [:key, :selected_program_id, :editing?, :editor_key, :picker_key]
 
@@ -189,6 +190,21 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
      })}
   end
 
+  # Over to the schedule viewer, on the term already selected, with every
+  # semester of the program open; the viewer does the opening once it knows
+  # which owners that term has.
+  def hooked_event("academic-programs:review_conflicts", %{"program_id" => program_id}, socket) do
+    {:halt,
+     LiveView.push_patch(socket,
+       to:
+         SchedulingLive.scheduling_path(
+           mode: :viewer,
+           term: socket.assigns.schedule_viewer_state.selected_term_code,
+           program: program_id
+         )
+     )}
+  end
+
   def hooked_event("academic-programs:edit", _params, socket) do
     panel_state = panel_state(socket)
 
@@ -303,15 +319,29 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
               </p>
             </div>
 
-            <button
-              :if={@editor?}
-              id="edit-academic-program"
-              type="button"
-              phx-click="academic-programs:edit"
-              class="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 transition hover:bg-indigo-500/25"
-            >
-              <.icon name="hero-pencil" class="size-3.5" /> Edit
-            </button>
+            <div class="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              <button
+                id="review-program-schedule-conflicts"
+                type="button"
+                phx-click="academic-programs:review_conflicts"
+                phx-value-program_id={@program["id"]}
+                disabled={(@program["semesters"] || []) == []}
+                title="Open every semester of this program on the schedule, for the selected term"
+                class="inline-flex items-center gap-1 rounded-md bg-rose-500/15 px-2.5 py-1.5 text-xs font-medium text-rose-200 transition hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <.icon name="hero-exclamation-triangle" class="size-3.5" /> Review schedule conflicts
+              </button>
+
+              <button
+                :if={@editor?}
+                id="edit-academic-program"
+                type="button"
+                phx-click="academic-programs:edit"
+                class="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 transition hover:bg-indigo-500/25"
+              >
+                <.icon name="hero-pencil" class="size-3.5" /> Edit
+              </button>
+            </div>
           </div>
 
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
