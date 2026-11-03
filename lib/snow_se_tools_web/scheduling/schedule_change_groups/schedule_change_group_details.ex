@@ -1,5 +1,6 @@
 defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
   alias SnowSeTools.Data.Text
+  alias SnowSeTools.Scheduling.Instructor
   alias SnowSeTools.Scheduling.ScheduleChange
 
   @deleted_marker ScheduleChange.deleted_marker()
@@ -274,11 +275,11 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
     "rounded-lg border border-emerald-500/25 bg-emerald-950/10 p-2.5"
   end
 
-  defp changed_professor(%{"target_professor" => professor}, original_course)
+  defp changed_professor(%{"target_professor" => professor} = change, original_course)
        when is_binary(professor) and professor != "" do
-    original_professor = first_professor(original_course)
-
-    if original_professor != professor do
+    # Who, not what they are called: the same name can be a different person.
+    if Instructor.owner_key(first_instructor(original_course)) !=
+         Instructor.owner_key(target_instructor(change)) do
       [%{label: "Professor", value: professor}]
     else
       []
@@ -398,9 +399,11 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
   end
 
   defp professor_schedule_target(change, original_course) do
-    case professor_name(change, original_course) do
-      professor when is_binary(professor) and professor != "" ->
-        %{kind: :professor, key: "professor:#{professor}", label: "Professor: #{professor}"}
+    instructor = professor_instructor(change, original_course)
+
+    case {Instructor.owner_key(instructor), Instructor.name(instructor)} do
+      {key, name} when is_binary(key) ->
+        %{kind: :professor, key: key, label: "Professor: #{name || key}"}
 
       _other ->
         nil
@@ -456,19 +459,6 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
     List.first(Map.get(original_course, "meet_info", []))
   end
 
-  defp first_professor(nil), do: nil
-
-  defp first_professor(course) do
-    course
-    |> Map.get("instructors", [])
-    |> List.first()
-    |> case do
-      %{"name" => name} -> name
-      name when is_binary(name) -> name
-      _other -> nil
-    end
-  end
-
   defp format_days(days) do
     days
     |> Enum.map(&String.slice(&1, 0, 3))
@@ -505,11 +495,19 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
     end
   end
 
-  defp professor_name(%{"target_professor" => professor}, _original_course)
+  defp professor_instructor(%{"target_professor" => professor} = change, _original_course)
        when is_binary(professor) and professor != "",
-       do: professor
+       do: target_instructor(change)
 
-  defp professor_name(_change, original_course), do: first_professor(original_course)
+  defp professor_instructor(_change, original_course), do: first_instructor(original_course)
+
+  defp target_instructor(change),
+    do: %{"name" => change["target_professor"], "email" => change["target_professor_email"]}
+
+  defp first_instructor(nil), do: nil
+
+  defp first_instructor(course),
+    do: course |> Map.get("instructors", []) |> List.wrap() |> List.first()
 
   defp blank?(value), do: Text.blank?(value)
 

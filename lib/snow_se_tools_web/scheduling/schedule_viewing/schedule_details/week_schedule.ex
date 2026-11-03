@@ -701,7 +701,8 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
       ScheduleUtils.build_week_schedule(
         type: course_list.type,
         name: course_list.name,
-        courses: courses
+        courses: courses,
+        owner_key: course_list.owner_key
       )
       |> Map.merge(%{
         program_name: course_list.program_name,
@@ -791,7 +792,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
 
   defp empty_week_schedule(owner_key: owner_key) when is_binary(owner_key) do
     {type, name} = empty_week_schedule_type(owner_key)
-    ScheduleUtils.build_week_schedule(type: type, name: name, courses: [])
+    ScheduleUtils.build_week_schedule(type: type, name: name, courses: [], owner_key: owner_key)
   end
 
   defp empty_week_schedule_type("professor:" <> name), do: {:professor, name}

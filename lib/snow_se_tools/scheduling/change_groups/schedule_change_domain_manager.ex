@@ -3,6 +3,7 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDomainManager do
   require Logger
 
   alias SnowSeTools.Scheduling.{
+    Instructor,
     ScheduleChangeDb,
     ScheduleChangePubSub,
     ScheduleConflictDetector,
@@ -129,6 +130,8 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDomainManager do
   end
 
   def handle_cast({:add_or_update_change, group_id, change_attrs}, state) do
+    change_attrs = resolve_target_professor(change_attrs)
+
     case change_returns_to_original(change_attrs: change_attrs) do
       true ->
         remove_existing_change_for_attrs(
@@ -451,6 +454,8 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDomainManager do
     |> Enum.sort_by(&{&1.days, &1.start_minutes, &1.end_minutes, &1.room || ""})
   end
 
+  # Compared by identity, not name: handing a class from one Michael Olson to
+  # the other is a change, not a return to how things were.
   defp original_professor_matches?(change_attrs: change_attrs, original_course: original_course) do
     changed_professor =
       changed_professor(change_attrs: change_attrs, original_course: original_course)
@@ -459,11 +464,11 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDomainManager do
   end
 
   defp changed_professor(
-         change_attrs: %{"target_professor" => professor},
+         change_attrs: %{"target_professor" => professor} = change_attrs,
          original_course: _course
        )
        when is_binary(professor) and professor != "" do
-    professor
+    Instructor.identity(%{"name" => professor, "email" => change_attrs["target_professor_email"]})
   end
 
   defp changed_professor(change_attrs: _change_attrs, original_course: original_course) do
@@ -474,11 +479,48 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDomainManager do
     course
     |> Map.get("instructors", [])
     |> List.wrap()
-    |> Enum.find_value("", fn
-      %{"name" => name} when is_binary(name) -> name
-      _instructor -> nil
-    end)
+    |> Enum.find_value("", &Instructor.identity/1)
   end
+
+  # A change names its professor by name -- typed into the edit form, or the
+  # label of the card a class was dragged onto (sent along as
+  # `target_professor_key`). Record who that is: their real name and email,
+  # found among the term's instructors. A name two people share, or one nobody
+  # in the term has, is kept as typed with no email.
+  defp resolve_target_professor(%{"target_professor" => professor} = change_attrs)
+       when is_binary(professor) and professor != "" do
+    key = change_attrs["target_professor_key"]
+
+    person =
+      with term when is_binary(term) <- change_attrs["term"],
+           {:ok, owner_course_lists} <- owner_course_lists_for_term(term_code: term) do
+        people =
+          owner_course_lists
+          |> Enum.flat_map(&courses_for_owner/1)
+          |> Enum.flat_map(&List.wrap(&1["instructors"]))
+          |> Instructor.labels()
+
+        (is_binary(key) && Instructor.resolve(key, people)) ||
+          Instructor.resolve(professor, people)
+      else
+        _unavailable -> nil
+      end
+
+    change_attrs = Map.delete(change_attrs, "target_professor_key")
+
+    case person do
+      %{name: name, email: email} ->
+        change_attrs
+        |> Map.put("target_professor", name)
+        |> Map.put("target_professor_email", email)
+
+      nil ->
+        Map.put(change_attrs, "target_professor_email", nil)
+    end
+  end
+
+  defp resolve_target_professor(change_attrs),
+    do: Map.delete(change_attrs, "target_professor_key")
 
   defp time_minutes(time), do: TimeOfDay.minutes(time, nil)
 end

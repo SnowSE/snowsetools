@@ -761,7 +761,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
         pending_session: nil,
         session_ready?: true,
         loaded: loaded,
-        baseline: loaded && session["baseline"],
+        # Translated like the entries were, or a layout saved before professor
+        # keys changed would read as edited the moment it is restored.
+        baseline:
+          loaded && ScheduleDetailsOrder.translate_legacy_keys(socket, session["baseline"]),
         note: resume_note(outcome)
       })
 

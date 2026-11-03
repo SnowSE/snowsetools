@@ -734,6 +734,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
       start_time: meeting.start_time,
       end_time: meeting.end_time,
       instructors: meeting.instructors,
+      instructor_keys: Map.get(meeting, :instructor_keys, []),
       meeting: meeting.meeting,
       meet_info: meeting.meet_info
     }

@@ -33,6 +33,27 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleCanvasEntries do
 
   def decode_card_size(_size), do: @default_card_size
 
+  @doc """
+  Rewrites owner keys through `aliases` (old key => current key), in solo
+  cards and overlay groups alike. Used for professor cards saved before they
+  were keyed by email; a key with no alias is left for `resolve_layout_entries`
+  to keep or report missing.
+  """
+  def translate_keys(entries, aliases) when aliases == %{}, do: entries
+
+  def translate_keys(entries, aliases) when is_list(entries) do
+    Enum.map(entries, fn
+      %{"kind" => "owner", "key" => key} = entry ->
+        Map.put(entry, "key", Map.get(aliases, key, key))
+
+      %{"kind" => "overlay", "members" => members} = entry when is_list(members) ->
+        Map.put(entry, "members", Enum.map(members, &Map.get(aliases, &1, &1)))
+
+      entry ->
+        entry
+    end)
+  end
+
   def resolve_layout_entries(entries, available_owner_keys) do
     Enum.reduce(entries, {[], []}, fn entry, {resolved, missing} ->
       case resolve_layout_entry(entry, available_owner_keys) do

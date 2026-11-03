@@ -7,23 +7,28 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApply do
   resulting courses belong on this owner's card.
   """
 
-  alias SnowSeTools.Scheduling.{ScheduleChange, ScheduleUtils}
+  alias SnowSeTools.Scheduling.{Instructor, ScheduleChange, ScheduleUtils}
 
   def apply_changes(%{type: type, name: name} = schedule_owner, changes) when is_list(changes) do
     courses = Map.get(schedule_owner, :courses, [])
+    owner_key = Map.get(schedule_owner, :owner_key)
+
+    # A professor card is matched by its key (see `Instructor`); rooms by name.
+    owner_name = if type == :professor and is_binary(owner_key), do: owner_key, else: name
 
     applied =
       courses_on_this_card(
         courses: courses,
         changes: changes,
         owner_type: type,
-        owner_name: name
+        owner_name: owner_name
       )
 
     ScheduleUtils.build_week_schedule(
       type: type,
       name: name,
-      courses: applied
+      courses: applied,
+      owner_key: owner_key
     )
     |> Map.merge(%{
       program_name: schedule_owner[:program_name],
@@ -82,7 +87,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeApply do
 
   defp course_matches_owner?(course: course, owner_type: :professor, owner_name: owner_name) do
     Enum.any?(course["instructors"] || [], fn instructor ->
-      instructor["name"] == owner_name
+      Instructor.owner_key(instructor) == owner_name or Instructor.name(instructor) == owner_name
     end)
   end
 

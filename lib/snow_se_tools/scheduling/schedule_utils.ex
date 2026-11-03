@@ -1,12 +1,18 @@
 defmodule SnowSeTools.Scheduling.ScheduleUtils do
   alias SnowSeTools.Data.Text
-  alias SnowSeTools.Scheduling.TimeOfDay
+  alias SnowSeTools.Scheduling.{Instructor, TimeOfDay}
   @days TimeOfDay.week_days()
   @default_start_minutes 8 * 60
   @default_end_minutes 17 * 60
 
-  def build_week_schedule(type: type, name: name, courses: courses) do
+  def build_week_schedule(type: type, name: name, courses: courses),
+    do: build_week_schedule(type: type, name: name, courses: courses, owner_key: nil)
+
+  # `owner_key` is what a professor's classes are matched on: the name is only
+  # a label now, and two people can share it.
+  def build_week_schedule(type: type, name: name, courses: courses, owner_key: owner_key) do
     courses = Enum.map(courses, &preparse_course/1)
+    match = if type == :professor and is_binary(owner_key), do: owner_key, else: name
 
     regular_courses =
       Enum.filter(courses, fn course ->
@@ -16,7 +22,7 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
         end)
       end)
 
-    meetings_by_day = meetings_by_day(type: type, name: name, courses: regular_courses)
+    meetings_by_day = meetings_by_day(type: type, name: match, courses: regular_courses)
     all_meetings = meetings_by_day |> Map.values() |> List.flatten()
     {start_minutes, end_minutes} = schedule_bounds(all_meetings)
 
@@ -24,6 +30,7 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
       type: type,
       type_label: type_label(type),
       name: name,
+      owner_key: owner_key,
       credit_count: credit_count(courses),
       start_minutes: start_minutes,
       end_minutes: end_minutes,
@@ -105,22 +112,24 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
     end)
   end
 
+  # One list per person, not per name: see `Instructor`.
   defp professor_course_lists(courses: courses) do
+    people = courses |> Enum.flat_map(&Map.get(&1, "instructors", [])) |> Instructor.labels()
+
     courses
     |> Enum.flat_map(fn course ->
       for instructor <- Map.get(course, "instructors", []),
-          name = instructor["name"],
-          !blank?(name),
-          do: {:professor, name, course}
+          identity = Instructor.identity(instructor),
+          !is_nil(identity),
+          uniq: true,
+          do: {identity, course}
     end)
-    |> Enum.group_by(fn {_type, name, _course} -> name end, fn {_type, _name, course} ->
-      course
-    end)
-    |> Enum.map(fn {name, owner_courses} ->
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Enum.map(fn {identity, owner_courses} ->
       %{
-        owner_key: owner_key(type: :professor, name: name),
+        owner_key: "professor:" <> identity,
         type: :professor,
-        name: name,
+        name: people[identity].label,
         courses: owner_courses
       }
     end)
@@ -268,8 +277,12 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
     end)
   end
 
+  # `name` is the owner key when the caller has one, else a bare name (the
+  # empty card drawn for a key with no courses).
   defp meeting_matches?(type: :professor, name: name, course: course, meeting: _meeting) do
-    Enum.any?(course["instructors"] || [], &(&1["name"] == name))
+    Enum.any?(course["instructors"] || [], fn instructor ->
+      Instructor.owner_key(instructor) == name or Instructor.name(instructor) == name
+    end)
   end
 
   defp meeting_matches?(type: :room, name: name, course: _course, meeting: meeting),
@@ -300,6 +313,8 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
       end_minutes: end_minutes,
       room: meeting["__room_name"],
       instructors: Enum.map(course["instructors"] || [], & &1["name"]),
+      # Who each of those is: names are shared, keys are not (see `Instructor`).
+      instructor_keys: Enum.map(course["instructors"] || [], &Instructor.owner_key/1),
       meeting: meeting_payload(meeting),
       meet_info: Enum.map(course["meet_info"] || [], &meeting_payload/1)
     }

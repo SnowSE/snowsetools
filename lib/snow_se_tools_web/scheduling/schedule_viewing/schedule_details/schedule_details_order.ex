@@ -113,6 +113,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
       when is_list(entries) do
     term_code = socket.assigns.schedule_viewer_state.selected_term_code
 
+    entries = translate_legacy_keys(socket, entries)
+
     {resolved, missing} =
       ScheduleCanvasEntries.resolve_layout_entries(entries, available_owner_keys)
 
@@ -150,6 +152,34 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
       })
 
     {socket, %{applied: length(owner_keys), missing: missing}}
+  end
+
+  # Professor cards used to be keyed `professor:<name>` and are now keyed by
+  # email. Layouts saved, and canvases remembered, before that still carry the
+  # old keys; map each to the one person in this term with that name. A name
+  # two people share maps to neither, and the card is reported missing rather
+  # than guessed.
+  @doc "Entries with pre-email professor keys rewritten for the selected term."
+  def translate_legacy_keys(socket, entries) when is_list(entries),
+    do: ScheduleCanvasEntries.translate_keys(entries, legacy_professor_aliases(socket))
+
+  def translate_legacy_keys(_socket, entries), do: entries
+
+  defp legacy_professor_aliases(socket) do
+    viewer_state = socket.assigns.schedule_viewer_state
+
+    professors =
+      viewer_state.schedule_owners_metadata_by_term
+      |> Map.get(viewer_state.selected_term_code, [])
+      |> Enum.filter(&(&1.type == :professor and is_binary(&1.person_name)))
+
+    professors
+    |> Enum.group_by(&("professor:" <> &1.person_name))
+    |> Enum.flat_map(fn
+      {legacy_key, [%{key: key}]} when legacy_key != key -> [{legacy_key, key}]
+      _shared_or_unchanged -> []
+    end)
+    |> Map.new()
   end
 
   @doc "One human-readable line per card, for the layout naming prompt."

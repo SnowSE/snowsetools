@@ -17,6 +17,7 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
                    "course_number" => Zoi.string(),
                    "course_name" => Zoi.optional(Zoi.string()),
                    "target_professor" => Zoi.optional(Zoi.string()),
+                   "target_professor_email" => Zoi.optional(Zoi.string()),
                    "meet_info" => Zoi.optional(Zoi.any()),
                    "operation" => Zoi.string(),
                    "created_at" => Zoi.string(),
@@ -54,6 +55,10 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
       """,
       """
       ALTER TABLE schedule_changes ADD COLUMN IF NOT EXISTS subject_code TEXT NOT NULL DEFAULT ''
+      """,
+      # Names are not unique; the email is what keys a professor's schedule.
+      """
+      ALTER TABLE schedule_changes ADD COLUMN IF NOT EXISTS target_professor_email TEXT
       """,
       """
       ALTER TABLE schedule_changes ADD COLUMN IF NOT EXISTS course_number TEXT NOT NULL DEFAULT ''
@@ -166,6 +171,7 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
       course_number,
       course_name,
       target_professor,
+      target_professor_email,
       meet_info,
       operation,
       to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
@@ -235,6 +241,7 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
       course_number,
       course_name,
       target_professor,
+      target_professor_email,
       meet_info,
       operation
     )
@@ -246,10 +253,11 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
       $(course_number),
       $(course_name),
       $(target_professor),
+      $(target_professor_email),
       $(meet_info),
       $(operation)
     )
-    RETURNING id, group_id, crn, term, subject_code, course_number, course_name, target_professor, meet_info, operation,
+    RETURNING id, group_id, crn, term, subject_code, course_number, course_name, target_professor, target_professor_email, meet_info, operation,
       to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
       to_char(inserted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS inserted_at
     """
@@ -262,6 +270,8 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
       "course_number" => attrs["course_number"] || attrs[:course_number],
       "course_name" => attrs["course_name"] || attrs[:course_name],
       "target_professor" => attrs["target_professor"] || attrs[:target_professor],
+      "target_professor_email" =>
+        attrs["target_professor_email"] || attrs[:target_professor_email],
       "meet_info" => attrs["meet_info"] || attrs[:meet_info],
       "operation" => attrs["operation"] || attrs[:operation] || "update"
     }
@@ -282,10 +292,15 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
       course_number = COALESCE($(course_number), course_number),
       course_name = COALESCE($(course_name), course_name),
       target_professor = COALESCE($(target_professor), target_professor),
+      -- The email belongs to whoever target_professor names, so they change
+      -- together: a new name without an email must not keep the old email.
+      target_professor_email =
+        CASE WHEN $(target_professor)::text IS NULL THEN target_professor_email
+             ELSE $(target_professor_email) END,
       meet_info = COALESCE($(meet_info), meet_info),
       operation = COALESCE($(operation), operation)
     WHERE id = $(id)
-    RETURNING id, group_id, crn, term, subject_code, course_number, course_name, target_professor, meet_info, operation,
+    RETURNING id, group_id, crn, term, subject_code, course_number, course_name, target_professor, target_professor_email, meet_info, operation,
       to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
       to_char(inserted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS inserted_at
     """
@@ -297,6 +312,8 @@ defmodule SnowSeTools.Scheduling.ScheduleChangeDb do
       "course_number" => attrs["course_number"] || attrs[:course_number],
       "course_name" => attrs["course_name"] || attrs[:course_name],
       "target_professor" => attrs["target_professor"] || attrs[:target_professor],
+      "target_professor_email" =>
+        attrs["target_professor_email"] || attrs[:target_professor_email],
       "meet_info" => attrs["meet_info"] || attrs[:meet_info],
       "operation" => attrs["operation"] || attrs[:operation]
     }
