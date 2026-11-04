@@ -64,6 +64,66 @@ defmodule SnowSeToolsWeb.Scheduling.CardConflictsTest do
     end
   end
 
+  describe "a program's status, for the Academic Programs button" do
+    @semester "academic_program_semester:prog-1:sem-1"
+
+    test "unknown until the term is checked, or for a program the check didn't see" do
+      unchecked = %ScheduleTermConflicts{program_options: %{@semester => [option(["9"])]}}
+      checked = %{unchecked | checked?: true}
+
+      assert ScheduleTermConflicts.program_status(unchecked, %CardConflicts{}, "prog-1") ==
+               :unknown
+
+      assert ScheduleTermConflicts.program_status(checked, %CardConflicts{}, "prog-2") == :unknown
+    end
+
+    test "conflicts when an option clashes, or its sections are in a conflict" do
+      clashing = checked_with([option(["9"]), option(["8"], true)])
+      clean = checked_with([option(["9"]), option(["1"])])
+      cards = CardConflicts.new(room_clash(), checked?: true)
+
+      assert ScheduleTermConflicts.program_status(clashing, %CardConflicts{}, "prog-1") ==
+               :conflicts
+
+      assert ScheduleTermConflicts.program_status(clean, cards, "prog-1") == :conflicts
+    end
+
+    test "clear when no option has either" do
+      clean = checked_with([option(["9"]), option(["1"])])
+
+      assert ScheduleTermConflicts.program_status(clean, %CardConflicts{}, "prog-1") == :clear
+    end
+
+    test "a semester with no options this term (not offered) is not a conflict" do
+      assert ScheduleTermConflicts.program_status(checked_with([]), %CardConflicts{}, "prog-1") ==
+               :clear
+    end
+
+    test "the active change group's conflicts count" do
+      [conflict] = room_clash()
+      group = %{"changes" => [%{"id" => "c1", "conflicts" => [conflict]}]}
+      cards = ScheduleChangeGroups.active_card_conflicts(%{active_change_group: group})
+
+      assert ScheduleTermConflicts.program_status(checked_with([option(["1"])]), cards, "prog-1") ==
+               :conflicts
+    end
+
+    test "the term check records each program semester's options" do
+      socket = term_checked(room_clash(), %{@semester => [option(["1"])]})
+      state = socket.assigns.schedule_term_conflicts_state
+
+      assert state.program_options == %{@semester => [option(["1"])]}
+
+      assert ScheduleTermConflicts.program_status(state, state.card_conflicts, "prog-1") ==
+               :conflicts
+    end
+
+    defp option(crns, clashes? \\ false), do: %{crns: crns, clashes?: clashes?}
+
+    defp checked_with(options),
+      do: %ScheduleTermConflicts{checked?: true, program_options: %{@semester => options}}
+  end
+
   test "the active change group's conflicts count too, and a clash in both counts once" do
     [conflict] = room_clash()
     group = %{"changes" => [%{"id" => "c1", "conflicts" => [conflict]}]}
@@ -139,7 +199,7 @@ defmodule SnowSeToolsWeb.Scheduling.CardConflictsTest do
     ).all_conflicts
   end
 
-  defp term_checked(conflicts) do
+  defp term_checked(conflicts, program_options \\ %{}) do
     by_owner =
       conflicts
       |> Enum.flat_map(fn conflict -> Enum.map(conflict.owner_keys, &{&1, conflict}) end)
@@ -148,7 +208,10 @@ defmodule SnowSeToolsWeb.Scheduling.CardConflictsTest do
     {:halt, socket} =
       ScheduleTermConflicts.hooked_info(
         {:term_baseline_conflicts_ready,
-         %{term_code: @term, result: {:ok, %{conflicts_by_owner_key: by_owner}}}},
+         %{
+           term_code: @term,
+           result: {:ok, %{conflicts_by_owner_key: by_owner, program_options: program_options}}
+         }},
         socket(%ScheduleTermConflicts{selected_term_code: @term})
       )
 

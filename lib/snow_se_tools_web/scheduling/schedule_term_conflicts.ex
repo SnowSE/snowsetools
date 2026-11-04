@@ -23,7 +23,11 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
     acknowledged: MapSet.new(),
     acknowledged_count: 0,
     checked?: false,
-    card_conflicts: %CardConflicts{}
+    card_conflicts: %CardConflicts{},
+    # Each program semester's options this term, as their CRNs and whether
+    # their classes clash: enough to say whether a program has conflicts
+    # without opening it. See `program_status/3`.
+    program_options: %{}
   ]
 
   @type t :: %__MODULE__{
@@ -37,7 +41,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
           acknowledged: MapSet.t(String.t()),
           acknowledged_count: non_neg_integer(),
           checked?: boolean(),
-          card_conflicts: CardConflicts.t()
+          card_conflicts: CardConflicts.t(),
+          program_options: %{optional(String.t()) => [%{crns: [String.t()], clashes?: boolean()}]}
         }
 
   @key :schedule_term_conflicts_state
@@ -73,7 +78,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
           acknowledged: MapSet.new(),
           acknowledged_count: 0,
           checked?: false,
-          card_conflicts: %CardConflicts{}
+          card_conflicts: %CardConflicts{},
+          program_options: %{}
       }
 
       socket
@@ -112,11 +118,12 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
 
     if state.selected_term_code == term_code do
       case result do
-        {:ok, %{conflicts_by_owner_key: conflicts_by_owner_key}} ->
+        {:ok, %{conflicts_by_owner_key: conflicts_by_owner_key} = found} ->
           {:halt,
            show_conflicts(socket, %{
              state
              | conflicts_by_owner_key: conflicts_by_owner_key,
+               program_options: Map.get(found, :program_options, %{}),
                loading?: false,
                error: nil,
                checked?: true
@@ -232,6 +239,39 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
   @doc "What each schedule card should show as its conflicts. See `CardConflicts`."
   def card_conflicts(%__MODULE__{} = state), do: state.card_conflicts
 
+  @doc """
+  Whether any semester of a program has a conflict this term, by the same
+  measure its cards use: an option whose classes clash, or whose sections are
+  in a conflict among `card_conflicts`. `:unknown` until the term has been
+  checked, or for a program the check didn't see (one made since).
+
+  A course not offered this term is not counted: viewed in its off term,
+  every program would otherwise always have conflicts.
+  """
+  def program_status(%__MODULE__{checked?: false}, _card_conflicts, _program_id), do: :unknown
+
+  def program_status(%__MODULE__{} = state, %CardConflicts{} = card_conflicts, program_id) do
+    prefix = "academic_program_semester:#{program_id}:"
+
+    semesters =
+      for {key, options} <- state.program_options,
+          String.starts_with?(key, prefix),
+          do: options
+
+    cond do
+      semesters == [] ->
+        :unknown
+
+      Enum.any?(semesters, fn options ->
+        Enum.any?(options, &(&1.clashes? or CardConflicts.any_for_crns?(card_conflicts, &1.crns)))
+      end) ->
+        :conflicts
+
+      true ->
+        :clear
+    end
+  end
+
   # -- Trigger async conflict detection in a Task and send result back via message --
 
   defp maybe_request_conflicts(socket, term_code: term_code) do
@@ -250,7 +290,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
                   active_changes: []
                 )
 
-              {:ok, conflicts}
+              {:ok, Map.put(conflicts, :program_options, program_options(owner_course_lists))}
             else
               false -> {:ok, %{conflicts_by_owner_key: %{}}}
               other -> other
@@ -267,6 +307,18 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
       assign(socket, @key, %{socket.assigns[@key] | loading?: true})
     else
       socket
+    end
+  end
+
+  defp program_options(owner_course_lists) do
+    for %{type: :academic_program_semester} = list <- owner_course_lists, into: %{} do
+      {list.owner_key,
+       Enum.map(list.schedule_variants || [], fn option ->
+         %{
+           crns: Enum.map(option.courses, & &1["crn"]),
+           clashes?: Map.get(option, :conflicts, []) != []
+         }
+       end)}
     end
   end
 

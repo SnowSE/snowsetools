@@ -7,6 +7,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramEditor
   alias SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel
+  alias SnowSeToolsWeb.Scheduling.CardConflicts
   alias SnowSeToolsWeb.Scheduling.CourseListForTerm
   alias SnowSeToolsWeb.Scheduling.ScheduleChangeGroups
   alias SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder
@@ -146,6 +147,16 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
                 state={@academic_programs_panel}
                 editor_state={@academic_program_editor}
                 picker_state={@academic_program_course_picker}
+                conflict_status={
+                  &ScheduleTermConflicts.program_status(
+                    @schedule_term_conflicts_state,
+                    CardConflicts.merge(
+                      ScheduleTermConflicts.card_conflicts(@schedule_term_conflicts_state),
+                      ScheduleChangeGroups.active_card_conflicts(@schedule_change_groups_state)
+                    ),
+                    &1
+                  )
+                }
                 editor?={@scheduling_editor?}
               />
           <% end %>

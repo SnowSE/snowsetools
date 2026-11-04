@@ -150,10 +150,15 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramIntegrationTest do
 
   describe "reviewing a program's schedule conflicts" do
     setup do
+      # The button only offers a review when there is something to review,
+      # so one semester clashes.
       program =
         create_program([
           [%{subject_code: "CE", course_number: "2010"}],
-          [%{subject_code: "CE", course_number: "3020"}],
+          [
+            %{subject_code: "CS", course_number: "2860"},
+            %{subject_code: "MATH", course_number: "2270"}
+          ],
           [%{subject_code: "MATH", course_number: "1010"}]
         ])
 
@@ -295,9 +300,69 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramIntegrationTest do
              end)
     end
 
+    test "a program with conflicts keeps its review button", %{conn: conn} do
+      program =
+        create_program([
+          [
+            %{subject_code: "CS", course_number: "2860"},
+            %{subject_code: "MATH", course_number: "2270"}
+          ]
+        ])
+
+      view = open_programs_tab(conn)
+      view |> element("#academic-program-#{program["id"]}") |> render_click()
+
+      assert eventually(fn ->
+               has_element?(
+                 view,
+                 ~s(#review-program-schedule-conflicts[data-conflict-status="conflicts"])
+               )
+             end)
+
+      assert has_element?(
+               view,
+               "#review-program-schedule-conflicts:not([disabled])",
+               "Review schedule conflicts"
+             )
+    end
+
+    test "a program without conflicts says so, green and disabled", %{conn: conn} do
+      program =
+        create_program([
+          [%{subject_code: "CS", course_number: "2860"}],
+          [%{subject_code: "MATH", course_number: "2270"}]
+        ])
+
+      view = open_programs_tab(conn)
+      view |> element("#academic-program-#{program["id"]}") |> render_click()
+
+      assert eventually(fn ->
+               has_element?(
+                 view,
+                 ~s(#review-program-schedule-conflicts[data-conflict-status="clear"])
+               )
+             end)
+
+      assert has_element?(
+               view,
+               "#review-program-schedule-conflicts[disabled]",
+               "No conflicts for this semester"
+             )
+
+      refute has_element?(view, "#review-program-schedule-conflicts[phx-click]")
+    end
+
     test "a semester whose course isn't offered this term says so", %{conn: conn} do
-      program = create_program([[%{subject_code: "CS", course_number: "9999"}]])
-      [key] = semester_keys(program)
+      program =
+        create_program([
+          [%{subject_code: "CS", course_number: "9999"}],
+          [
+            %{subject_code: "CS", course_number: "2860"},
+            %{subject_code: "MATH", course_number: "2270"}
+          ]
+        ])
+
+      [key, _clashing] = semester_keys(program)
       view = open_programs_tab(conn)
       review(view, program)
 
