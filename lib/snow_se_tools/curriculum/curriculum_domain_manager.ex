@@ -60,10 +60,16 @@ defmodule SnowSeTools.Curriculum.CurriculumDomainManager do
   @faculty_budget 40_000
   # The answer itself -- 25 skills with evidence -- fits in about 4,000 tokens,
   # but a thinking model spends this same budget on its reasoning first. At
-  # 4,000 a real course review ran out mid-thought and came back empty. This
-  # leaves room for both while still stopping a runaway well short of the
-  # server's context window.
-  @review_max_tokens 16_000
+  # 4,000 a real course review ran out mid-thought and came back empty, and at
+  # 16,000 one still ran out mid-answer. A prompt is ~16k tokens at most (the
+  # budgets below), so 24k leaves a review ~40k of the server's 66k window --
+  # which works because reviews run one at a time (see @ai_lane).
+  @review_max_tokens 24_000
+  # Reviews share the AI server's one context window with whatever else it is
+  # running. Three ~40k reviews at once overran it ("Context size has been
+  # exceeded") and tripped LM Studio's speculative-decoding fault, so a run's
+  # reviews go through the server one at a time.
+  @ai_lane :curriculum_review
   @section_budget 12_000
 
   def start_link(_opts) do
@@ -628,7 +634,8 @@ defmodule SnowSeTools.Curriculum.CurriculumDomainManager do
                 messages,
                 schema: SkillReviewPrompt.course_schema(),
                 user: run.started_by,
-                max_tokens: @review_max_tokens
+                max_tokens: @review_max_tokens,
+                lane: @ai_lane
               )
 
               {notes, skipped}
@@ -750,7 +757,8 @@ defmodule SnowSeTools.Curriculum.CurriculumDomainManager do
         {:merge_review, run.id},
         SkillReviewPrompt.merge_messages(skills: skills, proposed: Map.values(run.proposed)),
         schema: SkillReviewPrompt.merge_schema(),
-        user: run.started_by
+        user: run.started_by,
+        lane: @ai_lane
       )
 
       state = %{state | run: %{run | phase: "Looking for duplicate skills"}}

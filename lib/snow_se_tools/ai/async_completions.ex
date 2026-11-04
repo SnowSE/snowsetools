@@ -4,6 +4,17 @@ defmodule SnowSeTools.AI.AsyncCompletions do
 
   Completions beyond the concurrency limit are queued and dispatched as in-flight slots free up.
 
+  A completion may name a `:lane`; completions in the same lane run one at a
+  time, in the order they were asked for, while others keep using the free
+  slots. The AI server shares one context window among the requests it runs at
+  once, so a caller whose prompts are large (a curriculum review is ~32k tokens
+  with its answer, against a 66k window) uses a lane rather than crowding the
+  server out.
+
+  An engine error from the server -- a 5xx, or LM Studio's 400 wrapping one --
+  is retried once after a short pause before it is reported: they are often
+  a one-off, such as its speculative-decoding fault under batched requests.
+
   ## Usage
 
       AsyncCompletions.complete("my_topic", :my_event, messages)
@@ -28,10 +39,16 @@ defmodule SnowSeTools.AI.AsyncCompletions do
   # Requests beyond this are rejected (with an error broadcast) instead of
   # growing the queue without bound.
   @max_queued 500
+  @retry_pause :timer.seconds(5)
+  @retries 1
   @status_topic "async_completions:status"
 
   @type message :: %{role: String.t(), content: String.t()}
-  @type option :: {:schema, map()} | {:user, String.t() | nil} | {:max_tokens, pos_integer()}
+  @type option ::
+          {:schema, map()}
+          | {:user, String.t() | nil}
+          | {:max_tokens, pos_integer()}
+          | {:lane, atom()}
   @type result :: {:ok, String.t() | map()} | {:error, term()}
 
   def start_link(opts \\ []) do
@@ -55,6 +72,7 @@ defmodule SnowSeTools.AI.AsyncCompletions do
        in_flight: 0,
        max_concurrent: @max_concurrent,
        monitors: %{},
+       busy_lanes: MapSet.new(),
        recently_failed: []
      }}
   end
@@ -67,22 +85,12 @@ defmodule SnowSeTools.AI.AsyncCompletions do
   @impl true
   def handle_cast({:enqueue, topic, event, messages, opts}, state) do
     new_state =
-      if state.in_flight < state.max_concurrent do
-        ref = spawn_completion(topic, event, messages, opts)
-
-        %{
-          state
-          | in_flight: state.in_flight + 1,
-            monitors: Map.put(state.monitors, ref, {topic, event})
-        }
+      if :queue.len(state.queue) >= @max_queued do
+        Logger.warning("Completion queue full (#{@max_queued}); rejecting topic=#{topic}")
+        Phoenix.PubSub.broadcast(@pubsub, topic, {event, {:error, :queue_full}})
+        state
       else
-        if :queue.len(state.queue) >= @max_queued do
-          Logger.warning("Completion queue full (#{@max_queued}); rejecting topic=#{topic}")
-          Phoenix.PubSub.broadcast(@pubsub, topic, {event, {:error, :queue_full}})
-          state
-        else
-          %{state | queue: :queue.in({topic, event, messages, opts}, state.queue)}
-        end
+        dispatch(%{state | queue: :queue.in({topic, event, messages, opts}, state.queue)})
       end
 
     broadcast_status(new_state)
@@ -91,18 +99,17 @@ defmodule SnowSeTools.AI.AsyncCompletions do
 
   @impl true
   def handle_info({:DOWN, ref, :process, _pid, :normal}, state) do
-    {_info, monitors} = Map.pop(state.monitors, ref)
-    new_state = drain_queue(%{state | monitors: monitors})
+    new_state = state |> finished(ref) |> elem(1) |> dispatch()
     broadcast_status(new_state)
     {:noreply, new_state}
   end
 
   @impl true
   def handle_info({:DOWN, ref, :process, _pid, reason}, state) do
-    {info, monitors} = Map.pop(state.monitors, ref, nil)
+    {info, state} = finished(state, ref)
 
     if info do
-      {topic, event} = info
+      {topic, event, _lane} = info
       error = worker_error(reason)
 
       Logger.error(
@@ -119,13 +126,71 @@ defmodule SnowSeTools.AI.AsyncCompletions do
       }
 
       recently_failed = Enum.take([failure | state.recently_failed], 50)
-      new_state = drain_queue(%{state | monitors: monitors, recently_failed: recently_failed})
+      new_state = dispatch(%{state | recently_failed: recently_failed})
       broadcast_status(new_state)
       {:noreply, new_state}
     else
-      new_state = drain_queue(%{state | monitors: monitors})
+      new_state = dispatch(state)
       broadcast_status(new_state)
       {:noreply, new_state}
+    end
+  end
+
+  # Forget a finished completion and free its lane.
+  defp finished(state, ref) do
+    case Map.pop(state.monitors, ref) do
+      {nil, _monitors} ->
+        {nil, state}
+
+      {{_topic, _event, lane} = info, monitors} ->
+        {info,
+         %{
+           state
+           | monitors: monitors,
+             in_flight: map_size(monitors),
+             busy_lanes: MapSet.delete(state.busy_lanes, lane)
+         }}
+    end
+  end
+
+  # Start queued completions while there are free slots and something queued
+  # whose lane is free.
+  defp dispatch(state) do
+    with true <- state.in_flight < state.max_concurrent,
+         {:ok, {topic, event, messages, opts}, queue} <-
+           next_runnable(state.queue, state.busy_lanes) do
+      ref = spawn_completion(topic, event, messages, opts)
+      lane = opts[:lane]
+      monitors = Map.put(state.monitors, ref, {topic, event, lane})
+
+      dispatch(%{
+        state
+        | queue: queue,
+          monitors: monitors,
+          in_flight: map_size(monitors),
+          busy_lanes: if(lane, do: MapSet.put(state.busy_lanes, lane), else: state.busy_lanes)
+      })
+    else
+      _nothing_to_start -> state
+    end
+  end
+
+  @doc false
+  # The first queued completion that may start now: one with no lane, or whose
+  # lane has nothing running. Everything else keeps its place. Public only so
+  # the ordering can be tested.
+  def next_runnable(queue, busy_lanes) do
+    items = :queue.to_list(queue)
+
+    case Enum.find_index(items, fn {_topic, _event, _messages, opts} ->
+           opts[:lane] == nil or not MapSet.member?(busy_lanes, opts[:lane])
+         end) do
+      nil ->
+        :none
+
+      index ->
+        {item, rest} = List.pop_at(items, index)
+        {:ok, item, :queue.from_list(rest)}
     end
   end
 
@@ -134,7 +199,8 @@ defmodule SnowSeTools.AI.AsyncCompletions do
   end
 
   defp build_status(state) do
-    in_flight_items = Map.values(state.monitors)
+    in_flight_items =
+      Enum.map(Map.values(state.monitors), fn {topic, event, _lane} -> {topic, event} end)
 
     queued_items =
       state.queue
@@ -155,17 +221,6 @@ defmodule SnowSeTools.AI.AsyncCompletions do
   end
 
   defp worker_error(reason), do: {:worker_crashed, reason}
-
-  defp drain_queue(state) do
-    case :queue.out(state.queue) do
-      {{:value, {topic, event, messages, opts}}, queue} ->
-        ref = spawn_completion(topic, event, messages, opts)
-        %{state | queue: queue, monitors: Map.put(state.monitors, ref, {topic, event})}
-
-      {:empty, _} ->
-        %{state | in_flight: state.in_flight - 1}
-    end
-  end
 
   defp spawn_completion(topic, event, messages, opts) do
     {_pid, ref} =
@@ -203,9 +258,38 @@ defmodule SnowSeTools.AI.AsyncCompletions do
     if Application.get_env(:snow_se_tools, :mock_external_dependencies?, false) do
       mocked_completion(opts)
     else
-      request_completion(messages, opts)
+      request_with_retry(messages, opts, @retries)
     end
   end
+
+  defp request_with_retry(messages, opts, retries_left) do
+    case request_completion(messages, opts) do
+      {{:error, reason}, _thinking} = failed ->
+        if retries_left > 0 and retryable?(reason) do
+          Logger.warning("AI completion failed, retrying once: #{inspect(reason, limit: 5)}")
+          Process.sleep(@retry_pause)
+          request_with_retry(messages, opts, retries_left - 1)
+        else
+          failed
+        end
+
+      answered ->
+        answered
+    end
+  end
+
+  @doc false
+  # Whether the server's error is worth one more try: a 5xx, or LM Studio's
+  # 400 wrapping an engine fault ("Engine protocol predict stream returned an
+  # error"), which covers its speculative-decoding batch fault and a context
+  # window crowded by other requests. A plain 4xx (a bad request) is not, and
+  # neither is a model that ran out of tokens -- it would again.
+  def retryable?({status, _message}) when is_integer(status) and status >= 500, do: true
+
+  def retryable?({400, message}) when is_binary(message),
+    do: String.contains?(message, "Engine protocol predict stream returned an error")
+
+  def retryable?(_reason), do: false
 
   defp mocked_completion(opts) do
     if opts[:schema] do
