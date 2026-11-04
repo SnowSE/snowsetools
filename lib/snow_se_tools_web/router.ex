@@ -1,6 +1,10 @@
 defmodule SnowSeToolsWeb.Router do
   use SnowSeToolsWeb, :router
 
+  import Phoenix.LiveDashboard.Router
+
+  alias SnowSeTools.Data.{Access, User}
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -18,6 +22,10 @@ defmodule SnowSeToolsWeb.Router do
 
   pipeline :require_authenticated do
     plug :require_authenticated_user
+  end
+
+  pipeline :require_admin do
+    plug :require_admin_user
   end
 
   scope "/", SnowSeToolsWeb do
@@ -42,6 +50,20 @@ defmodule SnowSeToolsWeb.Router do
     live "/syllabi/report", Syllabus.SyllabusReportLive
   end
 
+  # LiveDashboard on the running system, with a page for GenServer state.
+  # Admins only: it shows every process and lets you kill one. The plug turns
+  # others away on the first request; on_mount does it again when the socket
+  # connects, since a LiveView socket does not go through this pipeline.
+  scope "/admin" do
+    pipe_through [:browser, :require_authenticated, :require_admin]
+
+    live_dashboard "/system",
+      metrics: SnowSeToolsWeb.Telemetry,
+      live_session_name: :admin_live_dashboard,
+      on_mount: [{SnowSeToolsWeb.UserAuth, :ensure_admin}],
+      additional_pages: [genserver_state: SnowSeToolsWeb.Admin.ProcessStatePage]
+  end
+
   scope "/auth", SnowSeToolsWeb do
     pipe_through :browser
 
@@ -53,8 +75,6 @@ defmodule SnowSeToolsWeb.Router do
 
   # Enable LiveDashboard in development
   if Application.compile_env(:snow_se_tools, :dev_routes) do
-    import Phoenix.LiveDashboard.Router
-
     scope "/dev" do
       pipe_through :browser
 
@@ -75,6 +95,20 @@ defmodule SnowSeToolsWeb.Router do
         to: "/auth/login?" <> URI.encode_query(%{"return_to" => return_to(conn)})
       )
       |> halt()
+    end
+  end
+
+  defp require_admin_user(conn, _opts) do
+    with id when not is_nil(id) <- get_session(conn, "current_user_id"),
+         {:ok, user} <- User.get_by_id(id),
+         true <- Access.admin?(user) do
+      conn
+    else
+      _not_admin ->
+        conn
+        |> Phoenix.Controller.put_flash(:error, "You do not have access to that area.")
+        |> Phoenix.Controller.redirect(to: "/home")
+        |> halt()
     end
   end
 

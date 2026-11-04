@@ -197,6 +197,14 @@ defmodule SnowSeToolsWeb.Admin.AdminLive do
           <div class="space-y-2">
             <h1 class="text-3xl font-semibold text-slate-100">User and group management</h1>
           </div>
+          <%!-- A full page load: the dashboard is its own live session. --%>
+          <.link
+            id="admin-system-dashboard-link"
+            href={~p"/admin/system"}
+            class="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800"
+          >
+            <.icon name="hero-cpu-chip" class="size-4" /> System dashboard
+          </.link>
         </div>
 
         <div class="grid gap-6 xl:grid-cols-[1fr_1.2fr]">

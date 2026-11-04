@@ -21,7 +21,8 @@ defmodule SnowSeTools.MixProject do
   def application do
     [
       mod: {SnowSeTools.Application, []},
-      extra_applications: [:logger, :runtime_tools, :inets, :ssl, :xmerl]
+      # os_mon feeds LiveDashboard's OS Data page (CPU, memory, disk).
+      extra_applications: [:logger, :runtime_tools, :inets, :ssl, :xmerl, :os_mon]
     ]
   end
 
