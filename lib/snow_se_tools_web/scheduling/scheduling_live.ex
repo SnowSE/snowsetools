@@ -14,6 +14,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   alias SnowSeToolsWeb.Scheduling.ScheduleLayouts
   alias SnowSeToolsWeb.Scheduling.ScheduleTermConflicts
   alias SnowSeToolsWeb.Scheduling.ScheduleViewer
+  alias SnowSeToolsWeb.Scheduling.SchedulingUpdates
   alias SnowSeToolsWeb.Scheduling.WeekSchedule
 
   on_mount {SnowSeToolsWeb.UserAuth, {:ensure_access, :scheduling}}
@@ -48,7 +49,11 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
      |> ScheduleTermConflicts.assign_component()
      |> WeekSchedule.assign_component()
      |> assign(:mode, :viewer)
-     |> assign(:modes, viewer: "Schedule Viewer", programs: "Academic Programs")}
+     |> assign(:modes,
+       viewer: "Schedule Viewer",
+       programs: "Academic Programs",
+       updates: "Updates"
+     )}
   end
 
   def handle_params(params, _uri, socket) do
@@ -159,6 +164,8 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
                 }
                 editor?={@scheduling_editor?}
               />
+            <% :updates -> %>
+              <SchedulingUpdates.render />
           <% end %>
         </div>
       </div>
@@ -167,6 +174,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   end
 
   defp mode_from_params(%{"mode" => "programs"}), do: :programs
+  defp mode_from_params(%{"mode" => "updates"}), do: :updates
   defp mode_from_params(_params), do: :viewer
 
   defp sync_schedule_viewer_term(socket, term_code: term_code) do

@@ -424,6 +424,20 @@ never generated (an arbitrary variant with a typo silently produces nothing),
 and a flex child that collapses or overflows its parent. Both have shipped here
 before.
 
+## Announcing scheduling features
+
+The scheduling page's Updates tab (`/scheduling?mode=updates`) is where new
+scheduling features are explained to the people who use them. Add a release
+to the top of `SchedulingUpdates.releases/0`
+(`lib/snow_se_tools_web/scheduling/scheduling_updates.ex`); each feature has an
+anchor id to link to.
+
+Its screenshots come from made-up data, never real names or schedules: the
+repository is public. Seed the state in
+`test/snow_se_tools_web/scheduling_updates_snapshot_test.exs`, add a shot to
+`scheduling_update_screenshots.sh`, run that script, and look at every image
+before committing it.
+
 ## Getting feedback
 
 you can read current logs with `docker logs snow-se-tools-dev-app-1` be sure to use bash to filter for only the logs you care about.

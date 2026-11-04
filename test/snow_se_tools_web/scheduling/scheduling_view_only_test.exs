@@ -41,6 +41,8 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingViewOnlyTest do
       assert SchedulingAccess.classify("schedule-details-order:close_schedule") == :view
       assert SchedulingAccess.classify("schedule-layouts:save") == :view
       assert SchedulingAccess.classify("academic-programs:select") == :view
+      # Reviewing a program only opens its semesters on the viewer.
+      assert SchedulingAccess.classify("academic-programs:review_conflicts") == :view
       assert SchedulingAccess.classify("week-schedule-grid:close_edit_course") == :view
       assert SchedulingAccess.classify("switch_mode") == :view
 
