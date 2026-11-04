@@ -3,6 +3,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
   require Logger
 
   alias Phoenix.LiveView
+  alias SnowSeToolsWeb.Scheduling.CardConflicts
   alias SnowSeToolsWeb.Scheduling.DataAsOf
   alias SnowSeToolsWeb.Scheduling.OverlayGroup
   alias SnowSeToolsWeb.Scheduling.ScheduleLayouts
@@ -209,6 +210,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
   attr :active_change_group, :map, default: nil
   attr :conflicted_course_crns, :any, default: MapSet.new()
   attr :active_conflicted_course_crns, :any, default: MapSet.new()
+  attr :card_conflicts, CardConflicts, default: %CardConflicts{}
   attr :schedule_owners_metadata, :list, default: []
   attr :schedule_layouts, :any, required: true
   attr :term_code, :string, default: nil
@@ -268,6 +270,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
                 active_change_group={@active_change_group}
                 conflicted_course_crns={@conflicted_course_crns}
                 active_conflicted_course_crns={@active_conflicted_course_crns}
+                card_conflicts={@card_conflicts}
                 overlay_targets={overlay_targets(@state, @week_schedules, key)}
                 overlay_menu_open?={@state.open_overlay_menu_key == key}
                 size={card_size(@state, key)}
@@ -281,6 +284,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
                 active_change_group={@active_change_group}
                 conflicted_course_crns={@conflicted_course_crns}
                 active_conflicted_course_crns={@active_conflicted_course_crns}
+                card_conflicts={@card_conflicts}
                 schedule_owners_metadata={@schedule_owners_metadata}
                 edit_course_modal={@week_schedule_edit_course_modal}
                 overlay_targets={overlay_targets(@state, @week_schedules, key)}

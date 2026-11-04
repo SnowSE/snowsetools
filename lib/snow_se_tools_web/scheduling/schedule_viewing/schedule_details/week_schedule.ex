@@ -13,7 +13,14 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
 
   alias SnowSeTools.Scheduling.TimeOfDay
 
-  alias SnowSeToolsWeb.Scheduling.{CourseChangeIntent, OverlayControls, ScheduleChangeApply}
+  alias SnowSeToolsWeb.Scheduling.{
+    CardConflicts,
+    CourseChangeIntent,
+    OverlayControls,
+    ScheduleChangeApply
+  }
+
+  alias SnowSeToolsWeb.Components.HoverTooltip
   import SnowSeToolsWeb.Scheduling.WeekScheduleGrid
 
   defstruct [
@@ -89,6 +96,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
   attr :active_change_group, :map, default: nil
   attr :conflicted_course_crns, :any, default: MapSet.new()
   attr :active_conflicted_course_crns, :any, default: MapSet.new()
+  attr :card_conflicts, CardConflicts, default: %CardConflicts{}
   attr :schedule_owners_metadata, :list, default: []
   attr :edit_course_modal, :map, default: nil
   attr :overlay_targets, :list, default: []
@@ -97,7 +105,10 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
   attr :editor?, :boolean, required: true
 
   def render(assigns) do
-    assigns = assign(assigns, :width_attrs, OverlayControls.card_width_attrs(assigns.size))
+    assigns =
+      assigns
+      |> assign(:width_attrs, OverlayControls.card_width_attrs(assigns.size))
+      |> assign(:view, view(assigns.state, assigns.card_conflicts, assigns.active_change_group))
 
     if is_nil(assigns.state.week_schedule) and !assigns.state.loading? do
       ScheduleOwnerDomainManager.request_schedule_owner_course_list(
@@ -131,21 +142,21 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
           </div>
         <% else %>
           <.schedule_header
-            schedule_owner={@state.week_schedule}
+            schedule_owner={@view.base}
+            view={@view}
             owner_key={@state.owner_key}
             position={@position}
             total_count={@total_count}
-            selected_variant_index={@state.selected_variant_index || 0}
             overlay_targets={@overlay_targets}
             overlay_menu_open?={@overlay_menu_open?}
             size={@size}
           />
           <.schedule_grid
-            schedule_owner={effective_schedule(@state.week_schedule, @active_change_group)}
+            schedule_owner={@view.schedule}
             owner_key={@state.owner_key}
             selected_term_code={@state.selected_term_code}
             active_change_group={@active_change_group}
-            conflicted_course_crns={@conflicted_course_crns}
+            conflicted_course_crns={MapSet.union(@conflicted_course_crns, @view.overlap_crns)}
             active_conflicted_course_crns={@active_conflicted_course_crns}
             minute_scale={@size.scale}
             single_owner_grid={true}
@@ -322,23 +333,26 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
   attr :owner_key, :string, required: true
   attr :position, :integer, required: true
   attr :total_count, :integer, required: true
-  attr :selected_variant_index, :integer, default: 0
+  attr :view, :map, required: true
   attr :overlay_targets, :list, default: []
   attr :overlay_menu_open?, :boolean, default: false
   attr :size, :map, default: %{width: nil, scale: 1.0}
 
   defp schedule_header(assigns) do
+    assigns = assign(assigns, :selected_variant_index, assigns.view.position)
+
     ~H"""
     <div class="mb-2 grid grid-cols-[1fr_auto] items-start gap-3">
-      <div>
+      <div class="min-w-0">
         <%= if @schedule_owner.type == :academic_program_semester do %>
-          <h2 class="truncate text-base font-semibold leading-tight text-slate-100">
-            {@schedule_owner.program_name}
-            <span class="ml-1 text-xs font-medium text-slate-500">{@schedule_owner.credit_count} cr.</span>
+          <h2 class="flex min-w-0 items-center gap-1.5 text-base font-semibold leading-tight text-slate-100">
+            <span class="truncate">{@schedule_owner.program_name}</span>
+            <span class="shrink-0 text-xs font-medium text-slate-500">{@schedule_owner.credit_count} cr.</span>
+            <.conflict_badge owner_key={@owner_key} view={@view} />
           </h2>
           <p class="text-xs text-slate-500">{@schedule_owner.semester_name}</p>
           <div
-            :if={variant_count(@schedule_owner) > 1}
+            :if={@view.count > 1}
             class="mt-2 flex items-center gap-1.5 text-xs text-slate-400"
           >
             <button
@@ -354,7 +368,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
               <.icon name="hero-chevron-left" class="size-3.5" />
             </button>
             <span id={"schedule-variant-label-#{@owner_key}"} class="tabular-nums">
-              Option {@selected_variant_index + 1} of {variant_count(@schedule_owner)}
+              Option {@selected_variant_index + 1} of {@view.count}
             </span>
             <button
               type="button"
@@ -362,17 +376,25 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
               phx-click="schedule-owner-week-schedule:change_variant"
               phx-value-owner-key={@owner_key}
               phx-value-direction="next"
-              disabled={@selected_variant_index >= variant_count(@schedule_owner) - 1}
+              disabled={@selected_variant_index >= @view.count - 1}
               class="rounded border border-slate-800 bg-slate-900/70 p-1 text-slate-300 transition-colors hover:border-slate-700 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-35"
               aria-label="Next schedule option"
             >
               <.icon name="hero-chevron-right" class="size-3.5" />
             </button>
+            <span
+              :if={@view.conflicted_options > 0}
+              id={"schedule-variant-conflicted-#{@owner_key}"}
+              class="tabular-nums text-amber-300/90"
+            >
+              · {@view.conflicted_options} with conflicts
+            </span>
           </div>
         <% else %>
-          <h2 class="truncate text-base font-semibold leading-tight text-slate-100">
-            {@schedule_owner.name}
-            <span class="ml-1 text-xs font-medium text-slate-500">{@schedule_owner.credit_count} cr.</span>
+          <h2 class="flex min-w-0 items-center gap-1.5 text-base font-semibold leading-tight text-slate-100">
+            <span class="truncate">{@schedule_owner.name}</span>
+            <span class="shrink-0 text-xs font-medium text-slate-500">{@schedule_owner.credit_count} cr.</span>
+            <.conflict_badge owner_key={@owner_key} view={@view} />
           </h2>
           <p class="text-xs text-slate-500">{@schedule_owner.type_label}</p>
         <% end %>
@@ -422,6 +444,179 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
     </div>
     """
   end
+
+  attr :owner_key, :string, required: true
+  attr :view, :map, required: true
+
+  # A green check when the card has no conflicts, a hazard sign with what is
+  # clashing when it does, and nothing until the term has been checked.
+  defp conflict_badge(assigns) do
+    ~H"""
+    <HoverTooltip.hover_tooltip
+      :if={@view.status != :unknown}
+      id={"schedule-conflict-badge-#{@owner_key}"}
+      class="shrink-0"
+      width_class="max-w-96"
+    >
+      <:label>
+        <span
+          id={"schedule-conflict-status-#{@owner_key}"}
+          data-conflict-status={@view.status}
+          tabindex="0"
+          aria-label={if @view.status == :clear, do: "No conflicts", else: "Has conflicts"}
+          class="inline-flex rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+        >
+          <.icon
+            :if={@view.status == :clear}
+            name="hero-check-circle-solid"
+            class="size-4 text-emerald-400"
+          />
+          <.icon
+            :if={@view.status == :conflicts}
+            name="hero-exclamation-triangle-solid"
+            class="size-4 text-amber-400"
+          />
+        </span>
+      </:label>
+      <:body>
+        <div class="space-y-2 text-xs font-normal">
+          <%= if @view.status == :clear do %>
+            <p class="font-semibold text-emerald-300">No conflicts</p>
+          <% else %>
+            <p :if={@view.gap} class="text-amber-200">{gap_text(@view.gap)}</p>
+            <p :if={@view.conflicts != []} class="font-semibold text-amber-300">
+              {conflict_count_text(@view)}
+            </p>
+            <div
+              :for={summary <- Enum.map(Enum.take(@view.conflicts, 6), &CardConflicts.summary/1)}
+              class="border-l-2 border-amber-500/50 pl-2"
+            >
+              <p class="font-medium text-slate-100">{summary.heading}</p>
+              <p class="text-slate-300">{summary.courses}</p>
+              <p class="text-slate-400">{summary.when}</p>
+              <p :if={summary.online} class="text-sky-300/90">{summary.online}</p>
+            </div>
+            <p :if={length(@view.conflicts) > 6} class="text-slate-400">
+              and {length(@view.conflicts) - 6} more in the Schedule Conflicts panel.
+            </p>
+          <% end %>
+          <p :if={@view.count > 1} class="text-slate-400">{options_text(@view)}</p>
+        </div>
+      </:body>
+    </HoverTooltip.hover_tooltip>
+    """
+  end
+
+  defp gap_text({:not_offered, [course]}),
+    do: "Can't be scheduled: #{course} isn't offered this term."
+
+  defp gap_text({:not_offered, courses}),
+    do: "Can't be scheduled: #{Enum.join(courses, ", ")} aren't offered this term."
+
+  defp conflict_count_text(%{conflicts: conflicts, count: count}) do
+    noun = if length(conflicts) == 1, do: "conflict", else: "conflicts"
+    where = if count > 1, do: " in this option", else: ""
+    "#{length(conflicts)} #{noun}#{where}"
+  end
+
+  defp options_text(%{conflicted_options: 0}), do: "None of the options have conflicts."
+
+  defp options_text(%{conflicted_options: conflicted, count: count}),
+    do: "#{conflicted} of #{count} options have conflicts; they come first."
+
+  @doc """
+  What a loaded card shows, given the conflicts on screen.
+
+  A program semester's options are ordered with every option that has a
+  conflict first, so reviewing a program starts on its problems rather than
+  wherever they fall in hundreds of options. The selected index counts in that
+  order. `schedule` has the active change group applied; `base` does not.
+  """
+  def view(%__MODULE__{week_schedule: nil}, _card_conflicts, _active_change_group) do
+    %{
+      base: nil,
+      schedule: nil,
+      position: 0,
+      count: 0,
+      conflicted_options: 0,
+      conflicts: [],
+      overlap_crns: MapSet.new(),
+      gap: nil,
+      status: :unknown
+    }
+  end
+
+  def view(
+        %__MODULE__{
+          course_list: %ScheduleOwnerSchedule{type: :academic_program_semester} = course_list
+        } = state,
+        %CardConflicts{} = card_conflicts,
+        active_change_group
+      ) do
+    {conflicted, clean} =
+      Enum.split_with(course_list.schedule_variants || [], fn variant ->
+        Map.get(variant, :conflicts, []) != [] or
+          CardConflicts.any_for_crns?(card_conflicts, crns(variant.courses))
+      end)
+
+    ordered = conflicted ++ clean
+    position = clamp(state.selected_variant_index || 0, length(ordered))
+    selected = Enum.at(ordered, position)
+
+    base =
+      case selected do
+        %{courses: courses} -> card_week_schedule(course_list, courses)
+        nil -> state.week_schedule
+      end
+
+    # Classes in this option that meet at once, then the term's conflicts
+    # touching any of its sections.
+    overlaps = Map.get(selected || %{}, :conflicts, [])
+    conflicts = overlaps ++ CardConflicts.for_crns(card_conflicts, crns(base.courses))
+
+    %{
+      base: base,
+      schedule: effective_schedule(base, active_change_group),
+      position: position,
+      count: length(ordered),
+      conflicted_options: length(conflicted),
+      conflicts: conflicts,
+      overlap_crns: overlaps |> Enum.flat_map(& &1.course_crns) |> MapSet.new(),
+      gap: course_list.gap,
+      status: status(conflicts, course_list.gap, card_conflicts)
+    }
+  end
+
+  def view(%__MODULE__{} = state, %CardConflicts{} = card_conflicts, active_change_group) do
+    conflicts = CardConflicts.for_owner(card_conflicts, state.owner_key)
+
+    %{
+      base: state.week_schedule,
+      schedule: effective_schedule(state.week_schedule, active_change_group),
+      position: 0,
+      count: 0,
+      conflicted_options: 0,
+      conflicts: conflicts,
+      overlap_crns: MapSet.new(),
+      gap: nil,
+      status: status(conflicts, nil, card_conflicts)
+    }
+  end
+
+  defp status(conflicts, gap, card_conflicts) do
+    cond do
+      conflicts != [] or gap != nil -> :conflicts
+      card_conflicts.checked? -> :clear
+      true -> :unknown
+    end
+  end
+
+  defp crns(courses), do: Enum.map(courses || [], & &1["crn"])
+
+  defp clamp(_index, count) when count <= 1, do: 0
+  defp clamp(index, _count) when index < 0, do: 0
+  defp clamp(index, count) when index >= count, do: count - 1
+  defp clamp(index, _count), do: index
 
   def hooked_info(
         {:schedule_owner_course_list,
@@ -697,18 +892,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
     courses =
       courses_for_selected_variant(course_list: course_list, index: selected_variant_index)
 
-    week_schedule =
-      ScheduleUtils.build_week_schedule(
-        type: course_list.type,
-        name: course_list.name,
-        courses: courses,
-        owner_key: course_list.owner_key
-      )
-      |> Map.merge(%{
-        program_name: course_list.program_name,
-        semester_name: course_list.semester_name,
-        schedule_variants: course_list.schedule_variants || []
-      })
+    week_schedule = card_week_schedule(course_list, courses)
 
     %{
       state
@@ -717,6 +901,21 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
         selected_variant_index: selected_variant_index,
         loading?: false
     }
+  end
+
+  # The program fields are nil for a professor or room card.
+  defp card_week_schedule(course_list, courses) do
+    ScheduleUtils.build_week_schedule(
+      type: course_list.type,
+      name: course_list.name,
+      courses: courses,
+      owner_key: course_list.owner_key
+    )
+    |> Map.merge(%{
+      program_name: course_list.program_name,
+      semester_name: course_list.semester_name,
+      schedule_variants: course_list.schedule_variants || []
+    })
   end
 
   defp change_variant(socket, owner_key: owner_key, direction: direction) do
@@ -786,9 +985,6 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
       true -> index
     end
   end
-
-  defp variant_count(%{schedule_variants: variants}) when is_list(variants), do: length(variants)
-  defp variant_count(_schedule_owner), do: 0
 
   defp empty_week_schedule(owner_key: owner_key) when is_binary(owner_key) do
     {type, name} = empty_week_schedule_type(owner_key)

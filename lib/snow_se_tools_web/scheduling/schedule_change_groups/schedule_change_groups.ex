@@ -13,6 +13,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroups do
 
   alias Phoenix.LiveView
   alias SnowSeTools.Scheduling.ScheduleChangeDomainManager
+  alias SnowSeToolsWeb.Scheduling.CardConflicts
   alias SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails
   alias SnowSeToolsWeb.Scheduling.ScheduleChangeGroupSelector
   alias SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder
@@ -147,6 +148,18 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroups do
   def active_conflicted_course_crns(state) do
     state.active_conflicted_course_crns
   end
+
+  @doc "The active group's conflicts, for the schedule cards. See `CardConflicts`."
+  def active_card_conflicts(%{active_change_group: nil}), do: %CardConflicts{}
+
+  def active_card_conflicts(%{active_change_group: group}) do
+    group
+    |> Map.get("changes", [])
+    |> Enum.flat_map(&Map.get(&1, "conflicts", []))
+    |> CardConflicts.new(checked?: false)
+  end
+
+  def active_card_conflicts(_state), do: %CardConflicts{}
 
   defp conflicted_course_crns(nil), do: MapSet.new()
 

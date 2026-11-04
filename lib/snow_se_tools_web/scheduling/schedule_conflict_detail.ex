@@ -106,7 +106,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleConflictDetail do
     |> Enum.uniq_by(& &1.key)
   end
 
-  defp course_labels(conflict) do
+  @doc "The classes in a conflict, as people read them."
+  def course_labels(conflict) do
     entries = conflict_entries(conflict)
 
     labels =
@@ -158,7 +159,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleConflictDetail do
     end
   end
 
-  defp overlap_when(conflict) do
+  @doc "When the classes in a conflict overlap, e.g. \"Mon/Wed 09:00-09:50\"."
+  def overlap_when(conflict) do
     entries = conflict_entries(conflict)
 
     [days_summary(entries), overlap_time_range(entries)]

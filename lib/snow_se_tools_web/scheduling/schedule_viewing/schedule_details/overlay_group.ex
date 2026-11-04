@@ -7,7 +7,7 @@ defmodule SnowSeToolsWeb.Scheduling.OverlayGroup do
 
   alias SnowSeTools.Scheduling.TimeOfDay
 
-  alias SnowSeToolsWeb.Scheduling.{OverlayControls, ScheduleOverlays, WeekSchedule}
+  alias SnowSeToolsWeb.Scheduling.{CardConflicts, OverlayControls, ScheduleOverlays, WeekSchedule}
   import SnowSeToolsWeb.Scheduling.WeekScheduleGrid
 
   @days TimeOfDay.week_days()
@@ -20,6 +20,7 @@ defmodule SnowSeToolsWeb.Scheduling.OverlayGroup do
   attr :active_change_group, :map, default: nil
   attr :conflicted_course_crns, :any, default: MapSet.new()
   attr :active_conflicted_course_crns, :any, default: MapSet.new()
+  attr :card_conflicts, CardConflicts, default: %CardConflicts{}
   attr :overlay_targets, :list, default: []
   attr :overlay_menu_open?, :boolean, default: false
   attr :size, :map, default: %{width: nil, scale: 1.0}
@@ -30,7 +31,8 @@ defmodule SnowSeToolsWeb.Scheduling.OverlayGroup do
       members(
         member_keys: assigns.member_keys,
         week_schedules: assigns.week_schedules,
-        active_change_group: assigns.active_change_group
+        active_change_group: assigns.active_change_group,
+        card_conflicts: assigns.card_conflicts
       )
 
     type = group_type(members)
@@ -217,7 +219,8 @@ defmodule SnowSeToolsWeb.Scheduling.OverlayGroup do
   defp members(
          member_keys: member_keys,
          week_schedules: week_schedules,
-         active_change_group: group
+         active_change_group: group,
+         card_conflicts: card_conflicts
        ) do
     member_keys
     |> Enum.with_index()
@@ -226,8 +229,9 @@ defmodule SnowSeToolsWeb.Scheduling.OverlayGroup do
 
       schedule =
         case state do
-          %WeekSchedule{week_schedule: %{} = schedule} ->
-            WeekSchedule.effective_schedule(schedule, group)
+          # The same option the member's own card shows: see WeekSchedule.view/3.
+          %WeekSchedule{week_schedule: %{}} ->
+            WeekSchedule.view(state, card_conflicts, group).schedule
 
           _ ->
             nil

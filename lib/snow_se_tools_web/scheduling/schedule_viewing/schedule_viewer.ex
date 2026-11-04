@@ -11,6 +11,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
   }
 
   alias SnowSeToolsWeb.Scheduling.{
+    CardConflicts,
     CourseListForTerm,
     ScheduleChangeGroups,
     ScheduleDetailsOrder,
@@ -188,6 +189,12 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
         }
         active_conflicted_course_crns={
           ScheduleChangeGroups.active_conflicted_course_crns(@schedule_change_groups_state)
+        }
+        card_conflicts={
+          CardConflicts.merge(
+            ScheduleTermConflicts.card_conflicts(@schedule_term_conflicts_state),
+            ScheduleChangeGroups.active_card_conflicts(@schedule_change_groups_state)
+          )
         }
         schedule_owners_metadata={selected_term_schedule_owners(@state)}
         term_code={@state.selected_term_code}

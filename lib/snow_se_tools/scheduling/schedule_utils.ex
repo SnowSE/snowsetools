@@ -1,6 +1,6 @@
 defmodule SnowSeTools.Scheduling.ScheduleUtils do
   alias SnowSeTools.Data.Text
-  alias SnowSeTools.Scheduling.{Instructor, TimeOfDay}
+  alias SnowSeTools.Scheduling.{Instructor, ProgramSemesterOptions, TimeOfDay}
   @days TimeOfDay.week_days()
   @default_start_minutes 8 * 60
   @default_end_minutes 17 * 60
@@ -97,19 +97,30 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
         courses: courses,
         required_courses: required_courses
       ) do
-    courses = Enum.map(courses, &preparse_course/1)
+    ProgramSemesterOptions.build(
+      courses: Enum.map(courses, &preparse_course/1),
+      required_courses: required_courses
+    )
+  end
 
-    required_courses
-    |> candidate_groups_for_requirements(courses: courses)
-    |> build_non_conflicting_variants()
-    |> Enum.with_index(1)
-    |> Enum.map(fn {variant_courses, index} ->
-      %{
-        index: index - 1,
-        label: "Option #{index}",
-        courses: variant_courses
-      }
-    end)
+  @doc """
+  Why a program semester has no options at all: `{:not_offered, ["CS 1400",
+  ...]}` when a required course has no section this term. Nil otherwise --
+  a semester whose classes clash still has options, carrying the clash.
+  """
+  def academic_program_semester_gap(courses: courses, required_courses: required_courses) do
+    courses = Enum.map(courses, &preparse_course/1)
+    groups = candidate_groups_for_requirements(required_courses, courses: courses)
+
+    missing =
+      required_courses
+      |> Enum.zip(groups)
+      |> Enum.filter(fn {_required, candidates} -> candidates == [] end)
+      |> Enum.map(fn {required, _candidates} ->
+        "#{normalize_course_code(required["subject_code"])} #{normalize_course_code(required["course_number"])}"
+      end)
+
+    if missing != [], do: {:not_offered, missing}
   end
 
   # One list per person, not per name: see `Instructor`.
@@ -182,7 +193,15 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
           program_name: program["name"],
           semester_name: semester_name,
           courses: courses_for_first_variant(variants),
-          schedule_variants: variants
+          schedule_variants: variants,
+          gap:
+            if(variants == [],
+              do:
+                academic_program_semester_gap(
+                  courses: courses,
+                  required_courses: required_courses
+                )
+            )
         }
       end)
     end)
@@ -201,60 +220,6 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
       normalize_course_code(required_course["subject_code"]) and
       normalize_course_code(course["course_number"]) ==
         normalize_course_code(required_course["course_number"])
-  end
-
-  defp build_non_conflicting_variants([]), do: []
-
-  defp build_non_conflicting_variants(candidate_groups) do
-    if Enum.any?(candidate_groups, &(&1 == [])) do
-      []
-    else
-      candidate_groups
-      |> Enum.reduce([[]], fn candidates, variants ->
-        Enum.flat_map(variants, fn variant ->
-          candidates
-          |> Enum.reject(&course_already_selected?(course: &1, selected_courses: variant))
-          |> Enum.reject(&course_conflicts_with_selected?(course: &1, selected_courses: variant))
-          |> Enum.map(&(variant ++ [&1]))
-        end)
-      end)
-    end
-  end
-
-  defp course_already_selected?(course: course, selected_courses: selected_courses) do
-    Enum.any?(selected_courses, &(&1["crn"] == course["crn"]))
-  end
-
-  defp course_conflicts_with_selected?(course: course, selected_courses: selected_courses) do
-    Enum.any?(selected_courses, &courses_overlap?(left: course, right: &1))
-  end
-
-  defp courses_overlap?(left: left, right: right) do
-    Enum.any?(left["meet_info"] || [], fn left_meeting ->
-      Enum.any?(right["meet_info"] || [], fn right_meeting ->
-        meetings_overlap?(left: left_meeting, right: right_meeting)
-      end)
-    end)
-  end
-
-  defp meetings_overlap?(left: left, right: right) do
-    days_overlap?(left["days"] || [], right["days"] || []) and
-      has_real_time?(left) and
-      has_real_time?(right) and
-      left[:start_minutes] < right[:end_minutes] and
-      right[:start_minutes] < left[:end_minutes]
-  end
-
-  defp days_overlap?(left_days, right_days) do
-    left_days
-    |> MapSet.new()
-    |> MapSet.intersection(MapSet.new(right_days))
-    |> MapSet.size()
-    |> Kernel.>(0)
-  end
-
-  defp has_real_time?(meeting) do
-    is_binary(meeting["start_time"]) and is_binary(meeting["end_time"])
   end
 
   defp courses_for_first_variant([%{courses: courses} | _variants]), do: courses

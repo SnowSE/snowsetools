@@ -10,7 +10,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
     ScheduleOwnerDomainManager
   }
 
-  alias SnowSeToolsWeb.Scheduling.ScheduleConflictDetail
+  alias SnowSeToolsWeb.Scheduling.{CardConflicts, ScheduleConflictDetail}
 
   defstruct [
     :selected_term_code,
@@ -21,7 +21,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
     conflict_count: 0,
     conflicted_course_crns: MapSet.new(),
     acknowledged: MapSet.new(),
-    acknowledged_count: 0
+    acknowledged_count: 0,
+    checked?: false,
+    card_conflicts: %CardConflicts{}
   ]
 
   @type t :: %__MODULE__{
@@ -33,7 +35,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
           conflict_count: non_neg_integer(),
           conflicted_course_crns: MapSet.t(String.t()),
           acknowledged: MapSet.t(String.t()),
-          acknowledged_count: non_neg_integer()
+          acknowledged_count: non_neg_integer(),
+          checked?: boolean(),
+          card_conflicts: CardConflicts.t()
         }
 
   @key :schedule_term_conflicts_state
@@ -67,7 +71,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
           conflict_count: 0,
           conflicted_course_crns: MapSet.new(),
           acknowledged: MapSet.new(),
-          acknowledged_count: 0
+          acknowledged_count: 0,
+          checked?: false,
+          card_conflicts: %CardConflicts{}
       }
 
       socket
@@ -112,7 +118,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
              state
              | conflicts_by_owner_key: conflicts_by_owner_key,
                loading?: false,
-               error: nil
+               error: nil,
+               checked?: true
            })}
 
         {:error, reason} ->
@@ -127,7 +134,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
                error: inspect(reason),
                resolved_conflicts: [],
                conflict_count: 0,
-               conflicted_course_crns: MapSet.new()
+               conflicted_course_crns: MapSet.new(),
+               checked?: false,
+               card_conflicts: %CardConflicts{}
            })}
       end
     else
@@ -220,6 +229,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
 
   def conflicted_course_crns(%__MODULE__{} = state), do: state.conflicted_course_crns
 
+  @doc "What each schedule card should show as its conflicts. See `CardConflicts`."
+  def card_conflicts(%__MODULE__{} = state), do: state.card_conflicts
+
   # -- Trigger async conflict detection in a Task and send result back via message --
 
   defp maybe_request_conflicts(socket, term_code: term_code) do
@@ -310,7 +322,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
       | resolved_conflicts: resolved,
         conflict_count: count_conflicts(resolved),
         conflicted_course_crns: conflict_crns(visible),
-        acknowledged_count: acknowledged_count(state)
+        acknowledged_count: acknowledged_count(state),
+        card_conflicts:
+          CardConflicts.new(visible |> Map.values() |> List.flatten(), checked?: state.checked?)
     })
   end
 

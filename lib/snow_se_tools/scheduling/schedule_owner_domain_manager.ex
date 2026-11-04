@@ -636,7 +636,8 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
         opts: [
           program_name: Map.get(course_list, :program_name),
           semester_name: Map.get(course_list, :semester_name),
-          schedule_variants: Map.get(course_list, :schedule_variants, [])
+          schedule_variants: Map.get(course_list, :schedule_variants, []),
+          gap: Map.get(course_list, :gap)
         ]
       )
     end)
@@ -682,7 +683,15 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
             opts: [
               program_name: program["name"],
               semester_name: semester_name,
-              schedule_variants: schedule_variants
+              schedule_variants: schedule_variants,
+              gap:
+                if(schedule_variants == [],
+                  do:
+                    ScheduleUtils.academic_program_semester_gap(
+                      courses: courses,
+                      required_courses: semester["courses"] || []
+                    )
+                )
             ]
           )
         end)
