@@ -5,10 +5,17 @@ defmodule SnowSeTools.Scheduling.ProgramSemesterOptions do
 
   Built to answer "can we offer this semester face to face?", so:
 
-    * Only in-person sections are used (hybrid counts as in person). A
-      course with no in-person section falls back to its online ones, and
-      those land in the card's Online box. An online section never hides an
-      in-person clash; instead the clash names it as a way out.
+    * Only in-person sections are used (hybrid counts as in person), and
+      from one home campus where a course is taught there: the campus
+      teaching most of the semester's courses in person, ties going to the
+      campus with more in-person sections that term (Ephraim). A Richfield
+      section can't rescue an Ephraim student's week, and a high-school
+      section is no one's way out. A course not taught in person on the home
+      campus uses its in-person sections elsewhere (Manufacturing's TEMT
+      courses meet in Richfield), and only a course never taught in person
+      falls back to online sections, which land in the card's Online box. An
+      online section never hides an in-person clash; instead the clash names
+      it as a way out.
     * A lab goes with its own lecture. Labs are numbered lecture + 5 (CS 1410
       / CS 1415, PHYS 2210 / PHYS 2215), and a lab section that shares a
       lecture section's number (001, 002) belongs to that lecture only.
@@ -28,8 +35,8 @@ defmodule SnowSeTools.Scheduling.ProgramSemesterOptions do
   @max_combinations_searched 20_000
 
   @doc """
-  Options as `%{index, label, courses, conflicts}`, clashing ones first only
-  when nothing fits at all. Empty when a required course has no section, or
+  Options as `%{index, label, courses, conflicts, campus}`, clashing ones
+  only when nothing fits at all. Empty when a required course has no section, or
   nothing is required.
   """
   def build(courses: courses, required_courses: required_courses) do
@@ -38,7 +45,8 @@ defmodule SnowSeTools.Scheduling.ProgramSemesterOptions do
     if required_courses == [] or Enum.any?(all_sections, &(&1 == [])) do
       []
     else
-      groups = Enum.map(all_sections, &prefer_in_person/1)
+      campus = home_campus(all_sections, courses)
+      groups = Enum.map(all_sections, &usable_sections(&1, campus))
       pairings = lab_pairings(required_courses, groups)
 
       alternatives = online_alternatives(all_sections, groups)
@@ -58,7 +66,13 @@ defmodule SnowSeTools.Scheduling.ProgramSemesterOptions do
       combinations
       |> Enum.with_index()
       |> Enum.map(fn {{sections, conflicts}, index} ->
-        %{index: index, label: "Option #{index + 1}", courses: sections, conflicts: conflicts}
+        %{
+          index: index,
+          label: "Option #{index + 1}",
+          courses: sections,
+          conflicts: conflicts,
+          campus: campus
+        }
       end)
     end
   end
@@ -80,11 +94,51 @@ defmodule SnowSeTools.Scheduling.ProgramSemesterOptions do
     |> Enum.uniq_by(& &1["crn"])
   end
 
-  defp prefer_in_person(sections) do
-    case Enum.filter(sections, &in_person?/1) do
-      [] -> sections
-      in_person -> in_person
+  @doc "Whether a section is taught online (not merely without set times)."
+  def online?(section) do
+    not in_person?(section) and
+      (section["campus"] == "Online" or
+         Enum.any?(section["meet_info"] || [], &(&1["building_code"] == "ONLINE")))
+  end
+
+  # See the moduledoc. Nil when no section names a campus (then any is used).
+  defp home_campus(all_sections, term_courses) do
+    courses_taught =
+      all_sections
+      |> Enum.flat_map(fn sections ->
+        sections |> Enum.filter(&in_person?/1) |> Enum.map(& &1["campus"]) |> Enum.uniq()
+      end)
+      |> Enum.filter(&is_binary/1)
+      |> Enum.frequencies()
+
+    if courses_taught == %{} do
+      nil
+    else
+      term_sections =
+        term_courses
+        |> Enum.filter(&(&1["campus"] in Map.keys(courses_taught) and in_person?(&1)))
+        |> Enum.frequencies_by(& &1["campus"])
+
+      courses_taught
+      |> Enum.max_by(fn {campus, count} -> {count, Map.get(term_sections, campus, 0)} end)
+      |> elem(0)
     end
+  end
+
+  # In person on the home campus; failing that in person anywhere; failing
+  # that online; failing that whatever there is, so the course still shows.
+  defp usable_sections(sections, campus) do
+    [
+      &(in_person?(&1) and (is_nil(campus) or &1["campus"] == campus)),
+      &in_person?/1,
+      &online?/1
+    ]
+    |> Enum.find_value(sections, fn keep? ->
+      case Enum.filter(sections, keep?) do
+        [] -> nil
+        kept -> kept
+      end
+    end)
   end
 
   # -- Labs and their lectures ------------------------------------------------
@@ -198,7 +252,7 @@ defmodule SnowSeTools.Scheduling.ProgramSemesterOptions do
     all_sections
     |> Enum.zip(groups)
     |> Enum.flat_map(fn {sections, kept} ->
-      case sections -- kept do
+      case Enum.filter(sections -- kept, &online?/1) do
         [] -> []
         [first | _] = online -> [{course_code(first), Enum.map(online, &section_label/1)}]
       end

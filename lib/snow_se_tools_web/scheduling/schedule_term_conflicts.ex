@@ -278,7 +278,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
 
     conflicts_by_owner_key
     |> Enum.map(fn {owner_key, conflicts} ->
-      metadata = Map.get(metadata_by_key, owner_key)
+      metadata = Map.get(metadata_by_key, owner_key, %{})
       name = Map.get(metadata, :name) || owner_key
 
       icon_name =

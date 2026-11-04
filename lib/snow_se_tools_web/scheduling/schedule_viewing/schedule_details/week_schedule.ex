@@ -501,6 +501,9 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
             </p>
           <% end %>
           <p :if={@view.count > 1} class="text-slate-400">{options_text(@view)}</p>
+          <p :if={@view.campus} class="text-slate-500">
+            Options use {@view.campus} in-person sections; online ones only where a class has no other.
+          </p>
         </div>
       </:body>
     </HoverTooltip.hover_tooltip>
@@ -541,6 +544,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
       conflicted_options: 0,
       conflicts: [],
       overlap_crns: MapSet.new(),
+      campus: nil,
       gap: nil,
       status: :unknown
     }
@@ -582,6 +586,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
       conflicted_options: length(conflicted),
       conflicts: conflicts,
       overlap_crns: overlaps |> Enum.flat_map(& &1.course_crns) |> MapSet.new(),
+      campus: Map.get(selected || %{}, :campus),
       gap: course_list.gap,
       status: status(conflicts, course_list.gap, card_conflicts)
     }
@@ -598,6 +603,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekSchedule do
       conflicted_options: 0,
       conflicts: conflicts,
       overlap_crns: MapSet.new(),
+      campus: nil,
       gap: nil,
       status: status(conflicts, nil, card_conflicts)
     }

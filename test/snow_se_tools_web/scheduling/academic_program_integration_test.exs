@@ -262,6 +262,53 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramIntegrationTest do
       assert has_element?(view, "#schedule-program-choice")
     end
 
+    test "each semester card says whether it has conflicts, clashing ones included",
+         %{conn: conn} do
+      program =
+        create_program([
+          [
+            %{subject_code: "CS", course_number: "2860"},
+            %{subject_code: "MATH", course_number: "2270"}
+          ],
+          [%{subject_code: "CE", course_number: "2010"}]
+        ])
+
+      [clashing_key, clean_key] = semester_keys(program)
+      view = open_programs_tab(conn)
+      review(view, program)
+
+      # Two single-section classes at the same hour: the card shows them and
+      # the clash, rather than an empty week.
+      assert has_element?(
+               view,
+               ~s([id="schedule-conflict-status-#{clashing_key}"][data-conflict-status="conflicts"])
+             )
+
+      assert render(view) =~ "Classes at the same time"
+
+      # The other card turns green once the term's conflict check is back.
+      assert eventually(fn ->
+               has_element?(
+                 view,
+                 ~s([id="schedule-conflict-status-#{clean_key}"][data-conflict-status="clear"])
+               )
+             end)
+    end
+
+    test "a semester whose course isn't offered this term says so", %{conn: conn} do
+      program = create_program([[%{subject_code: "CS", course_number: "9999"}]])
+      [key] = semester_keys(program)
+      view = open_programs_tab(conn)
+      review(view, program)
+
+      assert has_element?(
+               view,
+               ~s([id="schedule-conflict-status-#{key}"][data-conflict-status="conflicts"])
+             )
+
+      assert render(view) =~ "CS 9999 isn&#39;t offered this term."
+    end
+
     test "a link with nothing remembered opens the semesters straight away",
          %{conn: conn, program: program} do
       conn = log_in_test_user(conn)
@@ -323,6 +370,14 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramIntegrationTest do
     end)
   end
 
+  defp eventually(check, tries \\ 100) do
+    cond do
+      check.() -> true
+      tries == 0 -> false
+      true -> Process.sleep(20) && eventually(check, tries - 1)
+    end
+  end
+
   defp log_in_test_user(conn),
     do: log_in_user(conn, "academic-program-integration@example.com", ["scheduling_admin"])
 
@@ -351,7 +406,11 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramIntegrationTest do
         "section_number" => "Lecture 1",
         "name" => "Calculus I",
         "instructors" => []
-      }
+      },
+      # Two single-section classes at the same hour, as BSSE's sophomore
+      # spring had in Spring 2027.
+      timed("10004", "CS", "2860", "HLIB", "024B"),
+      timed("10005", "MATH", "2270", "GRSC", "122")
     ]
 
     SnowCourseCacheDb.save_courses(
@@ -359,5 +418,27 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicProgramIntegrationTest do
       term_name: "Spring 2026",
       courses: courses
     )
+  end
+
+  defp timed(crn, subject, number, building, room) do
+    %{
+      "crn" => crn,
+      "subject_code" => subject,
+      "course_number" => number,
+      "section_number" => "001",
+      "name" => "#{subject} #{number}",
+      "campus" => "Ephraim Campus",
+      "instructors" => [%{"name" => "Prof #{crn}", "email" => "prof#{crn}@snow.edu"}],
+      "meet_info" => [
+        %{
+          "building" => building,
+          "building_code" => building,
+          "room" => room,
+          "days" => ["Monday", "Wednesday", "Friday"],
+          "start_time" => "09:30:00",
+          "end_time" => "10:20:00"
+        }
+      ]
+    }
   end
 end
