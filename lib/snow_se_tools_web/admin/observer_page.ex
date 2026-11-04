@@ -193,12 +193,28 @@ defmodule SnowSeToolsWeb.Admin.ObserverPage do
   end
 
   @doc false
+  # Only an application that has finished starting is asked for its tree.
+  # While one is still starting, its application master answers get_child by
+  # calling is_process_alive(:undefined), which raises inside the master and
+  # takes the whole application down -- this page did exactly that to the app
+  # when a dashboard tab reconnected during a deploy. which_applications lists
+  # an application only once it is fully started.
   def collect_tree(app, toggled) do
-    with master when is_pid(master) <- :application_controller.get_master(app),
+    with true <- started?(app),
+         master when is_pid(master) <- :application_controller.get_master(app),
          {root, _module} when is_pid(root) <- :application_master.get_child(master) do
       {:ok, build(root, app, :supervisor, toggled)}
     else
+      :starting -> {:error, "#{app} is still starting. Refresh in a moment."}
       _not_running -> {:error, "#{app} has no supervision tree running on this node."}
+    end
+  end
+
+  defp started?(app) do
+    cond do
+      List.keymember?(:application.which_applications(), app, 0) -> true
+      List.keymember?(:application.loaded_applications(), app, 0) -> :starting
+      true -> false
     end
   end
 

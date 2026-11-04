@@ -4,7 +4,7 @@ defmodule SnowSeToolsWeb.Admin.SystemDashboardTest do
   use SnowSeToolsWeb.ConnCase, async: false
 
   alias SnowSeTools.Data.User
-  alias SnowSeToolsWeb.Admin.ProcessStatePage
+  alias SnowSeToolsWeb.Admin.{ObserverPage, ProcessStatePage}
 
   setup do
     # The first user ever is made admin; keep that from being one of these.
@@ -152,6 +152,31 @@ defmodule SnowSeToolsWeb.Admin.SystemDashboardTest do
 
       view |> element(~s([id="#{toggle_id}"])) |> render_click()
       assert view |> element(~s([id="#{toggle_id}"])) |> render() =~ "−"
+    end
+
+    test "never asks an application that hasn't finished starting for its tree" do
+      # Asking one mid-start crashes its application master, and with it the
+      # application: this page took the app down during a deploy that way.
+      # An application that is loaded but not started, as one is mid-start.
+      :ok =
+        :application.load(
+          {:application, :observer_loaded_only,
+           [
+             description: ~c"loaded only",
+             vsn: ~c"1",
+             modules: [],
+             registered: [],
+             applications: [:kernel, :stdlib]
+           ]}
+        )
+
+      on_exit(fn -> :application.unload(:observer_loaded_only) end)
+
+      assert {:error, message} = ObserverPage.collect_tree(:observer_loaded_only, MapSet.new())
+      assert message =~ "still starting"
+
+      assert {:error, _not_running} = ObserverPage.collect_tree(:not_an_app, MapSet.new())
+      assert {:ok, %{type: :supervisor}} = ObserverPage.collect_tree(:snow_se_tools, MapSet.new())
     end
 
     test "ignores a pid that isn't in the tree", %{conn: conn} do
