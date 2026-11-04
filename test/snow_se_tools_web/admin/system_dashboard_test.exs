@@ -84,4 +84,82 @@ defmodule SnowSeToolsWeb.Admin.SystemDashboardTest do
       assert ProcessStatePage.menu_link(%{}, %{}) == {:ok, "GenServer state"}
     end
   end
+
+  describe "the Observer page" do
+    setup %{conn: conn} do
+      %{conn: log_in_user(conn, "system-dashboard-observer@example.com", ["admin"])}
+    end
+
+    test "draws the app's supervision tree from its root supervisor", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/admin/system/observer")
+
+      assert has_element?(view, "#observer-svg")
+      assert render(view) =~ "SnowSeTools.Supervisor"
+      assert render(view) =~ "SnowSeToolsWeb.Endpoint"
+      assert has_element?(view, ~s(#observer-svg g[data-type="supervisor"]))
+    end
+
+    test "a process's details include the messages waiting in its mailbox", %{conn: conn} do
+      # A task that never reads what it is sent, under a supervisor in the tree.
+      {:ok, task} =
+        Task.Supervisor.start_child(SnowSeTools.TaskSupervisor, fn ->
+          receive do
+            :stop -> :ok
+          end
+        end)
+
+      on_exit(fn -> send(task, :stop) end)
+      send(task, {:hello_from_the_test, 42})
+
+      {:ok, view, _html} = live(conn, "/admin/system/observer")
+      pid = task |> :erlang.pid_to_list() |> List.to_string()
+
+      view |> element(~s([id="observer-node-#{pid}"])) |> render_click()
+
+      assert has_element?(view, "#observer-details", "Message queue")
+      assert has_element?(view, "#observer-mailbox", "{:hello_from_the_test, 42}")
+    end
+
+    test "reads an OTP process's state on request", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/admin/system/observer")
+
+      pid =
+        SnowSeTools.TaskSupervisor
+        |> Process.whereis()
+        |> :erlang.pid_to_list()
+        |> List.to_string()
+
+      view |> element(~s([id="observer-node-#{pid}"])) |> render_click()
+      refute has_element?(view, "#observer-state")
+
+      view |> element("#observer-read-state") |> render_click()
+      assert has_element?(view, "#observer-state", "DynamicSupervisor")
+    end
+
+    test "a big supervisor starts folded and opens on request", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/admin/system/observer")
+
+      # The endpoint's connection pool has dozens of children.
+      folded =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query(~s(g[id^="observer-toggle-"]))
+        |> Enum.find(&(LazyHTML.text(&1) |> String.trim() |> String.starts_with?("+")))
+
+      assert folded, "expected a supervisor with more children than the fold limit"
+      [toggle_id] = LazyHTML.attribute(folded, "id")
+
+      view |> element(~s([id="#{toggle_id}"])) |> render_click()
+      assert view |> element(~s([id="#{toggle_id}"])) |> render() =~ "−"
+    end
+
+    test "ignores a pid that isn't in the tree", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/admin/system/observer")
+      stranger = self() |> :erlang.pid_to_list() |> List.to_string()
+
+      render_click(view, "observer_select", %{"pid" => stranger})
+      refute has_element?(view, "#observer-details")
+    end
+  end
 end

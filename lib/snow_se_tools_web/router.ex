@@ -61,7 +61,10 @@ defmodule SnowSeToolsWeb.Router do
       metrics: SnowSeToolsWeb.Telemetry,
       live_session_name: :admin_live_dashboard,
       on_mount: [{SnowSeToolsWeb.UserAuth, :ensure_admin}],
-      additional_pages: [genserver_state: SnowSeToolsWeb.Admin.ProcessStatePage]
+      additional_pages: [
+        observer: SnowSeToolsWeb.Admin.ObserverPage,
+        genserver_state: SnowSeToolsWeb.Admin.ProcessStatePage
+      ]
   end
 
   scope "/auth", SnowSeToolsWeb do
