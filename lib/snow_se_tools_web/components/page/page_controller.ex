@@ -15,10 +15,19 @@ defmodule SnowSeToolsWeb.PageController do
           end
       end
 
-    if current_user do
-      redirect(conn, to: "/home")
-    else
-      render(conn, :home, current_user: current_user)
+    cond do
+      current_user ->
+        redirect(conn, to: "/home")
+
+      # A failed login or a logout lands here with something to say. Sending
+      # those straight back to the login would loop on a broken login, and
+      # would sign someone straight back in through Microsoft after logging
+      # out. Everyone else has no reason to see this page.
+      conn.assigns.flash != %{} ->
+        render(conn, :home, current_user: nil)
+
+      true ->
+        redirect(conn, to: "/auth/login?" <> URI.encode_query(%{"return_to" => "/home"}))
     end
   end
 end

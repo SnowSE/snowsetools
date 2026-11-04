@@ -35,6 +35,8 @@ defmodule SnowSeToolsWeb.Router do
     live "/home", Home.HomeLive
     live "/syllabi", Syllabus.SyllabusLive, :index
     live "/scheduling", Scheduling.SchedulingLive, :index
+    live "/curriculum", Curriculum.CurriculumLive, :index
+    live "/curriculum/courses/:subject/:number", Curriculum.CurriculumLive, :course
     live "/discord", Discord.DiscordLive, :index
     live "/admin", Admin.AdminLive
     live "/syllabi/report", Syllabus.SyllabusReportLive

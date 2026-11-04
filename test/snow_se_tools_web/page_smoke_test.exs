@@ -23,6 +23,7 @@ defmodule SnowSeToolsWeb.PageSmokeTest do
     SemesterAttrs
   }
 
+  alias SnowSeTools.Curriculum.{CurriculumDomainManager, SkillDb}
   alias SnowSeTools.Discord.{DiscordDb, DiscordDomainManager}
   alias SnowSeTools.Scheduling.{ScheduleChangeDomainManager, ScheduleOwnerDomainManager}
   alias SnowSeTools.Snow.{SnowCourseCacheDb, SnowCourseCacheDomainManager}
@@ -52,6 +53,7 @@ defmodule SnowSeToolsWeb.PageSmokeTest do
     start_supervised!(ScheduleChangeDomainManager)
     start_supervised!(UserGroupDomainManager)
     start_supervised!(DiscordDomainManager)
+    start_supervised!(CurriculumDomainManager)
 
     {:ok, term_code: term_code, program_name: program_name}
   end
@@ -111,6 +113,35 @@ defmodule SnowSeToolsWeb.PageSmokeTest do
     assert html =~ program_name
   end
 
+  test "the curriculum map draws every tab with a program's skills in it", %{
+    conn: conn,
+    program_name: program_name
+  } do
+    {:ok, programs} = ProgramDb.list_programs()
+    program = Enum.find(programs, &(&1["name"] == program_name))
+    skill_name = "Smoke skill #{System.unique_integer([:positive])}"
+    {:ok, skill} = SkillDb.create_skill(name: skill_name, category: "tool", description: "")
+
+    :ok =
+      SkillDb.set_course_skill(
+        subject_code: "CS",
+        course_number: "2420",
+        skill_id: skill["id"],
+        level: "introduced",
+        note: "",
+        updated_by: "smoke"
+      )
+
+    query = "program=#{program["id"]}"
+
+    assert render_page(conn, "/curriculum?#{query}") =~ skill_name
+    assert render_page(conn, "/curriculum?#{query}&tab=skills") =~ skill_name
+    assert render_page(conn, "/curriculum?#{query}&tab=graph") =~ "graph-node-CS-2420"
+    assert render_page(conn, "/curriculum?#{query}&tab=abet") =~ "abet-matrix"
+    assert render_page(conn, "/curriculum?#{query}&tab=suggestions") =~ "review-run"
+    assert render_page(conn, "/curriculum/courses/CS/2420?#{query}") =~ skill_name
+  end
+
   test "the home and syllabi pages render", %{conn: conn} do
     assert render_page(conn, ~p"/home") =~ "Scheduling"
     assert render_page(conn, ~p"/syllabi") =~ "Syllabi"
@@ -129,6 +160,7 @@ defmodule SnowSeToolsWeb.PageSmokeTest do
       _ = :sys.get_state(SnowCourseCacheDomainManager)
       _ = :sys.get_state(DiscordDomainManager)
       _ = :sys.get_state(ProgramDomainManager)
+      _ = :sys.get_state(CurriculumDomainManager)
       _ = :sys.get_state(view.pid)
       render(view)
     end

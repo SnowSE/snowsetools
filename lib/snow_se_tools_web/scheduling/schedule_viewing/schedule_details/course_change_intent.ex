@@ -32,6 +32,7 @@ defmodule SnowSeToolsWeb.Scheduling.CourseChangeIntent do
          "course_number" => course_number,
          "course_name" => Map.get(params, "course_name"),
          "target_professor" => target_professor(owner, params),
+         "target_professor_key" => target_professor_key(owner, params),
          "meet_info" =>
            replace_meeting(
              original_meet_info,
@@ -64,6 +65,7 @@ defmodule SnowSeToolsWeb.Scheduling.CourseChangeIntent do
          "course_number" => course_number,
          "course_name" => Map.get(params, "course_name"),
          "target_professor" => target_professor(owner, params),
+         "target_professor_key" => target_professor_key(owner, params),
          "meet_info" => [
            new_meeting(original_meeting, days, start_time, end_time, target_room)
          ],
@@ -94,7 +96,7 @@ defmodule SnowSeToolsWeb.Scheduling.CourseChangeIntent do
   defp owner_from_params(params) do
     with {:ok, type} <- fetch_string(params, "owner_type"),
          {:ok, name} <- fetch_string(params, "owner_name") do
-      {:ok, %{type: type, name: name}}
+      {:ok, %{type: type, name: name, key: Map.get(params, "owner_key")}}
     end
   end
 
@@ -188,6 +190,34 @@ defmodule SnowSeToolsWeb.Scheduling.CourseChangeIntent do
     |> Map.get("instructors", [])
     |> List.wrap()
     |> Enum.find("", &is_binary/1)
+  end
+
+  # Which person `target_professor` means, when that is known exactly: the
+  # professor card a class was dropped on, or the course's own instructor when
+  # the name is left as it was. The schedule change manager resolves anything
+  # else (a typed name) against the term's instructors.
+  defp target_professor_key(owner, params) do
+    case Map.get(params, "target_professor") do
+      professor when is_binary(professor) and professor != "" ->
+        if professor == first_instructor_name(params), do: first_instructor_key(params)
+
+      _other ->
+        target_professor_key_from_owner(owner, params)
+    end
+  end
+
+  defp target_professor_key_from_owner(%{type: "professor", key: key}, _params)
+       when is_binary(key),
+       do: key
+
+  defp target_professor_key_from_owner(_owner, params), do: first_instructor_key(params)
+
+  defp first_instructor_name(params) do
+    params |> Map.get("instructors", []) |> List.wrap() |> Enum.find(&is_binary/1)
+  end
+
+  defp first_instructor_key(params) do
+    params |> Map.get("instructor_keys", []) |> List.wrap() |> Enum.find(&is_binary/1)
   end
 
   defp target_room(%{type: "room", name: name}, _meeting), do: name

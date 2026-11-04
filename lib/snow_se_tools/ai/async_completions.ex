@@ -18,6 +18,8 @@ defmodule SnowSeTools.AI.AsyncCompletions do
   use GenServer
   require Logger
 
+  alias SnowSeTools.AI.Settings
+
   alias SnowSeTools.AI.CompletionLog
   alias SnowSeTools.Telemetry.Events
 
@@ -29,7 +31,7 @@ defmodule SnowSeTools.AI.AsyncCompletions do
   @status_topic "async_completions:status"
 
   @type message :: %{role: String.t(), content: String.t()}
-  @type option :: {:schema, map()} | {:user, String.t() | nil}
+  @type option :: {:schema, map()} | {:user, String.t() | nil} | {:max_tokens, pos_integer()}
   @type result :: {:ok, String.t() | map()} | {:error, term()}
 
   def start_link(opts \\ []) do
@@ -169,7 +171,7 @@ defmodule SnowSeTools.AI.AsyncCompletions do
     {_pid, ref} =
       spawn_monitor(fn ->
         {result, thinking} = complete_sync(messages, opts)
-        config = Application.fetch_env!(:snow_se_tools, :ai)
+        config = Settings.current()
 
         CompletionLog.record(
           topic,
@@ -214,7 +216,7 @@ defmodule SnowSeTools.AI.AsyncCompletions do
   end
 
   defp request_completion(messages, opts) do
-    config = Application.fetch_env!(:snow_se_tools, :ai)
+    config = Settings.current()
 
     Logger.info(
       "AI completion: endpoint=#{config[:endpoint]} model=#{config[:model]} messages=#{length(messages)}"
@@ -223,24 +225,75 @@ defmodule SnowSeTools.AI.AsyncCompletions do
     body =
       %{model: config[:model], messages: messages}
       |> maybe_add_structured_output(opts[:schema])
+      |> maybe_cap_output(opts[:max_tokens])
 
     case Req.post(config[:endpoint],
            json: body,
            headers: [{"authorization", "Bearer #{config[:api_key]}"}],
            receive_timeout: :timer.minutes(10)
          ) do
-      {:ok, %{status: 200, body: body}} ->
-        thinking = extract_thinking(body)
-        result = extract_content(body, opts[:schema])
-        {result, thinking}
-
       {:ok, %{status: status, body: body}} ->
-        {{:error, {status, extract_error_message(body)}}, nil}
+        interpret_response(status, body, opts[:schema])
 
       {:error, reason} ->
         {{:error, reason}, nil}
     end
   end
+
+  @doc false
+  # What the server's answer means, as `{result, thinking}`. Public only so the
+  # parsing can be tested without a model to talk to.
+  def interpret_response(200, body, schema),
+    do: {extract_result(body, schema), extract_thinking(body)}
+
+  def interpret_response(status, body, _schema),
+    do: {{:error, {status, extract_error_message(body)}}, nil}
+
+  # `finish_reason: "length"` means the model hit max_tokens. A thinking model
+  # counts its reasoning against that budget, so it can spend all of it
+  # thinking and come back with an empty answer -- which used to surface as
+  # `{:invalid_json, ""}`, a parse error that hid what really happened.
+  defp extract_result(
+         %{"choices" => [%{"finish_reason" => "length", "message" => message} | _]} = body,
+         schema
+       ) do
+    cond do
+      String.trim(message_text(message)) == "" ->
+        {:error, {:ran_out_of_tokens, :while_thinking}}
+
+      is_nil(schema) ->
+        # A plain-text answer that was cut short is still worth having.
+        extract_content(body, schema)
+
+      true ->
+        case extract_content(body, schema) do
+          {:ok, parsed} -> {:ok, parsed}
+          {:error, _} -> {:error, {:ran_out_of_tokens, :mid_answer}}
+        end
+    end
+  end
+
+  defp extract_result(body, schema), do: extract_content(body, schema)
+
+  defp message_text(%{"content" => content}) when is_binary(content), do: content
+
+  defp message_text(%{"content" => blocks}) when is_list(blocks) do
+    Enum.find_value(blocks, "", fn
+      %{"type" => "text", "text" => t} when is_binary(t) -> t
+      _ -> false
+    end)
+  end
+
+  defp message_text(_message), do: ""
+
+  # Without a ceiling a model with little to say can keep generating until it
+  # fills the server's context window, which comes back as an opaque engine
+  # error rather than as a completion. Callers that know roughly how long a
+  # good answer is should say so.
+  defp maybe_cap_output(body, nil), do: body
+
+  defp maybe_cap_output(body, max_tokens) when is_integer(max_tokens) and max_tokens > 0,
+    do: Map.put(body, :max_tokens, max_tokens)
 
   defp maybe_add_structured_output(body, nil), do: body
 
@@ -309,6 +362,29 @@ defmodule SnowSeTools.AI.AsyncCompletions do
 
   defp extract_content(body, _schema), do: {:error, {:unexpected_response, body}}
 
-  defp extract_error_message(%{"error" => %{"message" => msg}}), do: msg
-  defp extract_error_message(body), do: inspect(body)
+  defp extract_error_message(%{"error" => %{"message" => msg}}) when is_binary(msg), do: msg
+  defp extract_error_message(%{"error" => msg}) when is_binary(msg), do: msg
+
+  # A server (or a proxy in front of it) that fails before reaching the model
+  # often answers with an HTML error page. Keep the words, not the markup.
+  defp extract_error_message(body) when is_binary(body) do
+    text =
+      if body =~ ~r/<(!doctype|html|body|pre)\b/i do
+        body
+        |> String.replace(~r/<head\b.*?<\/head>/is, " ")
+        |> String.replace(~r/<[^>]*>/s, " ")
+        |> String.replace(~r/\s+/, " ")
+        |> String.trim()
+      else
+        String.trim(body)
+      end
+
+    cond do
+      text == "" -> "(no message)"
+      String.length(text) > 300 -> String.slice(text, 0, 300) <> "…"
+      true -> text
+    end
+  end
+
+  defp extract_error_message(body), do: inspect(body, limit: 10, printable_limit: 300)
 end

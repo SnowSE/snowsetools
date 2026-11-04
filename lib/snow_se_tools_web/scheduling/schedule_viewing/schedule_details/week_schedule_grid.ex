@@ -170,11 +170,16 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
       :if={@schedule_owner.online_courses != []}
       id={"online-courses-#{@owner_key}"}
       class="mt-3"
+      open?={true}
     >
       <:title_row>
         <div class="flex items-center justify-between gap-2">
           <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Online</div>
-          <div class="text-xs text-slate-600">{length(@schedule_owner.online_courses)} credits</div>
+          <div class="text-xs text-slate-600">
+            {length(@schedule_owner.online_courses)} {if length(@schedule_owner.online_courses) == 1,
+              do: "class",
+              else: "classes"}
+          </div>
         </div>
       </:title_row>
       <:body>
@@ -734,6 +739,7 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
       start_time: meeting.start_time,
       end_time: meeting.end_time,
       instructors: meeting.instructors,
+      instructor_keys: Map.get(meeting, :instructor_keys, []),
       meeting: meeting.meeting,
       meet_info: meeting.meet_info
     }

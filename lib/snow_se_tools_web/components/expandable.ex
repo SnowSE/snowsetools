@@ -3,6 +3,7 @@ defmodule SnowSeToolsWeb.Components.Expandable do
 
   attr :id, :string, required: true
   attr :class, :string, default: nil
+  attr :open?, :boolean, default: false, doc: "Start open. The viewer can still close it."
   slot :title_row, required: true
   slot :body, required: true
 
@@ -11,23 +12,28 @@ defmodule SnowSeToolsWeb.Components.Expandable do
     <div
       id={@id}
       phx-hook=".Expandable"
-      class={["group   bg-slate-950/35", @class]}
+      data-open={to_string(@open?)}
+      class={["group   bg-slate-950/35", @open? && "is-open", @class]}
     >
       <div
         data-expandable-trigger
         class={[
           "flex cursor-pointer list-none items-center gap-3 px-3 py-2 text-left transition hover:bg-slate-900/50",
-          "select-none rounded-lg"
+          "select-none rounded-lg",
+          @open? && "bg-slate-900/50"
         ]}
         role="button"
         tabindex="0"
-        aria-expanded="false"
+        aria-expanded={to_string(@open?)}
       >
         <div class="min-w-0 flex-1">
           {render_slot(@title_row)}
         </div>
 
-        <span data-expandable-chevron class="shrink-0 transition-transform duration-300">
+        <span
+          data-expandable-chevron
+          class={["shrink-0 transition-transform duration-300", @open? && "rotate-180"]}
+        >
           <.icon
             name="hero-chevron-down"
             class="size-4 text-slate-500"
@@ -38,7 +44,7 @@ defmodule SnowSeToolsWeb.Components.Expandable do
       <div
         data-expandable-body
         class="overflow-hidden px-3 transition-[height] duration-300 ease-out"
-        style="height: 0px; transition: height 200ms ease-out;"
+        style={"height: #{if @open?, do: "auto", else: "0px"}; transition: height 200ms ease-out;"}
       >
         <div>
           {render_slot(@body)}
@@ -48,7 +54,7 @@ defmodule SnowSeToolsWeb.Components.Expandable do
       <script :type={Phoenix.LiveView.ColocatedHook} name=".Expandable">
         export default {
           mounted() {
-            this.open = false;
+            this.open = this.el.dataset.open === "true";
             this.trigger = this.el.querySelector("[data-expandable-trigger]");
             this.body = this.el.querySelector("[data-expandable-body]");
             this.chevron = this.el.querySelector("[data-expandable-chevron]");
@@ -57,7 +63,8 @@ defmodule SnowSeToolsWeb.Components.Expandable do
               return;
             }
 
-            this.body.style.height = "0px";
+            this.syncClasses();
+            this.body.style.height = this.open ? "auto" : "0px";
             this.trigger.addEventListener("click", () => this.toggle());
             this.trigger.addEventListener("keydown", (event) => {
               if (event.key === "Enter" || event.key === " ") {

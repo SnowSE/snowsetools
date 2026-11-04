@@ -1,6 +1,7 @@
 defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
   alias SnowSeTools.Data.Text
   alias SnowSeTools.Scheduling.CourseNameSequel
+  alias SnowSeTools.Scheduling.Instructor
   alias SnowSeTools.Scheduling.ScheduleChange
   alias SnowSeTools.Scheduling.ScheduleUtils
   alias SnowSeTools.Scheduling.TimeOfDay
@@ -110,7 +111,16 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
   defp owner_target(_owner), do: nil
 
   defp owner_target(owner_key, :room, _owner), do: room_target(owner_key)
-  defp owner_target(owner_key, :professor, _owner), do: professor_target(owner_key)
+
+  defp owner_target(owner_key, :professor, owner) do
+    case owner_name(owner) do
+      name when is_binary(name) and name != "" ->
+        %{kind: :professor, key: owner_key, label: "Professor: #{name}"}
+
+      _other ->
+        professor_target(owner_key)
+    end
+  end
 
   defp owner_target(owner_key, :academic_program_semester, owner) do
     case {owner_name(owner), owner_key} do
@@ -146,7 +156,8 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
       |> Map.get("meet_info", [])
       |> Enum.map(fn meeting ->
         room = ScheduleUtils.room_name(meeting: meeting)
-        instructors = instructor_names(course)
+        people = instructor_people(course)
+        instructors = Enum.map(people, &elem(&1, 0))
 
         %{
           crn: course["crn"],
@@ -154,7 +165,9 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
           subject_code: course["subject_code"],
           course_number: course["course_number"],
           room: room,
+          # Identities (see `Instructor`): two people can share a name.
           instructors: instructors,
+          instructor_names: Map.new(people),
           meeting: meeting,
           owner_keys:
             MapSet.union(
@@ -182,15 +195,21 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
     MapSet.new(room_keys ++ professor_keys)
   end
 
-  defp instructor_names(course) do
+  # `{identity, name}` for each instructor. TBA Staff stays a single
+  # placeholder, whatever email a given record carries, so it is still
+  # recognised and never treated as a person with a schedule.
+  defp instructor_people(course) do
     course
     |> Map.get("instructors", [])
-    |> Enum.map(fn
-      %{"name" => name} -> name
-      name when is_binary(name) -> name
-      _other -> nil
+    |> Enum.flat_map(fn instructor ->
+      name = Instructor.name(instructor)
+
+      cond do
+        name == @tba_staff -> [{@tba_staff, @tba_staff}]
+        identity = Instructor.identity(instructor) -> [{identity, name || identity}]
+        true -> []
+      end
     end)
-    |> Enum.reject(&blank?/1)
   end
 
   # -- Resource-first conflict detection --
@@ -393,8 +412,12 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
   end
 
   defp build_conflict(entries, :professor) do
-    professor = List.first(entries).instructors |> List.first()
+    first = List.first(entries)
+    professor = first.instructors |> List.first()
     owner_key = "professor:#{professor}"
+    # The name, not the identity: it is what people read, and what the
+    # fingerprint was always built from, so acknowledged conflicts still match.
+    professor_name = Map.get(first.instructor_names, professor, professor)
 
     all_owner_keys =
       entries
@@ -408,7 +431,7 @@ defmodule SnowSeTools.Scheduling.ScheduleConflictDetector do
       course_crns: extract_sorted_crns(entries),
       title: "Professor conflict",
       entries: build_frontend_entries(entries),
-      resource_label: professor
+      resource_label: professor_name
     )
   end
 

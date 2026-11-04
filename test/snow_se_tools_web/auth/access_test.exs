@@ -51,8 +51,27 @@ defmodule SnowSeToolsWeb.Auth.AccessTest do
       viewer = %{group_names: ["scheduling_view"]}
       both = %{group_names: ["scheduling_view", "scheduling_admin"]}
 
-      assert [%{area: :scheduling, level: :view}] = Access.accessible_areas(viewer)
-      assert [%{area: :scheduling, level: :edit}] = Access.accessible_areas(both)
+      assert [%{area: :scheduling, level: :view}, %{area: :curriculum, level: :view}] =
+               Access.accessible_areas(viewer)
+
+      assert [%{area: :scheduling, level: :edit}, %{area: :curriculum, level: :view}] =
+               Access.accessible_areas(both)
+    end
+
+    test "every approved user can read the curriculum map; only its group edits it" do
+      approved = %{group_names: ["discord_admin"]}
+      editor = %{group_names: ["curriculum_admin"]}
+      nobody = %{group_names: []}
+
+      assert Access.can?(approved, :curriculum)
+      refute Access.can_edit?(approved, :curriculum)
+
+      assert Access.can?(editor, :curriculum)
+      assert Access.can_edit?(editor, :curriculum)
+      assert [%{area: :curriculum, level: :edit}] = Access.accessible_areas(editor)
+
+      refute Access.can?(nobody, :curriculum)
+      assert Access.accessible_areas(nobody) == []
     end
 
     test "built-in groups are seeded and cannot be renamed or deleted" do

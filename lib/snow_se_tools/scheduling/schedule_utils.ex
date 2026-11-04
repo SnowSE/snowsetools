@@ -1,12 +1,18 @@
 defmodule SnowSeTools.Scheduling.ScheduleUtils do
   alias SnowSeTools.Data.Text
-  alias SnowSeTools.Scheduling.TimeOfDay
+  alias SnowSeTools.Scheduling.{Instructor, ProgramSemesterOptions, TimeOfDay}
   @days TimeOfDay.week_days()
   @default_start_minutes 8 * 60
   @default_end_minutes 17 * 60
 
-  def build_week_schedule(type: type, name: name, courses: courses) do
+  def build_week_schedule(type: type, name: name, courses: courses),
+    do: build_week_schedule(type: type, name: name, courses: courses, owner_key: nil)
+
+  # `owner_key` is what a professor's classes are matched on: the name is only
+  # a label now, and two people can share it.
+  def build_week_schedule(type: type, name: name, courses: courses, owner_key: owner_key) do
     courses = Enum.map(courses, &preparse_course/1)
+    match = if type == :professor and is_binary(owner_key), do: owner_key, else: name
 
     regular_courses =
       Enum.filter(courses, fn course ->
@@ -16,7 +22,7 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
         end)
       end)
 
-    meetings_by_day = meetings_by_day(type: type, name: name, courses: regular_courses)
+    meetings_by_day = meetings_by_day(type: type, name: match, courses: regular_courses)
     all_meetings = meetings_by_day |> Map.values() |> List.flatten()
     {start_minutes, end_minutes} = schedule_bounds(all_meetings)
 
@@ -24,6 +30,7 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
       type: type,
       type_label: type_label(type),
       name: name,
+      owner_key: owner_key,
       credit_count: credit_count(courses),
       start_minutes: start_minutes,
       end_minutes: end_minutes,
@@ -90,37 +97,50 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
         courses: courses,
         required_courses: required_courses
       ) do
-    courses = Enum.map(courses, &preparse_course/1)
-
-    required_courses
-    |> candidate_groups_for_requirements(courses: courses)
-    |> build_non_conflicting_variants()
-    |> Enum.with_index(1)
-    |> Enum.map(fn {variant_courses, index} ->
-      %{
-        index: index - 1,
-        label: "Option #{index}",
-        courses: variant_courses
-      }
-    end)
+    ProgramSemesterOptions.build(
+      courses: Enum.map(courses, &preparse_course/1),
+      required_courses: required_courses
+    )
   end
 
+  @doc """
+  Why a program semester has no options at all: `{:not_offered, ["CS 1400",
+  ...]}` when a required course has no section this term. Nil otherwise --
+  a semester whose classes clash still has options, carrying the clash.
+  """
+  def academic_program_semester_gap(courses: courses, required_courses: required_courses) do
+    courses = Enum.map(courses, &preparse_course/1)
+    groups = candidate_groups_for_requirements(required_courses, courses: courses)
+
+    missing =
+      required_courses
+      |> Enum.zip(groups)
+      |> Enum.filter(fn {_required, candidates} -> candidates == [] end)
+      |> Enum.map(fn {required, _candidates} ->
+        "#{normalize_course_code(required["subject_code"])} #{normalize_course_code(required["course_number"])}"
+      end)
+
+    if missing != [], do: {:not_offered, missing}
+  end
+
+  # One list per person, not per name: see `Instructor`.
   defp professor_course_lists(courses: courses) do
+    people = courses |> Enum.flat_map(&Map.get(&1, "instructors", [])) |> Instructor.labels()
+
     courses
     |> Enum.flat_map(fn course ->
       for instructor <- Map.get(course, "instructors", []),
-          name = instructor["name"],
-          !blank?(name),
-          do: {:professor, name, course}
+          identity = Instructor.identity(instructor),
+          !is_nil(identity),
+          uniq: true,
+          do: {identity, course}
     end)
-    |> Enum.group_by(fn {_type, name, _course} -> name end, fn {_type, _name, course} ->
-      course
-    end)
-    |> Enum.map(fn {name, owner_courses} ->
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Enum.map(fn {identity, owner_courses} ->
       %{
-        owner_key: owner_key(type: :professor, name: name),
+        owner_key: "professor:" <> identity,
         type: :professor,
-        name: name,
+        name: people[identity].label,
         courses: owner_courses
       }
     end)
@@ -173,7 +193,15 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
           program_name: program["name"],
           semester_name: semester_name,
           courses: courses_for_first_variant(variants),
-          schedule_variants: variants
+          schedule_variants: variants,
+          gap:
+            if(variants == [],
+              do:
+                academic_program_semester_gap(
+                  courses: courses,
+                  required_courses: required_courses
+                )
+            )
         }
       end)
     end)
@@ -192,60 +220,6 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
       normalize_course_code(required_course["subject_code"]) and
       normalize_course_code(course["course_number"]) ==
         normalize_course_code(required_course["course_number"])
-  end
-
-  defp build_non_conflicting_variants([]), do: []
-
-  defp build_non_conflicting_variants(candidate_groups) do
-    if Enum.any?(candidate_groups, &(&1 == [])) do
-      []
-    else
-      candidate_groups
-      |> Enum.reduce([[]], fn candidates, variants ->
-        Enum.flat_map(variants, fn variant ->
-          candidates
-          |> Enum.reject(&course_already_selected?(course: &1, selected_courses: variant))
-          |> Enum.reject(&course_conflicts_with_selected?(course: &1, selected_courses: variant))
-          |> Enum.map(&(variant ++ [&1]))
-        end)
-      end)
-    end
-  end
-
-  defp course_already_selected?(course: course, selected_courses: selected_courses) do
-    Enum.any?(selected_courses, &(&1["crn"] == course["crn"]))
-  end
-
-  defp course_conflicts_with_selected?(course: course, selected_courses: selected_courses) do
-    Enum.any?(selected_courses, &courses_overlap?(left: course, right: &1))
-  end
-
-  defp courses_overlap?(left: left, right: right) do
-    Enum.any?(left["meet_info"] || [], fn left_meeting ->
-      Enum.any?(right["meet_info"] || [], fn right_meeting ->
-        meetings_overlap?(left: left_meeting, right: right_meeting)
-      end)
-    end)
-  end
-
-  defp meetings_overlap?(left: left, right: right) do
-    days_overlap?(left["days"] || [], right["days"] || []) and
-      has_real_time?(left) and
-      has_real_time?(right) and
-      left[:start_minutes] < right[:end_minutes] and
-      right[:start_minutes] < left[:end_minutes]
-  end
-
-  defp days_overlap?(left_days, right_days) do
-    left_days
-    |> MapSet.new()
-    |> MapSet.intersection(MapSet.new(right_days))
-    |> MapSet.size()
-    |> Kernel.>(0)
-  end
-
-  defp has_real_time?(meeting) do
-    is_binary(meeting["start_time"]) and is_binary(meeting["end_time"])
   end
 
   defp courses_for_first_variant([%{courses: courses} | _variants]), do: courses
@@ -268,8 +242,12 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
     end)
   end
 
+  # `name` is the owner key when the caller has one, else a bare name (the
+  # empty card drawn for a key with no courses).
   defp meeting_matches?(type: :professor, name: name, course: course, meeting: _meeting) do
-    Enum.any?(course["instructors"] || [], &(&1["name"] == name))
+    Enum.any?(course["instructors"] || [], fn instructor ->
+      Instructor.owner_key(instructor) == name or Instructor.name(instructor) == name
+    end)
   end
 
   defp meeting_matches?(type: :room, name: name, course: _course, meeting: meeting),
@@ -300,6 +278,8 @@ defmodule SnowSeTools.Scheduling.ScheduleUtils do
       end_minutes: end_minutes,
       room: meeting["__room_name"],
       instructors: Enum.map(course["instructors"] || [], & &1["name"]),
+      # Who each of those is: names are shared, keys are not (see `Instructor`).
+      instructor_keys: Enum.map(course["instructors"] || [], &Instructor.owner_key/1),
       meeting: meeting_payload(meeting),
       meet_info: Enum.map(course["meet_info"] || [], &meeting_payload/1)
     }

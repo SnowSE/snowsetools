@@ -90,9 +90,11 @@ defmodule SnowSeTools.Application do
     if Application.get_env(:snow_se_tools, :start_db_domain_children?, true) do
       [
         SnowSeTools.UserGroups.UserGroupDomainManager,
+        SnowSeTools.AI.SettingsDomainManager,
         SnowSeTools.Snow.SnowCourseCacheDomainManager,
         SnowSeTools.Discord.DiscordDomainManager,
         SnowSeTools.AcademicPrograms.ProgramDomainManager,
+        SnowSeTools.Curriculum.CurriculumDomainManager,
         SnowSeTools.Scheduling.ScheduleOwnerDomainManager,
         SnowSeTools.Scheduling.ScheduleChangeDomainManager,
         SnowSeTools.Scheduling.ScheduleLayoutDomainManager,

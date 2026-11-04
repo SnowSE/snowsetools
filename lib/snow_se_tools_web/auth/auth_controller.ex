@@ -145,6 +145,7 @@ defmodule SnowSeToolsWeb.AuthController do
 
     conn
     |> clear_session()
+    |> put_flash(:info, "You're logged out.")
     |> redirect(to: ~p"/")
   end
 

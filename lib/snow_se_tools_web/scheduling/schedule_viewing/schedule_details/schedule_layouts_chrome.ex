@@ -198,6 +198,84 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayoutsChrome do
     """
   end
 
+  attr :choice, :map, required: true
+  attr :loaded, :map, default: nil
+
+  @doc """
+  Asked before a program's semesters land on a canvas holding unsaved work:
+  add them to it, or replace it. Escape (or Cancel) leaves the canvas alone.
+  """
+  def program_choice_dialog(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :count,
+        case length(assigns.choice.keys) do
+          1 -> "1 semester"
+          n -> "#{n} semesters"
+        end
+      )
+
+    ~H"""
+    <div
+      id="schedule-program-choice"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"
+      phx-window-keydown="schedule-layouts:program_choice"
+      phx-key="Escape"
+      phx-value-choice="cancel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="schedule-program-choice-title"
+    >
+      <div class="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-2xl shadow-black/70">
+        <h2 id="schedule-program-choice-title" class="mb-2 text-sm font-semibold text-slate-100">
+          Open {@choice.name}?
+        </h2>
+        <p class="mb-4 text-xs leading-relaxed text-slate-400">
+          <%= if @loaded do %>
+            “{@loaded.name}” has changes you haven't saved.
+          <% else %>
+            Your current layout hasn't been saved.
+          <% end %>
+          Add the program's {@count} to it, or replace it with just the program?
+          Replacing discards what's on screen now.
+        </p>
+
+        <div class="flex flex-wrap justify-end gap-2">
+          <button
+            id="schedule-program-choice-cancel"
+            type="button"
+            phx-click="schedule-layouts:program_choice"
+            phx-value-choice="cancel"
+            class="rounded-md px-3 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:text-slate-200"
+          >
+            Cancel
+          </button>
+          <button
+            id="schedule-program-choice-replace"
+            type="button"
+            phx-click="schedule-layouts:program_choice"
+            phx-value-choice="replace"
+            class="rounded-md border border-rose-500/40 px-3 py-1.5 text-xs font-medium text-rose-200 transition-colors hover:bg-rose-500/15"
+          >
+            Replace my layout
+          </button>
+          <button
+            id="schedule-program-choice-add"
+            type="button"
+            phx-click="schedule-layouts:program_choice"
+            phx-value-choice="add"
+            phx-mounted={JS.focus()}
+            class="rounded-md bg-indigo-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-indigo-400"
+          >
+            Add to my layout
+          </button>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   attr :undo, :map, required: true
 
   def undo_toast(assigns) do

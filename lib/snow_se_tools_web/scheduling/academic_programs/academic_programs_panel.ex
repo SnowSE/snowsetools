@@ -6,6 +6,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
   alias SnowSeTools.AcademicPrograms.{AcademicProgramPubSub, ProgramDomainManager}
   alias SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramEditor
+  alias SnowSeToolsWeb.Scheduling.SchedulingLive
 
   defstruct [:key, :selected_program_id, :editing?, :editor_key, :picker_key]
 
@@ -25,6 +26,16 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
     )
     |> initial_setup()
   end
+
+  attr :programs, :list, required: true
+  attr :state, __MODULE__, required: true
+  attr :editor_state, :any, required: true
+  attr :picker_state, :any, required: true
+  attr :editor?, :boolean, required: true
+
+  attr :conflict_status, :any,
+    default: nil,
+    doc: "fn program_id -> :conflicts | :clear | :unknown, for this term"
 
   def render(assigns) do
     assigns = assign(assigns, :selected_program, selected_program(assigns))
@@ -75,7 +86,12 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
         />
       </div>
 
-      <.program_display :if={!@state.editing?} program={@selected_program} editor?={@editor?} />
+      <.program_display
+        :if={!@state.editing?}
+        program={@selected_program}
+        conflict_status={program_conflict_status(@conflict_status, @selected_program)}
+        editor?={@editor?}
+      />
     </div>
     """
   end
@@ -189,6 +205,21 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
      })}
   end
 
+  # Over to the schedule viewer, on the term already selected, with every
+  # semester of the program open; the viewer does the opening once it knows
+  # which owners that term has.
+  def hooked_event("academic-programs:review_conflicts", %{"program_id" => program_id}, socket) do
+    {:halt,
+     LiveView.push_patch(socket,
+       to:
+         SchedulingLive.scheduling_path(
+           mode: :viewer,
+           term: socket.assigns.schedule_viewer_state.selected_term_code,
+           program: program_id
+         )
+     )}
+  end
+
   def hooked_event("academic-programs:edit", _params, socket) do
     panel_state = panel_state(socket)
 
@@ -284,6 +315,7 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
   end
 
   attr :program, :map, default: nil
+  attr :conflict_status, :atom, default: :unknown
   attr :editor?, :boolean, required: true
 
   defp program_display(assigns) do
@@ -303,15 +335,44 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
               </p>
             </div>
 
-            <button
-              :if={@editor?}
-              id="edit-academic-program"
-              type="button"
-              phx-click="academic-programs:edit"
-              class="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 transition hover:bg-indigo-500/25"
-            >
-              <.icon name="hero-pencil" class="size-3.5" /> Edit
-            </button>
+            <div class="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              <%!-- Green and inert once the term's check finds nothing; until it
+                   has (or for a program it didn't see) reviewing stays open. --%>
+              <button
+                :if={@conflict_status == :clear}
+                id="review-program-schedule-conflicts"
+                type="button"
+                disabled
+                data-conflict-status="clear"
+                title="None of this program's semesters has a conflict in the selected term"
+                class="inline-flex cursor-default items-center gap-1 rounded-md bg-emerald-500/15 px-2.5 py-1.5 text-xs font-medium text-emerald-200"
+              >
+                <.icon name="hero-check-circle" class="size-3.5" /> No conflicts for this semester
+              </button>
+              <button
+                :if={@conflict_status != :clear}
+                id="review-program-schedule-conflicts"
+                type="button"
+                phx-click="academic-programs:review_conflicts"
+                phx-value-program_id={@program["id"]}
+                disabled={(@program["semesters"] || []) == []}
+                data-conflict-status={@conflict_status}
+                title="Open every semester of this program on the schedule, for the selected term"
+                class="inline-flex items-center gap-1 rounded-md bg-rose-500/15 px-2.5 py-1.5 text-xs font-medium text-rose-200 transition hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <.icon name="hero-exclamation-triangle" class="size-3.5" /> Review schedule conflicts
+              </button>
+
+              <button
+                :if={@editor?}
+                id="edit-academic-program"
+                type="button"
+                phx-click="academic-programs:edit"
+                class="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 px-2.5 py-1.5 text-xs font-medium text-indigo-200 transition hover:bg-indigo-500/25"
+              >
+                <.icon name="hero-pencil" class="size-3.5" /> Edit
+              </button>
+            </div>
           </div>
 
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -372,6 +433,11 @@ defmodule SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel do
   defp selected_program(programs, selected_program_id) do
     Enum.find(programs, &(&1["id"] == selected_program_id))
   end
+
+  defp program_conflict_status(status_fun, %{"id" => id}) when is_function(status_fun, 1),
+    do: status_fun.(id)
+
+  defp program_conflict_status(_status_fun, _program), do: :unknown
 
   defp panel_key(_socket), do: :academic_programs_panel
   defp panel_state(socket), do: socket.assigns[panel_key(socket)]

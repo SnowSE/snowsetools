@@ -45,6 +45,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
     :note,
     :pending_save,
     :pending_url_layout,
+    :pending_url_program,
+    :program_choice,
     :pending_session,
     :session_ready?,
     :sources_ready
@@ -72,6 +74,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
             | nil,
           pending_save: {String.t(), String.t(), [map()]} | nil,
           pending_url_layout: String.t() | nil,
+          pending_url_program: String.t() | nil,
+          program_choice: %{name: String.t(), keys: [String.t()]} | nil,
           pending_session: :unreported | map() | nil,
           session_ready?: boolean(),
           sources_ready: MapSet.t(:server | :local)
@@ -93,6 +97,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
       note: nil,
       pending_save: nil,
       pending_url_layout: nil,
+      pending_url_program: nil,
+      program_choice: nil,
       pending_session: :unreported,
       session_ready?: false,
       sources_ready: MapSet.new()
@@ -318,6 +324,11 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
 
     <Chrome.undo_toast :if={@show_undo?} undo={@state.undo} />
     <Chrome.save_dialog :if={@state.dialog} dialog={@state.dialog} editor?={@editor?} />
+    <Chrome.program_choice_dialog
+      :if={@state.program_choice}
+      choice={@state.program_choice}
+      loaded={@state.loaded}
+    />
 
     <script :type={Phoenix.LiveView.ColocatedHook} name=".ScheduleLayoutsStore">
       // Browser-scoped layouts never reach the server, so the component holds a
@@ -339,6 +350,15 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
           this.handleEvent("schedule-layouts:delete_local", ({ id }) => {
             this.write(this.read().filter((saved) => saved.id !== id));
           });
+        },
+
+        // A dropped socket rejoins as a brand-new LiveView process with an empty
+        // canvas, but the hook element survives, so mounted() does not run again.
+        // Report the remembered canvas (and the browser's layouts) once more, or
+        // the server never restores what was open before the drop.
+        reconnected() {
+          this.sync();
+          this.reportSession();
         },
 
         updated() {
@@ -438,7 +458,177 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
         socket
       end
 
+    socket =
+      case parse_program_id(params["program"]) do
+        nil ->
+          socket
+
+        program_id ->
+          socket
+          |> put_state(%{pending_url_program: program_id})
+          |> maybe_apply_pending_program()
+      end
+
     {:cont, socket}
+  end
+
+  # Program ids are UUIDs; anything else in the URL is ignored.
+  defp parse_program_id(value) when is_binary(value) do
+    if value =~ ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i,
+      do: String.downcase(value)
+  end
+
+  defp parse_program_id(_value), do: nil
+
+  # -- A program's semesters, opened from the Academic Programs tab -----------
+
+  @doc """
+  Opens every semester of the academic program named in the URL
+  (`program=<id>`), in the program's own semester order, so its schedule
+  conflicts can be reviewed side by side.
+
+  Waits until the selected term's owners are known *and* the canvas this
+  browser remembers has been restored, so that the decision below is made
+  against the work actually on screen. If that work is unsaved -- a canvas
+  never saved, or a saved layout with edits -- nothing is touched until the
+  person chooses to add the semesters to it or replace it. The parameter is
+  dropped from the URL either way, so a reload does not ask again.
+  """
+  def maybe_apply_pending_program(socket) do
+    state = socket.assigns[@key]
+
+    if is_binary(state.pending_url_program) and state.session_ready? and term_ready?(socket) do
+      socket
+      |> put_state(%{pending_url_program: nil})
+      |> clear_program_from_url()
+      |> open_program_semesters(state.pending_url_program)
+    else
+      socket
+    end
+  end
+
+  defp open_program_semesters(socket, program_id) do
+    keys = program_semester_keys(socket, program_id)
+    name = program_name(socket, program_id)
+
+    cond do
+      keys == [] ->
+        put_state(socket, %{note: {:warn, "#{name} has no semesters to show for this term."}})
+
+      unsaved_work?(socket) ->
+        put_state(socket, %{program_choice: %{name: name, keys: keys}, menu: nil, note: nil})
+
+      true ->
+        replace_with_program(socket, name, keys)
+    end
+  end
+
+  # Work that exists only on screen: losing it cannot be undone by reloading
+  # a saved layout.
+  defp unsaved_work?(socket) do
+    state = socket.assigns[@key]
+    order_state = socket.assigns.schedule_details_order
+
+    ScheduleDetailsOrder.to_layout_entries(order_state) != [] and
+      (is_nil(state.loaded) or dirty?(state, order_state))
+  end
+
+  defp replace_with_program(socket, name, keys) do
+    {socket, _outcome} =
+      ScheduleDetailsOrder.apply_layout_entries(socket,
+        entries: Enum.map(keys, &%{"kind" => "owner", "key" => &1}),
+        available_owner_keys:
+          ScheduleViewer.available_owner_keys(socket.assigns.schedule_viewer_state)
+      )
+
+    put_state(socket, %{
+      program_choice: nil,
+      menu: nil,
+      undo: nil,
+      loaded: nil,
+      baseline: nil,
+      note:
+        {:info,
+         "Opened #{pluralise(length(keys), "semester", "semesters")} of #{name}. " <>
+           "Classes that conflict are outlined in red.", :fades}
+    })
+  end
+
+  # Cards already on the canvas (solo or in a group) stay where they are; the
+  # rest go on the end in semester order. A loaded layout stays loaded, now
+  # with unsaved additions, so it can be updated or saved as a copy.
+  defp add_program(socket, name, keys) do
+    order_state = socket.assigns.schedule_details_order
+    new_keys = Enum.reject(keys, &ScheduleDetailsOrder.selected_owner?(order_state, key: &1))
+
+    socket =
+      Enum.reduce(new_keys, socket, &ScheduleDetailsOrder.ensure_owner_selected(&2, key: &1))
+
+    note =
+      case new_keys do
+        [] ->
+          {:info, "Every semester of #{name} was already on your layout.", :fades}
+
+        _ ->
+          {:info,
+           "Added #{pluralise(length(new_keys), "semester", "semesters")} of #{name} " <>
+             "to your layout. Classes that conflict are outlined in red.", :fades}
+      end
+
+    put_state(socket, %{program_choice: nil, menu: nil, note: note})
+  end
+
+  # The program's semesters as this term knows them, ordered the way the
+  # program lists them (the metadata order can drift as programs are edited).
+  defp program_semester_keys(socket, program_id) do
+    viewer_state = socket.assigns.schedule_viewer_state
+
+    semesters =
+      viewer_state.schedule_owners_metadata_by_term
+      |> Map.get(viewer_state.selected_term_code, [])
+      |> Enum.filter(
+        &(&1.type == :academic_program_semester and &1.academic_program_id == program_id)
+      )
+
+    position =
+      case find_program(socket, program_id) do
+        %{"semesters" => program_semesters} when is_list(program_semesters) ->
+          program_semesters
+          |> Enum.with_index()
+          |> Map.new(fn {semester, index} -> {semester["id"], index} end)
+
+        _ ->
+          %{}
+      end
+
+    semesters
+    |> Enum.with_index()
+    |> Enum.sort_by(fn {semester, index} ->
+      {Map.get(position, semester.academic_program_semester, length(semesters)), index}
+    end)
+    |> Enum.map(fn {semester, _index} -> semester.key end)
+  end
+
+  defp find_program(socket, program_id) do
+    Enum.find(Map.get(socket.assigns, :academic_programs, []), &(&1["id"] == program_id))
+  end
+
+  defp program_name(socket, program_id) do
+    case find_program(socket, program_id) do
+      %{"name" => name} when is_binary(name) -> name
+      _ -> "That program"
+    end
+  end
+
+  defp clear_program_from_url(socket) do
+    LiveView.push_patch(socket,
+      to:
+        SchedulingLive.scheduling_path(
+          mode: :viewer,
+          term: socket.assigns.schedule_viewer_state.selected_term_code
+        ),
+      replace: true
+    )
   end
 
   @doc """
@@ -571,7 +761,10 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
         pending_session: nil,
         session_ready?: true,
         loaded: loaded,
-        baseline: loaded && session["baseline"],
+        # Translated like the entries were, or a layout saved before professor
+        # keys changed would read as edited the moment it is restored.
+        baseline:
+          loaded && ScheduleDetailsOrder.translate_legacy_keys(socket, session["baseline"]),
         note: resume_note(outcome)
       })
 
@@ -630,7 +823,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
     {:halt,
      socket
      |> put_state(%{pending_session: valid_session(session)})
-     |> maybe_restore_session()}
+     |> maybe_restore_session()
+     |> maybe_apply_pending_program()}
   end
 
   def hooked_event("schedule-layouts:session_store_failed", %{"reason" => reason}, socket) do
@@ -655,6 +849,22 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayouts do
 
   def hooked_event("schedule-layouts:dismiss_note", _params, socket),
     do: {:halt, put_state(socket, %{note: nil})}
+
+  def hooked_event("schedule-layouts:program_choice", %{"choice" => choice}, socket) do
+    case {socket.assigns[@key].program_choice, choice} do
+      {nil, _choice} ->
+        {:halt, socket}
+
+      {%{name: name, keys: keys}, "add"} ->
+        {:halt, add_program(socket, name, keys)}
+
+      {%{name: name, keys: keys}, "replace"} ->
+        {:halt, replace_with_program(socket, name, keys)}
+
+      {_choice_state, _cancel} ->
+        {:halt, put_state(socket, %{program_choice: nil})}
+    end
+  end
 
   def hooked_event("schedule-layouts:dismiss_undo", _params, socket),
     do: {:halt, put_state(socket, %{undo: nil})}

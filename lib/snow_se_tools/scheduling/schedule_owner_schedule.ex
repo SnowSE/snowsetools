@@ -6,7 +6,8 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerSchedule do
           program_name: String.t() | nil,
           semester_name: String.t() | nil,
           courses: [map()],
-          schedule_variants: [map()]
+          schedule_variants: [map()],
+          gap: nil | {:not_offered, [String.t()]}
         }
 
   defstruct [
@@ -16,7 +17,9 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerSchedule do
     :program_name,
     :semester_name,
     :courses,
-    :schedule_variants
+    :schedule_variants,
+    # Why a program semester has no options; see ScheduleUtils.academic_program_semester_gap/1.
+    :gap
   ]
 
   def new(owner_key: owner_key, type: type, name: name, courses: courses) do
@@ -31,7 +34,8 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerSchedule do
       program_name: opts[:program_name],
       semester_name: opts[:semester_name],
       courses: Enum.uniq_by(courses, & &1["crn"]),
-      schedule_variants: opts[:schedule_variants] || []
+      schedule_variants: opts[:schedule_variants] || [],
+      gap: opts[:gap]
     }
   end
 end

@@ -11,6 +11,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayoutsTest do
   }
 
   alias SnowSeTools.Snow.{SnowCourseCacheDb, SnowCourseCacheDomainManager}
+  alias SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder
 
   @room_a "room:Layout Hall 101"
   @room_b "room:Layout Hall 202"
@@ -23,11 +24,13 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayoutsTest do
   setup do
     term_code = "202777#{System.unique_integer([:positive])}"
     insert_test_courses(term_code)
+    email_term_code = term_code <> "e"
+    insert_email_keyed_courses(email_term_code)
     start_supervised!(SnowCourseCacheDomainManager)
     start_supervised!(ScheduleOwnerDomainManager)
     start_supervised!(ScheduleChangeDomainManager)
     start_supervised!(ScheduleLayoutDomainManager)
-    {:ok, term_code: term_code}
+    {:ok, term_code: term_code, email_term_code: email_term_code}
   end
 
   describe "saving" do
@@ -522,6 +525,92 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayoutsTest do
 
   # -- Helpers ---------------------------------------------------------------
 
+  describe "professor cards saved before they were keyed by email" do
+    test "a remembered canvas is translated; a name two people share is reported, not guessed",
+         %{conn: conn, email_term_code: term_code} do
+      view = open_viewer(conn, term_code)
+
+      remember(view,
+        term_code: term_code,
+        entries: [owner_entry("professor:Grace Hopper"), owner_entry("professor:Michael Olson")]
+      )
+
+      order_state = :sys.get_state(view.pid).socket.assigns.schedule_details_order
+
+      assert ScheduleDetailsOrder.to_layout_entries(order_state) |> Enum.map(& &1["key"]) ==
+               ["professor:grace.hopper@snow.edu"]
+
+      assert render(view) =~ "Michael Olson"
+    end
+
+    test "a change naming a professor records who that is, and refuses to guess a shared name",
+         %{email_term_code: term_code} do
+      SnowSeTools.Scheduling.ScheduleChangePubSub.subscribe()
+      name = unique("Email key group")
+      ScheduleChangeDomainManager.create_group(name)
+      assert_receive {:schedule_changes, {:group_created, %{"id" => group_id, "name" => ^name}}}
+
+      save = fn crn, professor, key ->
+        ScheduleChangeDomainManager.add_or_update_change(group_id, %{
+          "crn" => crn,
+          "term" => term_code,
+          "subject_code" => "TEST",
+          "course_number" => crn,
+          "course_name" => "Moved",
+          "target_professor" => professor,
+          "target_professor_key" => key,
+          "meet_info" => [],
+          "operation" => "update"
+        })
+
+        assert_receive {:schedule_changes,
+                        {:change_updated, ^group_id, %{"crn" => ^crn} = change}}
+
+        change
+      end
+
+      # Typed: an unshared name resolves; the shared one is kept as typed.
+      assert %{
+               "target_professor" => "Grace Hopper",
+               "target_professor_email" => "grace.hopper@snow.edu"
+             } =
+               save.("82002", "grace hopper", nil)
+
+      shared = save.("82003", "Michael Olson", nil)
+      assert shared["target_professor"] == "Michael Olson"
+      # No email recorded (the database hands a NULL back as "").
+      assert shared["target_professor_email"] in [nil, ""]
+
+      # Dropped on a card: the card's key says exactly who, label and all.
+      assert %{
+               "target_professor" => "Michael Olson",
+               "target_professor_email" => "michael.olson2@snow.edu"
+             } =
+               save.(
+                 "82001",
+                 "Michael Olson (michael.olson2@snow.edu)",
+                 "professor:michael.olson2@snow.edu"
+               )
+    end
+
+    test "both Michael Olsons can be found, each under his own email",
+         %{conn: conn, email_term_code: term_code} do
+      view = open_viewer(conn, term_code)
+      viewer_state = :sys.get_state(view.pid).socket.assigns.schedule_viewer_state
+
+      olsons =
+        viewer_state.schedule_owners_metadata_by_term[term_code]
+        |> Enum.filter(&(&1.type == :professor and &1.person_name == "Michael Olson"))
+        |> Enum.map(&{&1.key, &1.name})
+        |> Enum.sort()
+
+      assert olsons == [
+               {"professor:michael.olson2@snow.edu", "Michael Olson (michael.olson2@snow.edu)"},
+               {"professor:michael.olson@snow.edu", "Michael Olson (michael.olson@snow.edu)"}
+             ]
+    end
+  end
+
   defp open_viewer(conn, term_code) do
     {:ok, view, _html} =
       live(log_in_test_user(conn), ~p"/scheduling?mode=viewer&term=#{term_code}")
@@ -622,6 +711,29 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleLayoutsTest do
     group = Enum.find(groups, &(&1.name == "admin"))
     :ok = AccessControl.add_user_group(user_id: user.id, group_id: group.id)
     User.get_by_id(user.id)
+  end
+
+  # A term whose instructors carry emails, as my.snow.edu sends them, with two
+  # different people named Michael Olson.
+  defp insert_email_keyed_courses(term_code) do
+    instructors = [
+      %{"name" => "Grace Hopper", "email" => "Grace.Hopper@snow.edu"},
+      %{"name" => "Michael Olson", "email" => "Michael.Olson@snow.edu"},
+      %{"name" => "Michael Olson", "email" => "michael.olson2@snow.edu"}
+    ]
+
+    SnowCourseCacheDb.save_courses(
+      term_code: term_code,
+      term_name: "Email Key Term",
+      courses:
+        instructors
+        |> Enum.with_index(1)
+        |> Enum.map(fn {instructor, index} ->
+          "8200#{index}"
+          |> course("Course #{index}", "unused", "30#{index}", ["Monday"], "09:00:00", "09:50:00")
+          |> Map.put("instructors", [Map.put(instructor, "primary_instructor", true)])
+        end)
+    )
   end
 
   defp insert_test_courses(term_code) do

@@ -113,11 +113,18 @@ defmodule SnowSeTools.Scheduling.ScheduleChange do
 
   # A blank professor means the change says nothing about who teaches this, not
   # that nobody does.
-  defp instructors(%{"target_professor" => professor}, course) do
+  # The email is what keys the professor's schedule (see `Instructor`); a change
+  # saved before it was recorded, or naming someone not found, has only a name.
+  defp instructors(%{"target_professor" => professor} = change, course) do
     if Text.blank?(professor) do
       Map.get(course, "instructors", [])
     else
-      [%{"name" => professor, "primary_instructor" => true}]
+      instructor = %{"name" => professor, "primary_instructor" => true}
+
+      case change["target_professor_email"] do
+        email when is_binary(email) and email != "" -> [Map.put(instructor, "email", email)]
+        _none -> [instructor]
+      end
     end
   end
 

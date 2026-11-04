@@ -21,7 +21,7 @@ defmodule SnowSeTools.MixProject do
   def application do
     [
       mod: {SnowSeTools.Application, []},
-      extra_applications: [:logger, :runtime_tools, :inets, :ssl]
+      extra_applications: [:logger, :runtime_tools, :inets, :ssl, :xmerl]
     ]
   end
 

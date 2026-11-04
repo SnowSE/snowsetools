@@ -362,9 +362,29 @@ only for viewers that classifies events by namespace and **denies anything it
 does not recognise**. Adding a new scheduling event namespace means classifying
 it there, or viewers cannot use it.
 
+The curriculum map (`/curriculum`) is the one area open to every approved
+user without a group of its own (`@open_areas` in `Access`); changing it takes
+`curriculum_admin`. Its gate is `SnowSeToolsWeb.Curriculum.CurriculumAccess`:
+every event that writes is named `curriculum-edit:…`, and viewers are refused
+anything else not listed as a view event.
+
 Change groups are shared: every editor sees and may modify every group. That is
 deliberate for a department-sized team, but it means a group is not private to
 whoever made it.
+
+## AI settings
+
+The AI endpoint, model and key are resolved per completion by
+`SnowSeTools.AI.Settings.current/0`, not read from application env at the call
+site. A row in `ai_settings` overrides the environment **field by field**: a
+NULL column means "use what `prod.env` set", so an admin can repoint the model
+without also having to restate the endpoint. Admins edit it on `/admin`.
+
+Two consequences worth knowing. The stored API key is write-only -- it is never
+sent to a browser, so a blank key box means "keep the current key" and clearing
+an override is the explicit revert button, never an empty field. And every read
+falls back to the environment if the database cannot answer, because a database
+outage should not also take the AI down.
 
 ## Tests
 
@@ -403,6 +423,20 @@ Two things this catches that reading Tailwind classes does not: a class that
 never generated (an arbitrary variant with a typo silently produces nothing),
 and a flex child that collapses or overflows its parent. Both have shipped here
 before.
+
+## Announcing scheduling features
+
+The scheduling page's Updates tab (`/scheduling?mode=updates`) is where new
+scheduling features are explained to the people who use them. Add a release
+to the top of `SchedulingUpdates.releases/0`
+(`lib/snow_se_tools_web/scheduling/scheduling_updates.ex`); each feature has an
+anchor id to link to.
+
+Its screenshots come from made-up data, never real names or schedules: the
+repository is public. Seed the state in
+`test/snow_se_tools_web/scheduling_updates_snapshot_test.exs`, add a shot to
+`scheduling_update_screenshots.sh`, run that script, and look at every image
+before committing it.
 
 ## Getting feedback
 

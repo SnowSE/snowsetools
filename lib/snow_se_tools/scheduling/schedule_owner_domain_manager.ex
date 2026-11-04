@@ -24,6 +24,7 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
   alias SnowSeTools.AcademicPrograms.{AcademicProgramPubSub, ProgramDb}
   alias SnowSeTools.Snow.SnowCourseCacheDb
   alias SnowSeTools.Snow.SnowCourseCachePubSub
+  alias SnowSeTools.Scheduling.Instructor
   alias SnowSeTools.Scheduling.ScheduleOwnerMetadata
   alias SnowSeTools.Scheduling.ScheduleOwnerPubSub
   alias SnowSeTools.Scheduling.ScheduleOwnerSchedule
@@ -635,7 +636,8 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
         opts: [
           program_name: Map.get(course_list, :program_name),
           semester_name: Map.get(course_list, :semester_name),
-          schedule_variants: Map.get(course_list, :schedule_variants, [])
+          schedule_variants: Map.get(course_list, :schedule_variants, []),
+          gap: Map.get(course_list, :gap)
         ]
       )
     end)
@@ -681,7 +683,15 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
             opts: [
               program_name: program["name"],
               semester_name: semester_name,
-              schedule_variants: schedule_variants
+              schedule_variants: schedule_variants,
+              gap:
+                if(schedule_variants == [],
+                  do:
+                    ScheduleUtils.academic_program_semester_gap(
+                      courses: courses,
+                      required_courses: semester["courses"] || []
+                    )
+                )
             ]
           )
         end)
@@ -726,38 +736,47 @@ defmodule SnowSeTools.Scheduling.ScheduleOwnerDomainManager do
         end)
       end)
 
-    professor_and_room_metadata =
+    # One per person (see `Instructor`), labelled with the email only where a
+    # name is shared.
+    professor_metadata =
+      courses
+      |> Enum.flat_map(&(&1["instructors"] || []))
+      |> Instructor.labels()
+      |> Enum.map(fn {identity, person} ->
+        %ScheduleOwnerMetadata{
+          type: :professor,
+          name: person.label,
+          person_name: person.name,
+          key: "professor:" <> identity,
+          academic_program_id: nil,
+          academic_program_semester: nil
+        }
+      end)
+      |> Enum.sort_by(& &1.name)
+
+    room_metadata =
       courses
       |> Enum.flat_map(fn course ->
-        Enum.map(course["instructors"] || [], fn instructor ->
-          %ScheduleOwnerMetadata{
-            type: :professor,
-            name: instructor["name"],
-            key: "professor:#{instructor["name"]}",
-            academic_program_id: nil,
-            academic_program_semester: nil
-          }
-        end) ++
-          Enum.flat_map(course["meet_info"] || [], fn meeting ->
-            room_name = ScheduleUtils.room_name(meeting: meeting)
+        Enum.flat_map(course["meet_info"] || [], fn meeting ->
+          room_name = ScheduleUtils.room_name(meeting: meeting)
 
-            if is_nil(room_name) do
-              []
-            else
-              [
-                %ScheduleOwnerMetadata{
-                  type: :room,
-                  name: room_name,
-                  key: "room:#{room_name}",
-                  academic_program_id: nil,
-                  academic_program_semester: nil
-                }
-              ]
-            end
-          end)
+          if is_nil(room_name) do
+            []
+          else
+            [
+              %ScheduleOwnerMetadata{
+                type: :room,
+                name: room_name,
+                key: "room:#{room_name}",
+                academic_program_id: nil,
+                academic_program_semester: nil
+              }
+            ]
+          end
+        end)
       end)
       |> Enum.uniq()
 
-    professor_and_room_metadata ++ academic_program_metadata
+    professor_metadata ++ room_metadata ++ academic_program_metadata
   end
 end

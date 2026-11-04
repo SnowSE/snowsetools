@@ -3,6 +3,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
   require Logger
 
   alias Phoenix.LiveView
+  alias SnowSeToolsWeb.Scheduling.CardConflicts
   alias SnowSeToolsWeb.Scheduling.DataAsOf
   alias SnowSeToolsWeb.Scheduling.OverlayGroup
   alias SnowSeToolsWeb.Scheduling.ScheduleLayouts
@@ -113,6 +114,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
       when is_list(entries) do
     term_code = socket.assigns.schedule_viewer_state.selected_term_code
 
+    entries = translate_legacy_keys(socket, entries)
+
     {resolved, missing} =
       ScheduleCanvasEntries.resolve_layout_entries(entries, available_owner_keys)
 
@@ -152,6 +155,34 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
     {socket, %{applied: length(owner_keys), missing: missing}}
   end
 
+  # Professor cards used to be keyed `professor:<name>` and are now keyed by
+  # email. Layouts saved, and canvases remembered, before that still carry the
+  # old keys; map each to the one person in this term with that name. A name
+  # two people share maps to neither, and the card is reported missing rather
+  # than guessed.
+  @doc "Entries with pre-email professor keys rewritten for the selected term."
+  def translate_legacy_keys(socket, entries) when is_list(entries),
+    do: ScheduleCanvasEntries.translate_keys(entries, legacy_professor_aliases(socket))
+
+  def translate_legacy_keys(_socket, entries), do: entries
+
+  defp legacy_professor_aliases(socket) do
+    viewer_state = socket.assigns.schedule_viewer_state
+
+    professors =
+      viewer_state.schedule_owners_metadata_by_term
+      |> Map.get(viewer_state.selected_term_code, [])
+      |> Enum.filter(&(&1.type == :professor and is_binary(&1.person_name)))
+
+    professors
+    |> Enum.group_by(&("professor:" <> &1.person_name))
+    |> Enum.flat_map(fn
+      {legacy_key, [%{key: key}]} when legacy_key != key -> [{legacy_key, key}]
+      _shared_or_unchanged -> []
+    end)
+    |> Map.new()
+  end
+
   @doc "One human-readable line per card, for the layout naming prompt."
   def card_labels(%__MODULE__{} = state, week_schedules) do
     state.selected_schedule_order
@@ -179,6 +210,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
   attr :active_change_group, :map, default: nil
   attr :conflicted_course_crns, :any, default: MapSet.new()
   attr :active_conflicted_course_crns, :any, default: MapSet.new()
+  attr :card_conflicts, CardConflicts, default: %CardConflicts{}
   attr :schedule_owners_metadata, :list, default: []
   attr :schedule_layouts, :any, required: true
   attr :term_code, :string, default: nil
@@ -238,6 +270,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
                 active_change_group={@active_change_group}
                 conflicted_course_crns={@conflicted_course_crns}
                 active_conflicted_course_crns={@active_conflicted_course_crns}
+                card_conflicts={@card_conflicts}
                 overlay_targets={overlay_targets(@state, @week_schedules, key)}
                 overlay_menu_open?={@state.open_overlay_menu_key == key}
                 size={card_size(@state, key)}
@@ -251,6 +284,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
                 active_change_group={@active_change_group}
                 conflicted_course_crns={@conflicted_course_crns}
                 active_conflicted_course_crns={@active_conflicted_course_crns}
+                card_conflicts={@card_conflicts}
                 schedule_owners_metadata={@schedule_owners_metadata}
                 edit_course_modal={@week_schedule_edit_course_modal}
                 overlay_targets={overlay_targets(@state, @week_schedules, key)}

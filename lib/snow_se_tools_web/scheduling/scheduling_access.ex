@@ -42,6 +42,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingAccess do
   # Editor-only namespaces have a few events that read rather than write.
   @view_events ~w(
     academic-programs:select
+    academic-programs:review_conflicts
     week-schedule-grid:close_edit_course
     switch_mode
   )

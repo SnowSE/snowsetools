@@ -11,6 +11,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
   }
 
   alias SnowSeToolsWeb.Scheduling.{
+    CardConflicts,
     CourseListForTerm,
     ScheduleChangeGroups,
     ScheduleDetailsOrder,
@@ -188,6 +189,12 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
         }
         active_conflicted_course_crns={
           ScheduleChangeGroups.active_conflicted_course_crns(@schedule_change_groups_state)
+        }
+        card_conflicts={
+          CardConflicts.merge(
+            ScheduleTermConflicts.card_conflicts(@schedule_term_conflicts_state),
+            ScheduleChangeGroups.active_card_conflicts(@schedule_change_groups_state)
+          )
         }
         schedule_owners_metadata={selected_term_schedule_owners(@state)}
         term_code={@state.selected_term_code}
@@ -403,9 +410,12 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
      })
      # A layout named in the URL waits for this: until the term's owners are
      # known there is no way to tell which of its cards this term actually has.
-     # The canvas this browser remembers waits for exactly the same thing.
+     # The canvas this browser remembers waits for exactly the same thing. A
+     # program asked for from the programs tab goes last: whether it may replace
+     # the canvas depends on what the restore put there.
      |> ScheduleLayouts.maybe_apply_pending_layout()
-     |> ScheduleLayouts.maybe_restore_session()}
+     |> ScheduleLayouts.maybe_restore_session()
+     |> ScheduleLayouts.maybe_apply_pending_program()}
   end
 
   def hooked_info(

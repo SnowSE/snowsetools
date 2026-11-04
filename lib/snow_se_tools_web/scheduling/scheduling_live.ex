@@ -7,12 +7,14 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramEditor
   alias SnowSeToolsWeb.Scheduling.AcademicProgramCoursePicker
   alias SnowSeToolsWeb.Scheduling.AcademicPrograms.AcademicProgramsPanel
+  alias SnowSeToolsWeb.Scheduling.CardConflicts
   alias SnowSeToolsWeb.Scheduling.CourseListForTerm
   alias SnowSeToolsWeb.Scheduling.ScheduleChangeGroups
   alias SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder
   alias SnowSeToolsWeb.Scheduling.ScheduleLayouts
   alias SnowSeToolsWeb.Scheduling.ScheduleTermConflicts
   alias SnowSeToolsWeb.Scheduling.ScheduleViewer
+  alias SnowSeToolsWeb.Scheduling.SchedulingUpdates
   alias SnowSeToolsWeb.Scheduling.WeekSchedule
 
   on_mount {SnowSeToolsWeb.UserAuth, {:ensure_access, :scheduling}}
@@ -47,7 +49,11 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
      |> ScheduleTermConflicts.assign_component()
      |> WeekSchedule.assign_component()
      |> assign(:mode, :viewer)
-     |> assign(:modes, viewer: "Schedule Viewer", programs: "Academic Programs")}
+     |> assign(:modes,
+       viewer: "Schedule Viewer",
+       programs: "Academic Programs",
+       updates: "Updates"
+     )}
   end
 
   def handle_params(params, _uri, socket) do
@@ -146,8 +152,20 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
                 state={@academic_programs_panel}
                 editor_state={@academic_program_editor}
                 picker_state={@academic_program_course_picker}
+                conflict_status={
+                  &ScheduleTermConflicts.program_status(
+                    @schedule_term_conflicts_state,
+                    CardConflicts.merge(
+                      ScheduleTermConflicts.card_conflicts(@schedule_term_conflicts_state),
+                      ScheduleChangeGroups.active_card_conflicts(@schedule_change_groups_state)
+                    ),
+                    &1
+                  )
+                }
                 editor?={@scheduling_editor?}
               />
+            <% :updates -> %>
+              <SchedulingUpdates.render />
           <% end %>
         </div>
       </div>
@@ -156,6 +174,7 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
   end
 
   defp mode_from_params(%{"mode" => "programs"}), do: :programs
+  defp mode_from_params(%{"mode" => "updates"}), do: :updates
   defp mode_from_params(_params), do: :viewer
 
   defp sync_schedule_viewer_term(socket, term_code: term_code) do
@@ -186,15 +205,17 @@ defmodule SnowSeToolsWeb.Scheduling.SchedulingLive do
 
   @doc """
   The scheduling URL. `layout` names the saved layout on screen so the page can
-  be bookmarked and shared; blank values are left out rather than written as
-  empty query params.
+  be bookmarked and shared; `program` asks the schedule viewer to open every
+  semester of that academic program (it drops the param once it has). Blank
+  values are left out rather than written as empty query params.
   """
   def scheduling_path(opts) do
     query =
       [
         {"mode", to_string(Keyword.fetch!(opts, :mode))},
         {"term", Keyword.get(opts, :term)},
-        {"layout", Keyword.get(opts, :layout)}
+        {"layout", Keyword.get(opts, :layout)},
+        {"program", Keyword.get(opts, :program)}
       ]
       |> Enum.reject(fn {_key, value} -> value in [nil, ""] end)
       |> URI.encode_query()
