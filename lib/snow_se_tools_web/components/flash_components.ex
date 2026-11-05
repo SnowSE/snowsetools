@@ -114,29 +114,35 @@ defmodule SnowSeToolsWeb.FlashComponents do
       <.flash kind={:info} flash={@flash} />
       <.flash kind={:error} flash={@flash} />
 
-      <.flash
-        id="client-error"
-        kind={:error}
-        title={gettext("We can't find the internet")}
-        phx-disconnected={show(".phx-client-error #client-error") |> JS.remove_attribute("hidden")}
-        phx-connected={hide("#client-error") |> JS.set_attribute({"hidden", ""})}
-        hidden
-      >
-        {gettext("Attempting to reconnect")}
-        <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
-      </.flash>
+      <.reconnecting_notice />
+    </div>
+    """
+  end
 
-      <.flash
-        id="server-error"
-        kind={:error}
-        title={gettext("Something went wrong!")}
-        phx-disconnected={show(".phx-server-error #server-error") |> JS.remove_attribute("hidden")}
-        phx-connected={hide("#server-error") |> JS.set_attribute({"hidden", ""})}
-        hidden
-      >
-        {gettext("Attempting to reconnect")}
-        <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
-      </.flash>
+  @doc """
+  The one notice shown while the page has lost the server, whether the
+  connection dropped or the server refused the rejoin -- to the person looking
+  at it those are the same thing. It waits for LiveView's `disconnectedTimeout`
+  (set in app.js) before appearing, so the few seconds of a deploy restart pass
+  without it.
+  """
+  def reconnecting_notice(assigns) do
+    ~H"""
+    <div
+      id="reconnecting"
+      role="status"
+      phx-disconnected={show("#reconnecting") |> JS.remove_attribute("hidden", to: "#reconnecting")}
+      phx-connected={hide("#reconnecting") |> JS.set_attribute({"hidden", ""}, to: "#reconnecting")}
+      hidden
+      class="flex w-72 items-center gap-3 rounded-lg border border-slate-700 bg-slate-900/95 px-4 py-3 text-sm text-slate-200 shadow-xl shadow-slate-950/40 backdrop-blur-sm sm:w-80"
+    >
+      <.icon name="hero-arrow-path" class="size-4 shrink-0 text-slate-400 motion-safe:animate-spin" />
+      <div class="min-w-0">
+        <div class="font-medium">{gettext("Reconnecting…")}</div>
+        <div class="text-xs text-slate-400">
+          {gettext("Lost touch with the server. This page will catch up on its own.")}
+        </div>
+      </div>
     </div>
     """
   end

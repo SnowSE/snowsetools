@@ -31,6 +31,10 @@ const csrfToken = document
   .getAttribute("content");
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
+  // A deploy restarts the server for a few seconds; the "Reconnecting" notice
+  // waits this long so a restart passes without one, and a real outage still
+  // shows it.
+  disconnectedTimeout: 5000,
   // Read on every join, so a reconnect after sleep reports the page it is on.
   params: () => ({
     _csrf_token: csrfToken,
