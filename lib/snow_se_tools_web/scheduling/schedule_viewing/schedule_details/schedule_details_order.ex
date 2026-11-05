@@ -429,6 +429,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
               startScale: gridEl ? Number(gridEl.dataset.minuteScale || 1) : 1,
               width: null,
               badge: this.showResizeBadge(card),
+              stretchables: this.stretchables(gridEl),
             };
             card.draggable = false;
             grip.setPointerCapture(event.pointerId);
@@ -448,6 +449,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
               const targetHeight = Math.max(r.gridHeight + (event.clientY - r.startY), 60);
               r.scale = Math.max(0.5, Math.min(3, (targetHeight / r.gridHeight) * r.startScale));
               r.scale = Math.round(r.scale * 20) / 20;
+              this.stretch(r.stretchables, r.scale / r.startScale);
             }
             r.badge.textContent = `${r.width === "full" ? "full width" : `${Math.round(width)}px`} · ${r.scale.toFixed(2)}× time`;
           };
@@ -458,6 +460,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
             r.card.draggable = true;
             r.badge.remove();
             document.body.style.cursor = "";
+            // An unchanged scale renders no diff, so nothing would put the
+            // server's measurements back over the ones stretched here.
+            if (r.scale === r.startScale) this.stretch(r.stretchables, 1);
             this.pushEvent("schedule-details-order:resize", {
               key: r.key,
               width: r.width === null ? Math.round(r.startWidth) : r.width,
@@ -486,6 +491,27 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
           this.el.removeEventListener("pointerup", this.onPointerUp);
           this.el.removeEventListener("pointercancel", this.onPointerUp);
         },
+        // The week grid is laid out in pixels by the server. While a card is
+        // being resized, its height follows the pointer by stretching those
+        // pixel offsets; the server re-renders at the new scale on release.
+        stretchables(gridEl) {
+          if (!gridEl) return [];
+          return Array.from(gridEl.querySelectorAll("[style]"))
+            .map((el) => ({
+              el,
+              top: parseFloat(el.style.top),
+              height: parseFloat(el.style.height),
+            }))
+            .filter(({ top, height }) => !Number.isNaN(top) || !Number.isNaN(height));
+        },
+
+        stretch(stretchables, ratio) {
+          for (const { el, top, height } of stretchables) {
+            if (!Number.isNaN(top)) el.style.top = `${top * ratio}px`;
+            if (!Number.isNaN(height)) el.style.height = `${height * ratio}px`;
+          }
+        },
+
         showResizeBadge(card) {
           const badge = document.createElement("div");
           badge.className =
