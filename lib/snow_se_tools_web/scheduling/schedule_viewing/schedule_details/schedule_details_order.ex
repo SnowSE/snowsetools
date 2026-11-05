@@ -219,7 +219,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
 
   def render(assigns) do
     ~H"""
-    <section class="min-w-0 flex-1 overflow-y-auto">
+    <section class="min-w-0 flex-1">
       <ScheduleLayouts.render
         state={@schedule_layouts}
         schedule_details_order={@state}

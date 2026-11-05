@@ -5,7 +5,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupSelector do
 
   def render(assigns) do
     ~H"""
-    <div class="flex shrink-0 flex-col gap-4">
+    <div class="flex flex-col gap-4">
       <div class="flex items-center justify-between">
         <h3
           class="text-xs font-semibold uppercase tracking-wider text-slate-400"

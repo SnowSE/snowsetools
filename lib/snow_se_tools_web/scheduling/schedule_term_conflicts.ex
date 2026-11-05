@@ -443,9 +443,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
     ~H"""
     <div
       id="schedule-term-conflicts"
-      class="flex min-h-0 flex-1 flex-col border-t border-slate-800/80 pt-3 lg:min-h-48"
+      class="flex flex-col border-t border-slate-800/80 pt-3"
     >
-      <div class="flex shrink-0 items-center justify-between gap-2">
+      <div class="flex items-center justify-between gap-2">
         <h3 class="font-semibold uppercase tracking-wider text-slate-400">
           Schedule Conflicts
         </h3>
@@ -466,7 +466,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
       />
 
       <%= unless Enum.empty?(@state.resolved_conflicts) do %>
-        <div class="flex-1 flex flex-col gap-2 pr-1 overflow-auto">
+        <div class="flex flex-col gap-2">
           <.owner_conflict_card :for={owner <- @state.resolved_conflicts} owner={owner} />
         </div>
       <% end %>

@@ -45,7 +45,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroups do
 
   def render(assigns) do
     ~H"""
-    <div id="schedule-change-groups" class="flex min-h-0 flex-col gap-4">
+    <div id="schedule-change-groups" class="flex flex-col gap-4">
       <ScheduleChangeGroupSelector.render state={@state} />
       <ScheduleChangeGroupDetails.render
         state={@state}

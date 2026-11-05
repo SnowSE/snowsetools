@@ -77,14 +77,14 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
     ~H"""
     <div
       id="scheduling-page"
-      class="mx-auto flex h-full min-h-0 w-full max-w-full flex-col gap-3 p-3 lg:flex-row lg:gap-4 lg:p-4"
+      class="mx-auto flex min-h-full w-full max-w-full flex-col gap-3 p-3 lg:flex-row lg:gap-4 lg:p-4"
     >
       <aside
         id="scheduling-sidebar"
         phx-hook=".SchedulingSidebar"
         data-pinned={to_string(@state.sidebar_pinned?)}
         class={[
-          "relative min-h-0 lg:shrink-0",
+          "relative lg:shrink-0",
           @state.sidebar_pinned? && "w-full shrink-0 lg:w-80 lg:pr-2",
           !@state.sidebar_pinned? && "group w-full shrink-0 lg:w-10"
         ]}
@@ -109,7 +109,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
           <div
             id="scheduling-tools"
             class={[
-              "space-y-3 lg:flex lg:h-full lg:flex-col lg:gap-3 lg:space-y-0",
+              "space-y-3 lg:flex lg:flex-col lg:gap-3 lg:space-y-0",
               !@state.tools_open? && "hidden lg:flex"
             ]}
           >
@@ -143,8 +143,8 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleViewer do
             id="scheduling-sidebar-flyout"
             phx-click-away={@state.sidebar_flyout_open? && "schedule-viewer:close_sidebar_flyout"}
             class={[
-              "absolute left-0 top-full z-40 mt-2 h-[60vh] w-[min(20rem,calc(100vw-1.5rem))] flex-col gap-3 rounded-lg border border-slate-700 bg-slate-950 p-3 shadow-2xl shadow-black/70",
-              "lg:top-0 lg:mt-0 lg:h-full",
+              "absolute left-0 top-full z-40 mt-2 w-[min(20rem,calc(100vw-1.5rem))] flex-col gap-3 rounded-lg border border-slate-700 bg-slate-950 p-3 shadow-2xl shadow-black/70",
+              "lg:top-0 lg:mt-0 lg:min-h-full",
               @state.sidebar_flyout_open? && "flex",
               !@state.sidebar_flyout_open? && "hidden group-hover:flex group-focus-within:flex"
             ]}

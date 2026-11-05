@@ -20,9 +20,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
     ~H"""
     <div
       id="schedule-change-group-details"
-      class="flex min-h-0 flex-col border-t border-slate-800/80 pt-3"
+      class="border-t border-slate-800/80 pt-3"
     >
-      <div class="mb-2 flex shrink-0 items-center justify-between gap-2">
+      <div class="mb-2 flex items-center justify-between gap-2">
         <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">
           Changes
         </h3>
@@ -62,7 +62,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
         No changes in this group yet.
       </div>
 
-      <div class="flex min-h-0 flex-col gap-2 overflow-y-auto pr-1">
+      <div class="flex flex-col gap-2">
         <%= for change <- active_changes(@state) do %>
           <% original_course = original_course_for_change(change, @courses) %>
           <% conflicts = Map.get(change, "conflicts", []) %>
