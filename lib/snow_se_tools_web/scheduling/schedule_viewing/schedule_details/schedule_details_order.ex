@@ -256,7 +256,7 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleDetailsOrder do
       <div
         id="selected-schedules"
         phx-hook=".ScheduleDetailsOrder"
-        class="flex flex-wrap justify-center"
+        class="flex flex-wrap items-start justify-center"
       >
         <%= for {key, position} <- Enum.with_index(ScheduleOrder.to_list(@state.selected_schedule_order)) do %>
           <%= cond do %>

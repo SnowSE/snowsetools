@@ -60,7 +60,7 @@ defmodule SnowSeToolsWeb.Scheduling.OverlayGroup do
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
       ]}
     >
-      <div class="relative rounded-lg border border-slate-800/80 bg-slate-950/55 p-3 shadow-sm shadow-slate-950/20 h-full">
+      <div class="relative rounded-lg border border-slate-800/80 bg-slate-950/55 p-3 shadow-sm shadow-slate-950/20">
         <OverlayControls.resize_grip />
         <div class="mb-2 grid grid-cols-[1fr_auto] items-start gap-3">
           <div class="min-w-0">
