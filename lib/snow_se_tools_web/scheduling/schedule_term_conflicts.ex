@@ -443,9 +443,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleTermConflicts do
     ~H"""
     <div
       id="schedule-term-conflicts"
-      class="flex-1 min-h-0  border-t border-slate-800/80 pt-3 flex flex-col"
+      class="flex min-h-0 flex-1 flex-col border-t border-slate-800/80 pt-3 lg:min-h-48"
     >
-      <div class="flex items-center justify-between gap-2">
+      <div class="flex shrink-0 items-center justify-between gap-2">
         <h3 class="font-semibold uppercase tracking-wider text-slate-400">
           Schedule Conflicts
         </h3>

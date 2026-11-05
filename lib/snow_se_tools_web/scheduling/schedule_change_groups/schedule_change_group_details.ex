@@ -20,9 +20,9 @@ defmodule SnowSeToolsWeb.Scheduling.ScheduleChangeGroupDetails do
     ~H"""
     <div
       id="schedule-change-group-details"
-      class="min-h-0 border-t border-slate-800/80 pt-3"
+      class="flex min-h-0 flex-col border-t border-slate-800/80 pt-3"
     >
-      <div class="mb-2 flex items-center justify-between gap-2">
+      <div class="mb-2 flex shrink-0 items-center justify-between gap-2">
         <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">
           Changes
         </h3>
