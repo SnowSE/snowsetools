@@ -2,6 +2,9 @@
 -- Snow SE Tools Database Schema
 -- This schema creates all tables from scratch for a fresh database
 
+-- Lets `pg_amcheck --heapallindexed` verify tables and indexes after a crash.
+CREATE EXTENSION IF NOT EXISTS amcheck;
+
 CREATE TABLE users (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   email       TEXT        NOT NULL UNIQUE,
