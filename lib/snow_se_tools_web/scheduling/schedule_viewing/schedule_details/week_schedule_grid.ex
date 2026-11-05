@@ -18,8 +18,11 @@ defmodule SnowSeToolsWeb.Scheduling.WeekScheduleGrid do
   def schedule_grid(assigns) do
     ~H"""
     <%!-- Five days never fit a phone legibly, so the week scrolls sideways
-    inside the card rather than squeezing each day to nothing. --%>
-    <div class="-mx-1 overflow-x-auto px-1">
+    inside the card rather than squeezing each day to nothing. Only sideways:
+    a card that also scrolled vertically would swallow the mouse wheel meant
+    for the page. The bottom padding is room for a time label that sits on
+    the grid's last line. --%>
+    <div class="-mx-1 overflow-x-auto overflow-y-hidden px-1 pb-3">
       <div
         id={schedule_grid_id(@owner_key)}
         class="flex min-w-[39.5rem] gap-2 lg:min-w-0"
