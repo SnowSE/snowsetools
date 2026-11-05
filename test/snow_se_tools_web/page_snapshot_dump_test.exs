@@ -20,6 +20,7 @@ defmodule SnowSeToolsWeb.PageSnapshotDumpTest do
     SemesterAttrs
   }
 
+  alias SnowSeTools.AI.SettingsDomainManager
   alias SnowSeTools.Curriculum.{AbetDb, CurriculumDomainManager, OutcomeDb, SkillDb, SuggestionDb}
   alias SnowSeTools.Data.User
   alias SnowSeTools.Discord.{DiscordDb, DiscordDomainManager}
@@ -48,6 +49,7 @@ defmodule SnowSeToolsWeb.PageSnapshotDumpTest do
     start_supervised!(UserGroupDomainManager)
     start_supervised!(DiscordDomainManager)
     start_supervised!(CurriculumDomainManager)
+    start_supervised!(SettingsDomainManager)
 
     {:ok, term_code: term_code, curriculum_program: seed_curriculum()}
   end

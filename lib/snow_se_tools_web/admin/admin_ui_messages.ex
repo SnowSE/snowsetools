@@ -15,6 +15,10 @@ defmodule SnowSeToolsWeb.Admin.AdminUIMessages do
     send(pid, {:ai_settings, settings})
   end
 
+  def send_ai_test_result(pid: pid, result: result) when is_pid(pid) do
+    send(pid, {:ai_test_result, result})
+  end
+
   defmacro __using__(_opts) do
     quote do
       def handle_info({:admin_ui_users, users}, socket) do
@@ -27,6 +31,15 @@ defmodule SnowSeToolsWeb.Admin.AdminUIMessages do
 
       def handle_info({:ai_settings, settings}, socket) do
         {:noreply, assign(socket, :ai_settings, settings)}
+      end
+
+      def handle_info({:ai_test_result, result}, socket) do
+        send_update(SnowSeToolsWeb.Admin.AiSettingsComponent,
+          id: "ai-settings-component",
+          test_result: result
+        )
+
+        {:noreply, socket}
       end
 
       def handle_info({:admin_ui_action_result, {:ok, message}}, socket) do

@@ -6,7 +6,7 @@ defmodule SnowSeToolsWeb.Admin.AiSettingsTest do
   """
   use SnowSeToolsWeb.ConnCase, async: false
 
-  alias SnowSeTools.AI.{Settings, SettingsDb, SettingsDomainManager}
+  alias SnowSeTools.AI.{ConnectionTest, Settings, SettingsDb, SettingsDomainManager}
 
   setup do
     start_supervised!(SettingsDomainManager)
@@ -89,6 +89,35 @@ defmodule SnowSeToolsWeb.Admin.AiSettingsTest do
     assert render(view) =~ "That is not an AI setting."
   end
 
+  test "testing the AI server tries what is typed without saving it", %{conn: conn} do
+    {:ok, view, _html} = live(log_in_admin(conn), ~p"/admin")
+    settle(view)
+
+    view
+    |> form("#admin-ai-settings-form", %{
+      "ai" => %{"endpoint" => "", "model" => "untried-model", "api_key" => ""}
+    })
+    |> put_submitter("#ai-settings-test")
+    |> render_submit()
+
+    assert has_element?(view, "#ai-settings-test-result")
+
+    assert_eventually(fn ->
+      has_element?(view, ~s(#ai-settings-test-result[data-status="ok"]))
+    end)
+
+    assert has_element?(view, "#ai-settings-test-result", "untried-model")
+    assert Settings.current()[:model] == "env-model"
+  end
+
+  test "a connection test names what is missing instead of calling out" do
+    assert {:error, %{message: "No model is set."}} =
+             ConnectionTest.run(endpoint: "https://ai.example/v1", model: " ", api_key: nil)
+
+    assert {:error, %{message: "No endpoint is set."}} =
+             ConnectionTest.run(endpoint: nil, model: "some-model", api_key: nil)
+  end
+
   test "a non-admin cannot reach the page at all", %{conn: conn} do
     conn = log_in_user(conn, unique_email("ai-settings-viewer"), ["syllabus_admin"])
 
@@ -111,6 +140,24 @@ defmodule SnowSeToolsWeb.Admin.AiSettingsTest do
     _ = :sys.get_state(SettingsDomainManager)
     _ = :sys.get_state(view.pid)
     render(view)
+  end
+
+  # The test itself runs in a task the domain manager starts, which nothing here
+  # can synchronise on, so wait for its answer to reach the page.
+  defp assert_eventually(check, attempts \\ 50) do
+    cond do
+      check.() ->
+        :ok
+
+      attempts == 0 ->
+        flunk("the connection test never reported back")
+
+      true ->
+        ref = make_ref()
+        Process.send_after(self(), ref, 20)
+        assert_receive ^ref
+        assert_eventually(check, attempts - 1)
+    end
   end
 
   defp clear_all do

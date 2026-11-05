@@ -11,7 +11,7 @@ defmodule SnowSeTools.AI.SettingsDomainManager do
 
   require Logger
 
-  alias SnowSeTools.AI.{Settings, SettingsDb}
+  alias SnowSeTools.AI.{ConnectionTest, Settings, SettingsDb}
   alias SnowSeToolsWeb.Admin.AdminUIMessages
 
   def start_link(_opts) do
@@ -28,6 +28,16 @@ defmodule SnowSeTools.AI.SettingsDomainManager do
 
   def clear_override(pid: pid, field: field, user: user) when is_pid(pid) do
     GenServer.cast(__MODULE__, {:clear_override, pid, field, user})
+  end
+
+  @doc """
+  Tries the AI server described by `params` -- the admin form as it stands,
+  saved or not -- and answers `pid` with the outcome. A field left blank uses
+  the setting in force, which is how a test reaches the stored API key without
+  the form ever holding it.
+  """
+  def test_connection(pid: pid, params: params) when is_pid(pid) do
+    GenServer.cast(__MODULE__, {:test_connection, pid, params})
   end
 
   @impl true
@@ -67,6 +77,25 @@ defmodule SnowSeTools.AI.SettingsDomainManager do
       known ->
         write(pid, %{known => nil}, user, "Reverted to the environment value.")
     end
+
+    {:noreply, state}
+  end
+
+  # The server can take up to a minute to answer, so the test runs outside this
+  # process; saves and reads must not wait behind it.
+  def handle_cast({:test_connection, pid, params}, state) do
+    config = Keyword.merge(Settings.current(), Map.to_list(changes_from(params)))
+
+    Task.start(fn ->
+      result =
+        ConnectionTest.run(
+          endpoint: config[:endpoint],
+          model: config[:model],
+          api_key: config[:api_key]
+        )
+
+      AdminUIMessages.send_ai_test_result(pid: pid, result: result)
+    end)
 
     {:noreply, state}
   end

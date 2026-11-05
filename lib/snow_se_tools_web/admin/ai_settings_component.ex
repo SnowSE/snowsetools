@@ -6,14 +6,26 @@ defmodule SnowSeToolsWeb.Admin.AiSettingsComponent do
   form can say whether an override exists without handing the value to a
   browser. Leaving the key box empty therefore means "keep the key you have",
   not "clear it" -- clearing is the explicit "Use environment value" button.
+
+  "Test AI server" submits the same form, so it tries what is typed, saved or
+  not; the result is shown beside the button.
   """
 
   use SnowSeToolsWeb, :live_component
 
   alias SnowSeTools.AI.SettingsDomainManager
 
+  def update(%{test_result: result}, socket) do
+    {:ok, assign(socket, :test, result)}
+  end
+
   def update(assigns, socket) do
-    {:ok, assign(socket, assigns)}
+    {:ok, socket |> assign(assigns) |> assign_new(:test, fn -> nil end)}
+  end
+
+  def handle_event("save_ai_settings", %{"ai" => params, "intent" => "test"}, socket) do
+    SettingsDomainManager.test_connection(pid: self(), params: params)
+    {:noreply, assign(socket, :test, :running)}
   end
 
   def handle_event("save_ai_settings", %{"ai" => params}, socket) do
@@ -117,16 +129,77 @@ defmodule SnowSeToolsWeb.Admin.AiSettingsComponent do
           </div>
         </div>
 
-        <button
-          type="submit"
-          class="mt-5 rounded-lg bg-emerald-500/90 px-4 py-2 text-sm font-semibold text-emerald-950 hover:bg-emerald-400"
-        >
-          Save AI settings
-        </button>
+        <div class="mt-5 flex flex-wrap items-center gap-3">
+          <button
+            type="submit"
+            id="ai-settings-save"
+            class="rounded-lg bg-emerald-500/90 px-4 py-2 text-sm font-semibold text-emerald-950 transition-colors hover:bg-emerald-400"
+          >
+            Save AI settings
+          </button>
+          <button
+            type="submit"
+            id="ai-settings-test"
+            name="intent"
+            value="test"
+            disabled={@test == :running}
+            class="inline-flex items-center gap-2 rounded-lg border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 transition-colors hover:border-slate-400 hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60"
+          >
+            <.icon
+              name={if @test == :running, do: "hero-arrow-path", else: "hero-signal"}
+              class={if @test == :running, do: "size-4 animate-spin", else: "size-4"}
+            /> Test AI server
+          </button>
+          <.test_result test={@test} />
+        </div>
       </.form>
     </section>
     """
   end
+
+  attr :test, :any, required: true
+
+  defp test_result(%{test: nil} = assigns), do: ~H""
+
+  defp test_result(%{test: :running} = assigns) do
+    ~H"""
+    <span id="ai-settings-test-result" class="text-sm text-slate-400">
+      Asking the server for a reply&hellip;
+    </span>
+    """
+  end
+
+  defp test_result(%{test: {status, outcome}} = assigns) do
+    assigns = assign(assigns, status: status, outcome: outcome)
+
+    ~H"""
+    <div
+      id="ai-settings-test-result"
+      data-status={@status}
+      class={[
+        "flex min-w-0 basis-full items-start gap-2 rounded-lg border px-3 py-2 text-sm sm:basis-auto",
+        @status == :ok && "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
+        @status == :error && "border-rose-500/30 bg-rose-500/10 text-rose-200"
+      ]}
+    >
+      <.icon
+        name={if @status == :ok, do: "hero-check-circle", else: "hero-x-circle"}
+        class="mt-0.5 size-4 shrink-0"
+      />
+      <div class="min-w-0">
+        <div class="break-words">{@outcome.message}</div>
+        <div class="text-xs opacity-75 break-all">
+          {@outcome.model || "no model"} at {@outcome.endpoint || "no endpoint"} &middot; {format_elapsed(
+            @outcome.elapsed_ms
+          )}
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp format_elapsed(ms) when ms < 1000, do: "#{ms} ms"
+  defp format_elapsed(ms), do: "#{Float.round(ms / 1000, 1)} s"
 
   attr :source, :atom, required: true
   attr :field, :string, required: true
